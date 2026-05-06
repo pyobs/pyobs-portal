@@ -1,5 +1,5 @@
 from astropy.time import Time
-from sqlmodel import Session
+from sqlalchemy.orm import Session
 from pyobs.robotic import Task, Observation, ObservationState
 from pyobs.robotic.scheduler.constraints import Constraint
 from pyobs.robotic.scheduler.merits import Merit
