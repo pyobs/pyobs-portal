@@ -35,7 +35,7 @@ async def root():
 @app.get("/tasks")
 async def get_schedulable_tasks() -> list:
     with Session(engine) as session:
-        db_tasks = session.exec(select(DbTask)).all()
+        db_tasks = session.execute(select(DbTask)).all()
         tasks = [db_to_task(db_task[0]) for db_task in db_tasks]
         return [tasks.model_dump() for tasks in tasks]
 
@@ -43,7 +43,7 @@ async def get_schedulable_tasks() -> list:
 @app.get("/tasks/{task_id}")
 async def get_task(task_id: str) -> Task | None:
     with Session(engine) as session:
-        db_task = session.exec(select(DbTask).filter_by(id=task_id)).first()
+        db_task = session.execute(select(DbTask).filter_by(id=task_id)).first()
         if db_task is not None:
             return db_to_task(db_task[0])
         return None
