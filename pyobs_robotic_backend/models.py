@@ -1,3 +1,5 @@
+import datetime
+
 from typing import Any
 
 from sqlalchemy import String, ForeignKey, JSON
@@ -52,3 +54,15 @@ class DbTask(Base):
     script: Mapped[dict[str, Any]]
     target_id: Mapped[int | None] = mapped_column(ForeignKey("target.id"))
     target: Mapped["DbTarget | None"] = relationship(back_populates="task")
+    observations: Mapped["DbObservation | None"] = relationship(back_populates="task")
+
+
+class DbObservation(Base):
+    __tablename__ = "observation"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str | None] = mapped_column(ForeignKey("task.id"))
+    task: Mapped[DbTask | None] = relationship(back_populates="observations")
+    start: Mapped[datetime.datetime]
+    end: Mapped[datetime.datetime]
+    state: Mapped[str] = mapped_column(String(15))

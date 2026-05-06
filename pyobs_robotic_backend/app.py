@@ -1,10 +1,12 @@
+import datetime
+
 from sqlalchemy import create_engine, select
 from sqlalchemy.orm import Session
 from fastapi import FastAPI
 from astropydantic import AstroPydanticTime  # type: ignore
 from pyobs.robotic.task import Task
 from pyobs.robotic.observation import Observation
-from .database import task_to_db, db_to_task
+from .database import task_to_db, db_to_task, observation_to_db, db_to_observation
 
 from .models import *
 
@@ -33,11 +35,12 @@ async def root():
 
 
 @app.get("/tasks")
-async def get_schedulable_tasks() -> list:
+async def get_schedulable_tasks() -> list[Task]:
     with Session(engine) as session:
         db_tasks = session.execute(select(DbTask)).all()
         tasks = [db_to_task(db_task[0]) for db_task in db_tasks]
-        return [tasks.model_dump() for tasks in tasks]
+        # return [tasks.model_dump() for tasks in tasks]
+        return tasks
 
 
 @app.get("/tasks/{task_id}")
@@ -57,32 +60,41 @@ async def add_task(task: Task) -> None:
 
 
 @app.get("/observations")
-async def get_observations() -> list[Observation]:
-    return []
-
-
-@app.post("/observations/")
-async def get_next_observations_for_task(
-    task_id: str | None, night: str | None
+async def get_observations(
+    start: datetime.datetime | None = None,
+    end: datetime.datetime | None = None,
+    state: str | None = None,
 ) -> list[Observation]:
-    return []
+    with Session(engine) as session:
+        statement = select(DbObservation)
+
+        if start is not None:
+            statement = statement.filter(DbObservation.end >= start)
+        if end is not None:
+            statement = statement.filter(DbObservation.start <= end)
+        if state is not None:
+            statement = statement.filter(DbObservation.state == state)
+
+        db_observations = session.execute(statement).all()
+        return [db_to_observation(obs[0]) for obs in db_observations]
+
+
+@app.put("/observations")
+async def add_observation(observation: Observation):
+    with Session(engine) as session:
+        observation_to_db(session, observation)
+        session.commit()
+
+
+@app.get("/tasks/{task_id}/observations")
+async def get_observations_for_task(task_id: str) -> list[Observation]:
+    with Session(engine) as session:
+        db_observations = session.execute(
+            select(DbObservation).filter_by(task_id=task_id)
+        ).all()
+        return [db_to_observation(obs[0]) for obs in db_observations]
 
 
 @app.post("/observations/clear")
 async def clear_observations(after: AstroPydanticTime) -> None:
     return
-
-
-@app.post("/observation/current")
-async def get_current_observations() -> Observation | None:
-    return None
-
-
-@app.get("/observation/next")
-async def get_next_observations() -> Observation | None:
-    return None
-
-
-@app.post("/observation")
-async def update_observation(observation: Observation):
-    return {}

@@ -1,5 +1,6 @@
+from astropy.time import Time
 from sqlmodel import Session
-from pyobs.robotic import Task
+from pyobs.robotic import Task, Observation, ObservationState
 from pyobs.robotic.scheduler.constraints import Constraint
 from pyobs.robotic.scheduler.merits import Merit
 from pyobs.robotic.scripts import Script
@@ -63,3 +64,23 @@ def db_to_task(db_task: DbTask) -> Task:
         task.merits.append(Merit.model_validate(merit.params))
 
     return task
+
+
+def observation_to_db(session: Session, observation: Observation):
+    db_observation = DbObservation(
+        task_id=str(observation.task_id),
+        start=observation.start.to_datetime(),
+        end=observation.end.to_datetime(),
+        state=observation.state,
+    )
+    session.add(db_observation)
+
+
+def db_to_observation(db_observation: DbObservation) -> Observation:
+    return Observation(
+        id=db_observation.id,
+        task_id=db_observation.task_id,
+        start=Time(db_observation.start),
+        end=Time(db_observation.end),
+        state=ObservationState(db_observation.state),
+    )
