@@ -1,6 +1,6 @@
 import datetime
 
-from sqlalchemy import create_engine, select
+from sqlalchemy import create_engine, select, update
 from sqlalchemy.orm import Session
 from fastapi import FastAPI
 from astropydantic import AstroPydanticTime  # type: ignore
@@ -66,16 +66,16 @@ async def get_observations(
     state: str | None = None,
 ) -> list[Observation]:
     with Session(engine) as session:
-        statement = select(DbObservation)
+        stmt = select(DbObservation)
 
         if start is not None:
-            statement = statement.filter(DbObservation.end >= start)
+            stmt = stmt.filter(DbObservation.end >= start)
         if end is not None:
-            statement = statement.filter(DbObservation.start <= end)
+            stmt = stmt.filter(DbObservation.start <= end)
         if state is not None:
-            statement = statement.filter(DbObservation.state == state)
+            stmt = stmt.filter(DbObservation.state == state)
 
-        db_observations = session.execute(statement).all()
+        db_observations = session.execute(stmt).all()
         return [db_to_observation(obs[0]) for obs in db_observations]
 
 
@@ -95,6 +95,13 @@ async def get_observations_for_task(task_id: str) -> list[Observation]:
         return [db_to_observation(obs[0]) for obs in db_observations]
 
 
-@app.post("/observations/clear")
-async def clear_observations(after: AstroPydanticTime) -> None:
-    return
+@app.get("/observations/cancel")
+async def cancel_observations(after: datetime.datetime) -> None:
+    with Session(engine) as session:
+        stmt = (
+            update(DbObservation)
+            .where(DbObservation.state == "pending", DbObservation.start > after)
+            .values(state="canceled")
+        )
+        session.execute(stmt)
+        session.commit()
