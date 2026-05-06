@@ -1,38 +1,54 @@
-from sqlmodel import SQLModel, Field, JSON, Relationship
+from typing import Any
+
+from sqlalchemy import String, ForeignKey, JSON
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
-class Target(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    name: str
-    type: str
-    coords: dict = Field(sa_type=JSON)
+class Base(DeclarativeBase):
+    type_annotation_map = {dict[str, Any]: JSON}
 
 
-class Task(SQLModel, table=True):
-    id: str | None = Field(default=None, primary_key=True)
-    name: str
-    project: str
-    duration: float
-    priority: float = 1.0
-    constraints: list["Constraint"] = Relationship(back_populates="task")
-    merits: list["Merit"] = Relationship(back_populates="task")
-    config: dict = Field(sa_type=JSON)
-    script: dict = Field(sa_type=JSON)
-    target_id: int | None = Field(default=None, foreign_key="target.id")
-    target: Target | None = Relationship()
+class DbTarget(Base):
+    __tablename__ = "target"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task: Mapped[list["DbTask"]] = relationship(back_populates="target")
+    name: Mapped[str] = mapped_column(String(30))
+    type: Mapped[str] = mapped_column(String(10))
+    coords: Mapped[dict[str, Any]]
 
 
-class Constraint(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    task_id: str | None = Field(default=None, foreign_key="task.id")
-    task: Task | None = Relationship(back_populates="constraints")
-    type: str
-    params: dict = Field(sa_type=JSON)
+class DbConstraint(Base):
+    __tablename__ = "constraint"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"))
+    task: Mapped["DbTask"] = relationship(back_populates="constraints")
+    type: Mapped[str] = mapped_column(String(50))
+    params: Mapped[dict[str, Any]]
 
 
-class Merit(SQLModel, table=True):
-    id: int | None = Field(default=None, primary_key=True)
-    task_id: str | None = Field(default=None, foreign_key="task.id")
-    task: Task | None = Relationship(back_populates="merits")
-    type: str
-    params: dict = Field(sa_type=JSON)
+class DbMerit(Base):
+    __tablename__ = "merit"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    task_id: Mapped[str] = mapped_column(ForeignKey("task.id"))
+    task: Mapped["DbTask"] = relationship(back_populates="merits")
+    type: Mapped[str] = mapped_column(String(50))
+    params: Mapped[dict[str, Any]]
+
+
+class DbTask(Base):
+    __tablename__ = "task"
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    name: Mapped[str] = mapped_column(String(30))
+    project: Mapped[str] = mapped_column(String(30))
+    duration: Mapped[float]
+    priority: Mapped[float]
+    constraints: Mapped[list["DbConstraint"]] = relationship(back_populates="task")
+    merits: Mapped[list["DbMerit"]] = relationship(back_populates="task")
+    config: Mapped[dict[str, Any]]
+    script: Mapped[dict[str, Any]]
+    target_id: Mapped[int | None] = mapped_column(ForeignKey("target.id"))
+    target: Mapped["DbTarget | None"] = relationship(back_populates="task")
