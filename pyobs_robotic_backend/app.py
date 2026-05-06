@@ -34,7 +34,7 @@ async def root():
     return {"message": "Hello World"}
 
 
-@app.get("/tasks")
+@app.get("/api/tasks")
 async def get_schedulable_tasks() -> list[Task]:
     with Session(engine) as session:
         db_tasks = session.execute(select(DbTask)).all()
@@ -43,7 +43,7 @@ async def get_schedulable_tasks() -> list[Task]:
         return tasks
 
 
-@app.get("/tasks/{task_id}")
+@app.get("/api/tasks/{task_id}")
 async def get_task(task_id: str) -> Task | None:
     with Session(engine) as session:
         db_task = session.execute(select(DbTask).filter_by(id=task_id)).first()
@@ -52,14 +52,14 @@ async def get_task(task_id: str) -> Task | None:
         return None
 
 
-@app.put("/tasks")
+@app.put("/api/tasks")
 async def add_task(task: Task) -> None:
     with Session(engine) as session:
         task_to_db(session, task)
         session.commit()
 
 
-@app.get("/observations")
+@app.get("/api/observations")
 async def get_observations(
     start: datetime.datetime | None = None,
     end: datetime.datetime | None = None,
@@ -79,7 +79,7 @@ async def get_observations(
         return [db_to_observation(obs[0]) for obs in db_observations]
 
 
-@app.put("/observations")
+@app.put("/api/observations")
 async def add_or_update_observation(observation: Observation):
     if observation.id is None:
         await add_observation(observation)
@@ -105,7 +105,7 @@ async def update_observation(observation: Observation) -> None:
             session.commit()
 
 
-@app.get("/tasks/{task_id}/observations")
+@app.get("/api/tasks/{task_id}/observations")
 async def get_observations_for_task(task_id: str) -> list[Observation]:
     with Session(engine) as session:
         db_observations = session.execute(
@@ -114,7 +114,7 @@ async def get_observations_for_task(task_id: str) -> list[Observation]:
         return [db_to_observation(obs[0]) for obs in db_observations]
 
 
-@app.get("/observations/cancel")
+@app.get("/api/observations/cancel")
 async def cancel_observations(after: datetime.datetime) -> None:
     with Session(engine) as session:
         stmt = (
