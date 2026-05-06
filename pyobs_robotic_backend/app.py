@@ -80,10 +80,29 @@ async def get_observations(
 
 
 @app.put("/observations")
-async def add_observation(observation: Observation):
+async def add_or_update_observation(observation: Observation):
+    if observation.id is None:
+        await add_observation(observation)
+    else:
+        await update_observation(observation)
+
+
+async def add_observation(observation: Observation) -> None:
     with Session(engine) as session:
         observation_to_db(session, observation)
         session.commit()
+
+
+async def update_observation(observation: Observation) -> None:
+    with Session(engine) as session:
+        db_observation = session.execute(
+            select(DbObservation).filter_by(id=observation.id)
+        ).first()
+        if db_observation is not None:
+            db_observation.start = observation.start
+            db_observation.end = observation.end
+            db_observation.state = observation.state
+            session.commit()
 
 
 @app.get("/tasks/{task_id}/observations")
