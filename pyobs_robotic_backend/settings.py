@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "pyobs_robotic_backend.api",
+    "rest_framework",
 ]
 
 MIDDLEWARE = [

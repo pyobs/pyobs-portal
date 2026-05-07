@@ -1,101 +1,54 @@
 import datetime
+from django.http import Http404
 
 from django.shortcuts import render
 from django.views.decorators.http import require_http_methods
+from rest_framework import status
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Task
+from .serializers import TaskSerializer
 
 
-@require_http_methods(["GET", "PUT"])
-def get_tasks(request):
-    if request.method == "GET":
-        tasks = Task.objects.all()
-        return tasks
-    else:
-        pass
-        # with Session(engine) as session:
-        #    task_to_db(session, task)
-        #    session.commit()
-
-
-@require_http_methods(["GET"])
-def get_task(request, task_id: str):
-    task = Task.objects.get(code=task_id)
-    if task is not None:
-        return task
-    return None
-
-
-@require_http_methods(["GET"])
-def get_observations(
-    request,
-    start: datetime.datetime | None = None,
-    end: datetime.datetime | None = None,
-    state: str | None = None,
-):
+class TaskList(APIView):
     """
-    with Session(engine) as session:
-        stmt = select(DbObservation)
-
-        if start is not None:
-            stmt = stmt.filter(DbObservation.end >= start)
-        if end is not None:
-            stmt = stmt.filter(DbObservation.start <= end)
-        if state is not None:
-            stmt = stmt.filter(DbObservation.state == state)
-
-        db_observations = session.execute(stmt).all()
-        return [db_to_observation(obs[0]) for obs in db_observations]
+    List all task, or create a new task.
     """
-    pass
+
+    def get(self, request, format=None):
+        snippets = Task.objects.all()
+        serializer = TaskSerializer(snippets, many=True)
+        return Response(serializer.data)
+
+    def post(self, request, format=None):
+        serializer = TaskSerializer(data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
 
 
-@require_http_methods(["PUT"])
-def add_or_update_observation(request, observation: Observation):
-    if observation.id is None:
-        add_observation(observation)
-    else:
-        update_observation(observation)
-
-
-def add_observation(request, observation: Observation) -> None:
-    # with Session(engine) as session:
-    #    observation_to_db(session, observation)
-    #    session.commit()
-    pass
-
-
-def update_observation(request, observation: Observation) -> None:
+class TaskDetail(APIView):
     """
-    with Session(engine) as session:
-        db_observation = session.execute(
-            select(DbObservation).filter_by(id=observation.id)
-        ).first()
-        if db_observation is not None:
-            db_observation.start = observation.start
-            db_observation.end = observation.end
-            db_observation.state = observation.state
-            session.commit()
+    Retrieve, update or delete a task instance.
     """
-    pass
 
+    def get_object(self, pk):
+        try:
+            return Task.objects.get(pk=pk)
+        except Task.DoesNotExist:
+            raise Http404
 
-@require_http_methods(["GET"])
-def get_observations_for_task(request, task_id: str):
-    with Session(engine) as session:
-        db_observations = session.execute(
-            select(DbObservation).filter_by(task_id=task_id)
-        ).all()
-        return [db_to_observation(obs[0]) for obs in db_observations]
+    def get(self, request, pk, format=None):
+        task = self.get_object(pk)
+        serializer = TaskSerializer(task)
+        return Response(serializer.data)
 
-
-@require_http_methods(["GET"])
-def cancel_observations(request, after: datetime.datetime):
-    with Session(engine) as session:
-        stmt = (
-            update(DbObservation)
-            .where(DbObservation.state == "pending", DbObservation.start > after)
-            .values(state="canceled")
-        )
-        session.execute(stmt)
-        session.commit()
+    def put(self, request, pk, format=None):
+        task = self.get_object(pk)
+        serializer = TaskSerializer(task, data=request.data)
+        if serializer.is_valid():
+            serializer.save()
+            return Response(serializer.data)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)

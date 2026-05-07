@@ -17,19 +17,13 @@ Including another URLconf
 
 from django.contrib import admin
 from django.urls import path
+from rest_framework.urlpatterns import format_suffix_patterns
 
 from pyobs_robotic_backend.api import views
 
 urlpatterns = [
-    path("tasks/", views.get_tasks, name="list_tasks"),
-    path("tasks/{task_id}", views.get_task, name="task_details"),
-    path(
-        "tasks/{task_id}/observations",
-        views.get_observations_for_task,
-        name="task_observations",
-    ),
-    path("tasks/", views.add_task, name="add_task"),
-    path("/observations", views.get_observations, name="list_observations"),
-    path("/observations", views.add_or_update_observation, name="add_observation"),
-    path("/observations/cancel", views.cancel_observations, name="cancel_observations"),
+    path("tasks/", views.TaskList.as_view()),
+    path("tasks/<int:pk>/", views.TaskDetail.as_view()),
 ]
+
+urlpatterns = format_suffix_patterns(urlpatterns)

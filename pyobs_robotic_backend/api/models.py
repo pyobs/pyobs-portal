@@ -9,7 +9,7 @@ class Task(models.Model):
     duration = models.FloatField()
     priority = models.FloatField()
     script = models.JSONField()
-    users = models.ManyToManyField(User, related_name="tasks")
+    users = models.ManyToManyField(User, related_name="tasks", blank=True)
 
 
 class Constraint(models.Model):
