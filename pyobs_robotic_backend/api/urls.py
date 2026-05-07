@@ -24,8 +24,10 @@ from pyobs_robotic_backend.api import views
 urlpatterns = [
     path("tasks/", views.TaskList.as_view()),
     path("tasks/<int:pk>/", views.TaskDetail.as_view()),
+    path("tasks/<int:pk>/observations/", views.ObservationListForTask.as_view()),
     path("observations/", views.ObservationList.as_view()),
     path("observations/<int:pk>/", views.ObservationDetail.as_view()),
+    path("cancel_observations/", views.CancelObservations.as_view()),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

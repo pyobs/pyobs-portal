@@ -1,58 +1,66 @@
-from rest_framework import mixins, generics
+from astropy.time import Time
+from django.http import Http404
+from django.utils import timezone
+from rest_framework import generics
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
 from .models import Task, Observation
 from .serializers import TaskSerializer, ObservationSerializer
 
 
-class TaskList(mixins.ListModelMixin, mixins.CreateModelMixin, generics.GenericAPIView):
+class TaskList(generics.ListCreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
-    def get(self, request, *args, **kwargs):
-        return self.list(request, *args, **kwargs)
 
-    def post(self, request, *args, **kwargs):
-        return self.create(request, *args, **kwargs)
-
-
-class TaskDetail(
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    generics.GenericAPIView,
-):
+class TaskDetail(generics.RetrieveUpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
-    def get(self, request, *args, **kwargs):
-        return self.retrieve(request, *args, **kwargs)
 
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
-
-
-class ObservationList(
-    mixins.ListModelMixin, mixins.CreateModelMixin, generics.GenericAPIView
-):
+class ObservationList(generics.ListCreateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
 
-    def get(self, request, *args, **kwargs):
-        return self.list(request, *args, **kwargs)
+    def get_queryset(self):
+        tz = timezone.get_current_timezone()
+        queryset = Observation.objects.all()
+        start = self.request.query_params.get("start")
+        if start is not None:
+            queryset = queryset.filter(end__gte=Time(start).to_datetime(tz))
+        end = self.request.query_params.get("end")
+        if end is not None:
+            queryset = queryset.filter(start__lte=Time(end).to_datetime(tz))
+        state = self.request.query_params.get("state")
+        if state is not None:
+            queryset = queryset.filter(state=state)
 
-    def post(self, request, *args, **kwargs):
-        return self.create(request, *args, **kwargs)
+        return queryset
 
 
-class ObservationDetail(
-    mixins.RetrieveModelMixin,
-    mixins.UpdateModelMixin,
-    generics.GenericAPIView,
-):
+class ObservationDetail(generics.RetrieveUpdateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
 
-    def get(self, request, *args, **kwargs):
-        return self.retrieve(request, *args, **kwargs)
 
-    def put(self, request, *args, **kwargs):
-        return self.update(request, *args, **kwargs)
+class ObservationListForTask(generics.ListAPIView):
+    serializer_class = ObservationSerializer
+
+    def get_queryset(self):
+        task = Task.objects.get(pk=self.kwargs["pk"])
+        if task is None:
+            return Http404
+        return task.observations.all()
+
+
+class CancelObservations(APIView):
+    def get(self, request, format=None):
+        after = self.request.query_params.get("after")
+        if after is None:
+            raise Http404("Please provide a value for after.")
+        tz = timezone.get_current_timezone()
+        Observation.objects.filter(
+            end__gte=Time(after).to_datetime(tz), state="pending"
+        ).update(state="canceled")
+        return Response({})

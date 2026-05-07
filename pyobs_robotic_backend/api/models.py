@@ -16,7 +16,7 @@ class Constraint(models.Model):
     task = models.ForeignKey(
         Task,
         on_delete=models.CASCADE,
-        related_name="constraint",
+        related_name="constraints",
     )
     type = models.CharField(max_length=50)
     params = models.JSONField()
