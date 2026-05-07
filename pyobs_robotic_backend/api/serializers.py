@@ -12,6 +12,11 @@ class ConstraintSerializer(serializers.ModelSerializer):
         typ = data.pop("class")
         return {"type": typ, "params": data}
 
+    def to_representation(self, instance):
+        repr = {"class": instance.type}
+        repr.update(**instance.params)
+        return repr
+
 
 class MeritSerializer(serializers.ModelSerializer):
     class Meta:
@@ -21,6 +26,11 @@ class MeritSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         typ = data.pop("class")
         return {"type": typ, "params": data}
+
+    def to_representation(self, instance):
+        repr = {"class": instance.type}
+        repr.update(**instance.params)
+        return repr
 
 
 class ObservationSerializer(serializers.ModelSerializer):
@@ -36,6 +46,15 @@ class TaskSerializer(serializers.ModelSerializer):
     class Meta:
         model = Task
         fields = "__all__"
+
+    def to_internal_value(self, data):
+        data["code"] = data.pop("id")
+        return data
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        data["id"] = data.pop("code")
+        return data
 
     def create(self, validated_data):
         merits_data = validated_data.pop("merits")
