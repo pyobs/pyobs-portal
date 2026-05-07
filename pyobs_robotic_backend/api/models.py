@@ -2,14 +2,19 @@ from django.contrib.auth.models import User
 from django.db import models
 
 
+class Project(models.Model):
+    code = models.CharField(max_length=10)
+    name = models.CharField(max_length=30)
+    users = models.ManyToManyField(User, related_name="projects", blank=True)
+
+
 class Task(models.Model):
     code = models.CharField(max_length=10)
     name = models.CharField(max_length=30)
-    project = models.CharField(max_length=30)
+    project = models.ForeignKey(Project, related_name="tasks", on_delete=models.CASCADE)
     duration = models.FloatField()
     priority = models.FloatField()
     script = models.JSONField()
-    users = models.ManyToManyField(User, related_name="tasks", blank=True)
 
 
 class Constraint(models.Model):
