@@ -5,8 +5,13 @@ from rest_framework import generics
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import Task, Observation
-from .serializers import TaskSerializer, ObservationSerializer
+from .models import Task, Observation, Project
+from .serializers import TaskSerializer, ObservationSerializer, ProjectSerializer
+
+
+class ProjectList(generics.ListCreateAPIView):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
 
 
 class TaskList(generics.ListCreateAPIView):

@@ -41,6 +41,12 @@ class ObservationSerializer(serializers.ModelSerializer):
         fields = ["id", "task", "start", "end", "state"]
 
 
+class ProjectSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Project
+        fields = "__all__"
+
+
 class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
@@ -69,9 +75,13 @@ class TaskSerializer(serializers.ModelSerializer):
             raise ValidationError("Project not found")
         task = Task.objects.create(project=project, **validated_data)
         for merit in merits_data:
-            Merit.objects.create(task=task, **merit)
+            Merit.objects.create(
+                task=task, **MeritSerializer().to_internal_value(merit)
+            )
         for constraint in constraints_data:
-            Constraint.objects.create(task=task, **constraint)
+            Constraint.objects.create(
+                task=task, **ConstraintSerializer().to_internal_value(constraint)
+            )
         return task
 
 
