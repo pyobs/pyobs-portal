@@ -50,6 +50,7 @@ class ProjectSerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
+    project = serializers.SlugRelatedField(read_only=True, slug_field="code")
 
     class Meta:
         model = Task
