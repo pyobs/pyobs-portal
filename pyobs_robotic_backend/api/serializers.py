@@ -70,6 +70,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def create(self, validated_data):
         merits_data = validated_data.pop("merits")
         constraints_data = validated_data.pop("constraints")
+        target_data = validated_data.pop("target", None)
         project_code = validated_data.pop("project")
         project = Project.objects.get(code=project_code)
         if project is None:
@@ -83,6 +84,8 @@ class TaskSerializer(serializers.ModelSerializer):
             Constraint.objects.create(
                 task=task, **ConstraintSerializer().to_internal_value(constraint)
             )
+        if target_data:
+            pass
         return task
 
 
