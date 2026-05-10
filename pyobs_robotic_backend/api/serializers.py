@@ -72,8 +72,9 @@ class TaskSerializer(serializers.ModelSerializer):
         constraints_data = validated_data.pop("constraints")
         target_data = validated_data.pop("target", None)
         project_code = validated_data.pop("project")
-        project = Project.objects.get(code=project_code)
-        if project is None:
+        try:
+            project = Project.objects.get(code=project_code)
+        except Project.DoesNotExist:
             raise ValidationError("Project not found")
         task = Task.objects.create(project=project, **validated_data)
         for merit in merits_data:
