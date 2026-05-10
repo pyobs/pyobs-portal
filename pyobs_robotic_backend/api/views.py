@@ -2,6 +2,8 @@ from astropy.time import Time
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics
+from rest_framework.decorators import permission_classes
+from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -9,21 +11,25 @@ from .models import Task, Observation, Project
 from .serializers import TaskSerializer, ObservationSerializer, ProjectSerializer
 
 
+@permission_classes([IsAuthenticated])
 class ProjectList(generics.ListCreateAPIView):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
 
 
+@permission_classes([IsAuthenticated])
 class TaskList(generics.ListCreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
 
+@permission_classes([IsAuthenticated])
 class TaskDetail(generics.RetrieveUpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
 
+@permission_classes([IsAuthenticated])
 class ObservationList(generics.ListCreateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
@@ -44,11 +50,13 @@ class ObservationList(generics.ListCreateAPIView):
         return queryset
 
 
+@permission_classes([IsAuthenticated])
 class ObservationDetail(generics.RetrieveUpdateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
 
 
+@permission_classes([IsAuthenticated])
 class ObservationListForTask(generics.ListAPIView):
     serializer_class = ObservationSerializer
 
@@ -59,6 +67,7 @@ class ObservationListForTask(generics.ListAPIView):
         return task.observations.all()
 
 
+@permission_classes([IsAuthenticated])
 class CancelObservations(APIView):
     def get(self, request, format=None):
         after = self.request.query_params.get("after")
