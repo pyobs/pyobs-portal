@@ -48,6 +48,10 @@ class ObservationSerializer(serializers.ModelSerializer):
 
 
 class ProjectSerializer(serializers.ModelSerializer):
+    users = serializers.SlugRelatedField(
+        many=True, slug_field="username", queryset=User.objects.all()
+    )
+
     class Meta:
         model = Project
         fields = "__all__"
