@@ -22,6 +22,8 @@ from rest_framework.urlpatterns import format_suffix_patterns
 from pyobs_robotic_backend.api import views
 
 urlpatterns = [
+    path("users/", views.UserList.as_view()),
+    path("users/<int:pk>/", views.UserDetail.as_view()),
     path("projects/", views.ProjectList.as_view()),
     path("projects/<int:pk>/", views.ProjectDetail.as_view()),
     path("projects/<int:pk>/tasks/", views.TaskListForProject.as_view()),

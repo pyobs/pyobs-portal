@@ -5,6 +5,12 @@ from rest_framework.exceptions import ValidationError
 from .models import Task, Observation, Merit, Constraint, Project
 
 
+class UserSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = User
+        fields = ("id", "username", "email", "is_superuser")
+
+
 class ConstraintSerializer(serializers.ModelSerializer):
     class Meta:
         model = Constraint
@@ -88,13 +94,3 @@ class TaskSerializer(serializers.ModelSerializer):
         if target_data:
             pass
         return task
-
-
-class UserSerializer(serializers.ModelSerializer):
-    snippets = serializers.PrimaryKeyRelatedField(
-        many=True, queryset=Task.objects.all()
-    )
-
-    class Meta:
-        model = User
-        fields = ["id", "username", "tasks"]

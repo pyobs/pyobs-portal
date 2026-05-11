@@ -1,4 +1,5 @@
 from astropy.time import Time
+from django.contrib.auth.models import User
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics
@@ -8,7 +9,24 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from .models import Task, Observation, Project
-from .serializers import TaskSerializer, ObservationSerializer, ProjectSerializer
+from .serializers import (
+    TaskSerializer,
+    ObservationSerializer,
+    ProjectSerializer,
+    UserSerializer,
+)
+
+
+@permission_classes([IsAdminUser])
+class UserList(generics.ListCreateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
+
+
+@permission_classes([IsAdminUser])
+class UserDetail(generics.RetrieveUpdateAPIView):
+    queryset = User.objects.all()
+    serializer_class = UserSerializer
 
 
 @permission_classes([IsAuthenticated])
