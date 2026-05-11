@@ -3,7 +3,7 @@ from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.decorators import permission_classes
-from rest_framework.permissions import IsAuthenticated
+from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
@@ -13,6 +13,18 @@ from .serializers import TaskSerializer, ObservationSerializer, ProjectSerialize
 
 @permission_classes([IsAuthenticated])
 class ProjectList(generics.ListCreateAPIView):
+    queryset = Project.objects.all()
+    serializer_class = ProjectSerializer
+
+    def get_permissions(self):
+        self.permission_classes = [IsAdminUser]
+        if self.request.method == "GET":
+            self.permission_classes = [IsAuthenticated]
+        return super().get_permissions()
+
+
+@permission_classes([IsAdminUser])
+class ProjectDetail(generics.RetrieveUpdateAPIView):
     queryset = Project.objects.all()
     serializer_class = ProjectSerializer
 
