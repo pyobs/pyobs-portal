@@ -30,6 +30,17 @@ class ProjectDetail(generics.RetrieveUpdateAPIView):
 
 
 @permission_classes([IsAuthenticated])
+class TaskListForProject(generics.ListAPIView):
+    serializer_class = TaskSerializer
+
+    def get_queryset(self):
+        project = Project.objects.get(pk=self.kwargs["pk"])
+        if project is None:
+            return Http404
+        return project.tasks.all()
+
+
+@permission_classes([IsAuthenticated])
 class TaskList(generics.ListCreateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
