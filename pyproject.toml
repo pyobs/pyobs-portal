@@ -9,6 +9,7 @@ dependencies = [
     "django>=6.0.5",
     "djangorestframework>=3.17.1",
     "djangorestframework-stubs>=3.16.9",
+    "gunicorn>=26.0.0",
     "pyobs-core>=1.41.0",
     "unicorn>=2.1.4",
 ]
