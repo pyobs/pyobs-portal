@@ -3,14 +3,14 @@ from django.db import models
 
 
 class Project(models.Model):
-    code = models.CharField(max_length=10, unique=True)
+    code = models.CharField(max_length=10, primary_key=True)
     name = models.CharField(max_length=30)
     priority = models.FloatField(default=1.0)
     users = models.ManyToManyField(User, related_name="projects", blank=True)
 
 
 class Task(models.Model):
-    code = models.CharField(max_length=10, unique=True)
+    code = models.CharField(max_length=10, primary_key=True)
     name = models.CharField(max_length=30)
     project = models.ForeignKey(Project, related_name="tasks", on_delete=models.CASCADE)
     duration = models.FloatField()
