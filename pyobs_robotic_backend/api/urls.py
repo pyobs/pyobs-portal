@@ -33,6 +33,7 @@ urlpatterns = [
     path("observations/", views.ObservationList.as_view()),
     path("observations/<int:pk>/", views.ObservationDetail.as_view()),
     path("cancel_observations/", views.CancelObservations.as_view()),
+    path("me/", views.me),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

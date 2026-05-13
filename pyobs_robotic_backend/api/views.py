@@ -3,7 +3,7 @@ from django.contrib.auth.models import User
 from django.http import Http404
 from django.utils import timezone
 from rest_framework import generics
-from rest_framework.decorators import permission_classes
+from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
@@ -119,3 +119,16 @@ class CancelObservations(APIView):
             end__gte=Time(after).to_datetime(tz), state="pending"
         ).update(state="canceled")
         return Response({})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def me(request):
+    return Response(
+        {
+            "id": request.user.id,
+            "username": request.user.username,
+            "email": request.user.email,
+            "is_superuser": request.user.is_superuser,
+        }
+    )
