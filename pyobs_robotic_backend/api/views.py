@@ -63,10 +63,7 @@ class TaskListForProject(generics.ListCreateAPIView):
 
     def get_queryset(self):
         project = Project.objects.get(pk=self.kwargs["pk"])
-        if project is None or (
-            self.request.user not in project.users.all()
-            and not self.request.user.is_superuser
-        ):
+        if project is None or (self.request.user not in project.users.all() and not self.request.user.is_superuser):
             raise Http404
         return project.tasks.all()
 
@@ -98,18 +95,15 @@ class TaskDetail(generics.RetrieveUpdateAPIView):
 
     def get_queryset(self):
         task = Task.objects.get(pk=self.kwargs["pk"])
-        if task is None or (
-            self.request.user not in task.project.users.all()
-            and not self.request.user.is_superuser
-        ):
+        if task is None or (self.request.user not in task.project.users.all() and not self.request.user.is_superuser):
             raise Http404
         return Task.objects.all()
 
 
-@permission_classes([IsAuthenticated])
 class ObservationList(generics.ListCreateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
+    permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
         tz = timezone.get_current_timezone()
@@ -125,6 +119,11 @@ class ObservationList(generics.ListCreateAPIView):
             queryset = queryset.filter(state=state)
 
         return queryset
+
+    def get_serializer(self, *args, **kwargs):
+        if isinstance(self.request.data, list):
+            kwargs["many"] = True
+        return super().get_serializer(*args, **kwargs)
 
 
 @permission_classes([IsAuthenticated])
@@ -151,9 +150,7 @@ class CancelObservations(APIView):
         if after is None:
             raise Http404("Please provide a value for after.")
         tz = timezone.get_current_timezone()
-        Observation.objects.filter(
-            end__gte=Time(after).to_datetime(tz), state="pending"
-        ).update(state="canceled")
+        Observation.objects.filter(end__gte=Time(after).to_datetime(tz), state="pending").update(state="canceled")
         return Response({})
 
 
