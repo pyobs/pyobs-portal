@@ -1,3 +1,6 @@
+from rest_framework.request import Request
+from typing import Any
+
 from astropy.time import Time
 from django.contrib.auth.models import User
 from django.http import Http404
@@ -40,6 +43,13 @@ class ProjectList(generics.ListCreateAPIView):
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
 
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        queryset = self.get_queryset()
+        if not request.user.is_superuser:
+            queryset = queryset.filter(users__in=[request.user])
+        serializer = ProjectSerializer(queryset, many=True)
+        return Response(serializer.data)
+
 
 @permission_classes([IsAdminUser])
 class ProjectDetail(generics.RetrieveUpdateAPIView):
@@ -48,26 +58,52 @@ class ProjectDetail(generics.RetrieveUpdateAPIView):
 
 
 @permission_classes([IsAuthenticated])
-class TaskListForProject(generics.ListAPIView):
+class TaskListForProject(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
 
     def get_queryset(self):
         project = Project.objects.get(pk=self.kwargs["pk"])
-        if project is None:
-            return Http404
+        if project is None or (
+            self.request.user not in project.users.all()
+            and not self.request.user.is_superuser
+        ):
+            raise Http404
         return project.tasks.all()
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        queryset = self.get_queryset()
+        if not request.user.is_superuser:
+            queryset = queryset.filter(project__users__in=[request.user.id])
+        serializer = TaskSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 @permission_classes([IsAuthenticated])
-class TaskList(generics.ListCreateAPIView):
+class TaskList(generics.ListAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+
+    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
+        queryset = self.get_queryset()
+        if not request.user.is_superuser:
+            queryset = queryset.filter(project__users__in=[request.user])
+        serializer = TaskSerializer(queryset, many=True)
+        return Response(serializer.data)
 
 
 @permission_classes([IsAuthenticated])
 class TaskDetail(generics.RetrieveUpdateAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
+
+    def get_queryset(self):
+        task = Task.objects.get(pk=self.kwargs["pk"])
+        if task is None or (
+            self.request.user not in task.project.users.all()
+            and not self.request.user.is_superuser
+        ):
+            raise Http404
+        return Task.objects.all()
 
 
 @permission_classes([IsAuthenticated])
