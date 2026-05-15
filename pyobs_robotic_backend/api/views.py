@@ -117,7 +117,11 @@ class ObservationList(generics.ListCreateAPIView):
             queryset = queryset.filter(start__lte=Time(end).to_datetime(tz))
         state = self.request.query_params.get("state")
         if state is not None:
-            queryset = queryset.filter(state=state)
+            if "," in state:
+                states = state.split(",")
+                queryset = queryset.filter(state__in=states)
+            else:
+                queryset = queryset.filter(state=state)
 
         return queryset
 
