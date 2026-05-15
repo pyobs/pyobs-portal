@@ -10,6 +10,7 @@ from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.core.cache import cache
 
 from .models import Task, Observation, Project
 from .serializers import (
@@ -165,3 +166,17 @@ def me(request):
             "is_superuser": request.user.is_superuser,
         }
     )
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def last_task_update(request):
+    time = cache.get("last_task_update", Time("1970-01-01T00:00:00"), None)
+    return Response({"last_task_update": time.isot})
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def last_observation_update(request):
+    time = cache.get("last_observation_update", Time("1970-01-01T00:00:00"), None)
+    return Response({"last_observation_update": time.isot})

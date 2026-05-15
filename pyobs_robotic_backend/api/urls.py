@@ -34,6 +34,8 @@ urlpatterns = [
     path("observations/<int:pk>/", views.ObservationDetail.as_view()),
     path("cancel_observations/", views.CancelObservations.as_view()),
     path("me/", views.me),
+    path("last_task_update/", views.last_task_update),
+    path("last_observation_update/", views.last_observation_update),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)
