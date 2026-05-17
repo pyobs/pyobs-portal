@@ -27,7 +27,6 @@ jobs:
       with:
         context: .
         file: ./Dockerfile
-        target: final
         push: true
         tags: ghcr.io/pyobs/${{ github.repository }}:${{ github.ref_name }}
         build-args: |
