@@ -18,15 +18,18 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 
 # Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist/
+# See https://docs.djangoproject.com/en/6.0/howto/deployment/checklist
+
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = "django-insecure-+%=r_yeqewbw+1ta&-3czy^akk!xi@g2$y31p0!31oak2l&gt$"
+SECRET_KEY = os.environ.get("SECRET_KEY")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = True
+DEBUG = bool(os.environ.get("DEBUG", default=0))
 
-ALLOWED_HOSTS = []
+# 'DJANGO_ALLOWED_HOSTS' should be a single string of hosts with a comma between each.
+# For example: 'DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1]'
+ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS").split(",")
 
 
 # Application definition
@@ -78,8 +81,12 @@ WSGI_APPLICATION = "pyobs_robotic_backend.wsgi.application"
 
 DATABASES = {
     "default": {
-        "ENGINE": "django.db.backends.sqlite3",
-        "NAME": BASE_DIR / "db.sqlite3",
+        "ENGINE": os.environ.get("SQL_ENGINE", "django.db.backends.sqlite3"),
+        "NAME": os.environ.get("SQL_DATABASE", BASE_DIR / "db.sqlite3"),
+        "USER": os.environ.get("SQL_USER", "user"),
+        "PASSWORD": os.environ.get("SQL_PASSWORD", "password"),
+        "HOST": os.environ.get("SQL_HOST", "localhost"),
+        "PORT": os.environ.get("SQL_PORT", "5432"),
     }
 }
 
