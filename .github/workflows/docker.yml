@@ -22,7 +22,7 @@ jobs:
 
     # Log in to GitHub Docker Registry
     - name: Log in to GitHub Docker Registry
-      run: echo "$" | docker login ghcr.io -u $ --password-stdin
+      run: echo $CR_PAT | docker login ghcr.io -u USERNAME --password-stdin
 
     # Build the Docker image
     - name: Build Docker image
