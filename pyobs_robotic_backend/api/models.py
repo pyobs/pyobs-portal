@@ -8,6 +8,9 @@ class Project(models.Model):
     priority = models.FloatField(default=1.0)
     users = models.ManyToManyField(User, related_name="projects", blank=True)
 
+    def __str__(self):
+        return f"{self.name} ({self.code})"
+
 
 class Task(models.Model):
     code = models.CharField(max_length=10, primary_key=True)
@@ -16,6 +19,9 @@ class Task(models.Model):
     duration = models.FloatField()
     priority = models.FloatField()
     script = models.JSONField()
+
+    def __str__(self):
+        return f"{self.name} ({self.code})"
 
 
 class Constraint(models.Model):
