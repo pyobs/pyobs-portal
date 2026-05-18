@@ -17,11 +17,11 @@ class ConstraintSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def to_internal_value(self, data):
-        typ = data.pop("class")
+        typ = data.pop("class").split(".")[-1]
         return {"type": typ, "params": data}
 
     def to_representation(self, instance):
-        repr = {"class": instance.type}
+        repr = {"class": "pyobs.robotic.scheduler.constraints." + instance.type}
         repr.update(**instance.params)
         return repr
 
@@ -32,11 +32,11 @@ class MeritSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def to_internal_value(self, data):
-        typ = data.pop("class")
+        typ = data.pop("class").split(".")[-1]
         return {"type": typ, "params": data}
 
     def to_representation(self, instance):
-        repr = {"class": instance.type}
+        repr = {"class": "pyobs.robotic.scheduler.merits." + instance.type}
         repr.update(**instance.params)
         return repr
 
@@ -63,6 +63,8 @@ class TargetSerializer(serializers.ModelSerializer):
         fields = ["name", "type", "coords"]
 
     def to_internal_value(self, data):
+        if data is None:
+            return None
         klass = data.pop("class")
         if "SiderealTarget" in klass:
             data["type"] = "sidereal"
@@ -157,6 +159,8 @@ class TaskSerializer(serializers.ModelSerializer):
 
     @staticmethod
     def _create_target(task: Task, target_data):
+        if target_data is None:
+            return
         Target.objects.create(
             task=task, **TargetSerializer().to_internal_value(target_data)
         )
