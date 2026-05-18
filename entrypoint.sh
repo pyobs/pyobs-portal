@@ -13,6 +13,6 @@ fi
 
 uv run manage.py flush --no-input
 uv run manage.py migrate
-uv run manage.py collectstatic
+uv run manage.py collectstatic --no-input
 
 exec "$@"
