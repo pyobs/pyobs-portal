@@ -46,9 +46,10 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
-    "pyobs_robotic_backend.api",
+    "django_extensions",
     "rest_framework",
     "rest_framework.authtoken",
+    "pyobs_robotic_backend.api",
 ]
 
 MIDDLEWARE = [
@@ -126,6 +127,11 @@ CACHES = {
         "LOCATION": "unique-snowflake",
     }
 }
+
+# celery
+CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "amqp://")
+CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "rpc://")
+CELERY_TIMEZONE = "UTC"
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
