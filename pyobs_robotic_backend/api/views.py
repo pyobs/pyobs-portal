@@ -64,7 +64,10 @@ class TaskListForProject(generics.ListCreateAPIView):
 
     def get_queryset(self):
         project = Project.objects.get(pk=self.kwargs["pk"])
-        if project is None or (self.request.user not in project.users.all() and not self.request.user.is_superuser):
+        if project is None or (
+            self.request.user not in project.users.all()
+            and not self.request.user.is_superuser
+        ):
             raise Http404
         return project.tasks.all()
 
@@ -96,9 +99,36 @@ class TaskDetail(generics.RetrieveUpdateAPIView):
 
     def get_queryset(self):
         task = Task.objects.get(pk=self.kwargs["pk"])
-        if task is None or (self.request.user not in task.project.users.all() and not self.request.user.is_superuser):
+        if task is None or (
+            self.request.user not in task.project.users.all()
+            and not self.request.user.is_superuser
+        ):
             raise Http404
         return Task.objects.all()
+
+
+def get_obs_queryset(request, queryset):
+    tz = timezone.get_current_timezone()
+    start_before = request.query_params.get("start_before")
+    if start_before is not None:
+        queryset = queryset.filter(start__lte=Time(start_before).to_datetime(tz))
+    start_after = request.query_params.get("start_after")
+    if start_after is not None:
+        queryset = queryset.filter(start__gte=Time(start_after).to_datetime(tz))
+    end_before = request.query_params.get("end_before")
+    if end_before is not None:
+        queryset = queryset.filter(end__lte=Time(end_before).to_datetime(tz))
+    end_after = request.query_params.get("end_after")
+    if end_after is not None:
+        queryset = queryset.filter(end__gte=Time(end_after).to_datetime(tz))
+    state = request.query_params.get("state")
+    if state is not None:
+        if "," in state.lower():
+            states = state.split(",")
+            queryset = queryset.filter(state__in=states)
+        else:
+            queryset = queryset.filter(state=state)
+    return queryset
 
 
 class ObservationList(generics.ListCreateAPIView):
@@ -107,29 +137,7 @@ class ObservationList(generics.ListCreateAPIView):
     permission_classes = [IsAuthenticated]
 
     def get_queryset(self):
-        tz = timezone.get_current_timezone()
-        queryset = Observation.objects.all()
-        start_before = self.request.query_params.get("start_before")
-        if start_before is not None:
-            queryset = queryset.filter(start__lte=Time(start_before).to_datetime(tz))
-        start_after = self.request.query_params.get("start_after")
-        if start_after is not None:
-            queryset = queryset.filter(start__gte=Time(start_after).to_datetime(tz))
-        end_before = self.request.query_params.get("end_before")
-        if end_before is not None:
-            queryset = queryset.filter(end__lte=Time(end_before).to_datetime(tz))
-        end_after = self.request.query_params.get("end_after")
-        if end_after is not None:
-            queryset = queryset.filter(end__gte=Time(end_after).to_datetime(tz))
-        state = self.request.query_params.get("state")
-        if state is not None:
-            if "," in state.lower():
-                states = state.split(",")
-                queryset = queryset.filter(state__in=states)
-            else:
-                queryset = queryset.filter(state=state)
-
-        return queryset
+        return get_obs_queryset(self.request, Observation.objects.all())
 
     def get_serializer(self, *args, **kwargs):
         if isinstance(self.request.data, list):
@@ -151,7 +159,7 @@ class ObservationListForTask(generics.ListAPIView):
         task = Task.objects.get(pk=self.kwargs["pk"])
         if task is None:
             return Http404
-        return task.observations.all()
+        return get_obs_queryset(self.request, task.observations.all())
 
 
 @permission_classes([IsAuthenticated])
@@ -161,7 +169,9 @@ class CancelObservations(APIView):
         if after is None:
             raise Http404("Please provide a value for after.")
         tz = timezone.get_current_timezone()
-        Observation.objects.filter(end__gte=Time(after).to_datetime(tz), state="pending").update(state="canceled")
+        Observation.objects.filter(
+            end__gte=Time(after).to_datetime(tz), state="pending"
+        ).update(state="canceled")
         return Response({})
 
 
