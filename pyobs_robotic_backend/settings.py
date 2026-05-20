@@ -132,6 +132,17 @@ CACHES = {
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "amqp://")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "rpc://")
 CELERY_TIMEZONE = "UTC"
+CELERY_TASK_QUEUES = {
+    "celery": {
+        "exchange": "celery",
+        "routing_key": "celery",
+        "queue_arguments": {},
+        "durable": True,  # persist queue across broker restarts
+        "auto_delete": False,
+    }
+}
+CELERY_TASK_DEFAULT_QUEUE = "celery"
+CELERY_TASK_QUEUE_DURABLE = True  # for newer Celery versions
 
 # Internationalization
 # https://docs.djangoproject.com/en/6.0/topics/i18n/
