@@ -108,6 +108,9 @@ class TaskDetail(generics.RetrieveUpdateAPIView):
 
 
 def get_obs_queryset(request, queryset):
+    task = request.query_params.get("task")
+    if task is not None:
+        queryset = queryset.filter(task_id=task)
     tz = timezone.get_current_timezone()
     start_before = request.query_params.get("start_before")
     if start_before is not None:
