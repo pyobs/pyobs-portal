@@ -1,6 +1,6 @@
 from rest_framework.request import Request
 from typing import Any
-
+from rest_framework.pagination import PageNumberPagination
 from astropy.time import Time
 from django.contrib.auth.models import User
 from django.http import Http404
@@ -69,14 +69,10 @@ class TaskListForProject(generics.ListCreateAPIView):
             and not self.request.user.is_superuser
         ):
             raise Http404
-        return project.tasks.all()
-
-    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        queryset = self.get_queryset()
-        if not request.user.is_superuser:
-            queryset = queryset.filter(project__users__in=[request.user.id])
-        serializer = TaskSerializer(queryset, many=True)
-        return Response(serializer.data)
+        queryset = project.tasks.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(project__users__in=[self.request.user.id])
+        return queryset
 
 
 @permission_classes([IsAuthenticated])
@@ -84,12 +80,11 @@ class TaskList(generics.ListAPIView):
     queryset = Task.objects.all()
     serializer_class = TaskSerializer
 
-    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        queryset = self.get_queryset()
-        if not request.user.is_superuser:
-            queryset = queryset.filter(project__users__in=[request.user])
-        serializer = TaskSerializer(queryset, many=True)
-        return Response(serializer.data)
+    def get_queryset(self):
+        queryset = Task.objects.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(project__users__in=[self.request.user])
+        return queryset
 
 
 @permission_classes([IsAuthenticated])
@@ -134,10 +129,15 @@ def get_obs_queryset(request, queryset):
     return queryset
 
 
+class LargePagination(PageNumberPagination):
+    page_size = 500
+
+
 class ObservationList(generics.ListCreateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = LargePagination
 
     def get_queryset(self):
         return get_obs_queryset(self.request, Observation.objects.all())
