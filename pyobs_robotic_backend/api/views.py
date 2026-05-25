@@ -37,7 +37,6 @@ class UserDetail(generics.RetrieveUpdateAPIView):
 
 @permission_classes([IsAuthenticated])
 class ProjectList(generics.ListCreateAPIView):
-    queryset = Project.objects.all()
     serializer_class = ProjectSerializer
 
     def get_permissions(self):
@@ -46,12 +45,11 @@ class ProjectList(generics.ListCreateAPIView):
             self.permission_classes = [IsAuthenticated]
         return super().get_permissions()
 
-    def list(self, request: Request, *args: Any, **kwargs: Any) -> Response:
-        queryset = self.get_queryset()
-        if not request.user.is_superuser:
-            queryset = queryset.filter(users__in=[request.user])
-        serializer = ProjectSerializer(queryset, many=True)
-        return Response(serializer.data)
+    def get_queryset(self):
+        queryset = Project.objects.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(users__in=[self.request.user])
+        return queryset
 
 
 @permission_classes([IsAdminUser])
