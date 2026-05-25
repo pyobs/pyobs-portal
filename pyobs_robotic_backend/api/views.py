@@ -11,7 +11,9 @@ from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from django.core.cache import cache
+from django_filters.rest_framework import DjangoFilterBackend
 
+from .filters import ObservationFilter
 from .models import Task, Observation, Project
 from .serializers import (
     TaskSerializer,
@@ -102,33 +104,6 @@ class TaskDetail(generics.RetrieveUpdateAPIView):
         return Task.objects.all()
 
 
-def get_obs_queryset(request, queryset):
-    task = request.query_params.get("task")
-    if task is not None:
-        queryset = queryset.filter(task_id=task)
-    tz = timezone.get_current_timezone()
-    start_before = request.query_params.get("start_before")
-    if start_before is not None:
-        queryset = queryset.filter(start__lte=Time(start_before).to_datetime(tz))
-    start_after = request.query_params.get("start_after")
-    if start_after is not None:
-        queryset = queryset.filter(start__gte=Time(start_after).to_datetime(tz))
-    end_before = request.query_params.get("end_before")
-    if end_before is not None:
-        queryset = queryset.filter(end__lte=Time(end_before).to_datetime(tz))
-    end_after = request.query_params.get("end_after")
-    if end_after is not None:
-        queryset = queryset.filter(end__gte=Time(end_after).to_datetime(tz))
-    state = request.query_params.get("state")
-    if state is not None:
-        if "," in state.lower():
-            states = state.split(",")
-            queryset = queryset.filter(state__in=states)
-        else:
-            queryset = queryset.filter(state=state)
-    return queryset
-
-
 class LargePagination(PageNumberPagination):
     page_size = 500
 
@@ -138,9 +113,8 @@ class ObservationList(generics.ListCreateAPIView):
     serializer_class = ObservationSerializer
     permission_classes = [IsAuthenticated]
     pagination_class = LargePagination
-
-    def get_queryset(self):
-        return get_obs_queryset(self.request, Observation.objects.all())
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ObservationFilter
 
     def get_serializer(self, *args, **kwargs):
         if isinstance(self.request.data, list):
@@ -154,15 +128,17 @@ class ObservationDetail(generics.RetrieveUpdateAPIView):
     serializer_class = ObservationSerializer
 
 
-@permission_classes([IsAuthenticated])
 class ObservationListForTask(generics.ListAPIView):
     serializer_class = ObservationSerializer
+    permission_classes = [IsAuthenticated]
+    filter_backends = [DjangoFilterBackend]
+    filterset_class = ObservationFilter
 
     def get_queryset(self):
         task = Task.objects.get(pk=self.kwargs["pk"])
         if task is None:
-            return Http404
-        return get_obs_queryset(self.request, task.observations.all())
+            raise Http404
+        return task.observations.all()
 
 
 @permission_classes([IsAuthenticated])
