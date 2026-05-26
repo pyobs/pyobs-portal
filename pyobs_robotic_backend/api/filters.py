@@ -16,7 +16,7 @@ class AstropyDateTimeFilter(django_filters.CharFilter):
 
 
 class ObservationFilter(django_filters.FilterSet):
-    task = django_filters.NumberFilter(field_name="task_id")
+    task = django_filters.CharFilter(field_name="task_id")
     start_before = AstropyDateTimeFilter(field_name="start", lookup_expr="lte")
     start_after = AstropyDateTimeFilter(field_name="start", lookup_expr="gte")
     end_before = AstropyDateTimeFilter(field_name="end", lookup_expr="lte")
