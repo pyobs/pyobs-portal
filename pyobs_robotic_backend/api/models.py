@@ -12,6 +12,9 @@ class Project(models.Model):
     priority = models.FloatField(default=1.0)
     users = models.ManyToManyField(User, related_name="projects", blank=True)
 
+    class Meta:
+        ordering = ["code"]
+
     def __str__(self):
         return f"{self.name} ({self.code})"
 
@@ -23,6 +26,9 @@ class Task(models.Model):
     duration = models.FloatField()
     priority = models.FloatField()
     script = models.JSONField()
+
+    class Meta:
+        ordering = ["code"]
 
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -37,11 +43,17 @@ class Constraint(models.Model):
     type = models.CharField(max_length=50)
     params = models.JSONField()
 
+    class Meta:
+        ordering = ["task", "type"]
+
 
 class Merit(models.Model):
     task = models.ForeignKey(Task, on_delete=models.CASCADE, related_name="merits")
     type = models.CharField(max_length=50)
     params = models.JSONField()
+
+    class Meta:
+        ordering = ["task", "type"]
 
 
 class Target(models.Model):
@@ -49,6 +61,9 @@ class Target(models.Model):
     name = models.CharField(max_length=30)
     type = models.CharField(max_length=30)
     coords = models.JSONField()
+
+    class Meta:
+        ordering = ["task", "name"]
 
 
 class Observation(models.Model):
@@ -58,6 +73,9 @@ class Observation(models.Model):
     start = models.DateTimeField()
     end = models.DateTimeField()
     state = models.CharField(max_length=15, default="pending")
+
+    class Meta:
+        ordering = ["start"]
 
     @staticmethod
     def delete_old_observations(until: datetime.datetime):
