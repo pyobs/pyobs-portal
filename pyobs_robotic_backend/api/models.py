@@ -26,6 +26,7 @@ class Task(models.Model):
     duration = models.FloatField()
     priority = models.FloatField()
     script = models.JSONField()
+    active = models.BooleanField(default=True)
 
     class Meta:
         ordering = ["code"]

@@ -84,6 +84,8 @@ class TaskList(generics.ListAPIView):
         queryset = Task.objects.all()
         if not self.request.user.is_superuser:
             queryset = queryset.filter(project__users__in=[self.request.user])
+        if self.request.query_params.get("all") != "true":
+            queryset = queryset.filter(active=True)
         return queryset
 
 
