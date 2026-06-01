@@ -63,23 +63,34 @@ class TargetSerializer(serializers.ModelSerializer):
         fields = ["name", "type", "coords"]
 
     def to_internal_value(self, data):
+        print("TargetSerializer.to_internal_value called with:", data)
         if data is None:
             return None
-        klass = data.pop("class")
+        klass = data.pop("class", "")
+        name = data.pop("name")
+        # extract type from class name
         if "SiderealTarget" in klass:
-            data["type"] = "sidereal"
-            data["coords"] = {"ra": data.pop("ra"), "dec": data.pop("dec")}
-        return data
+            typ = "sidereal"
+        elif "DynamicTarget" in klass:
+            typ = "dynamic"
+        else:
+            typ = klass.split(".")[-1].replace("Target", "").lower()
+        # everything remaining goes into coords
+        return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
     def to_representation(self, instance):
-        data = super().to_representation(instance)
-        typ = data.pop("type")
-        if typ == "sidereal":
-            data["class"] = "pyobs.robotic.scheduler.targets.SiderealTarget"
-            coords = data.pop("coords")
-            data["ra"] = coords["ra"]
-            data["dec"] = coords["dec"]
-
+        klass_map = {
+            "sidereal": "pyobs.robotic.scheduler.targets.SiderealTarget",
+            "dynamic": "pyobs.robotic.scheduler.targets.DynamicTarget",
+        }
+        data = {
+            "class": klass_map.get(
+                instance.type,
+                f"pyobs.robotic.scheduler.targets.{instance.type.capitalize()}Target",
+            ),
+            "name": instance.name,
+        }
+        data.update(instance.coords)
         return data
 
 
@@ -87,7 +98,9 @@ class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
     target = TargetSerializer()
-    project = serializers.SlugRelatedField(read_only=True, slug_field="code")
+    project = serializers.SlugRelatedField(
+        slug_field="code", queryset=Project.objects.all()
+    )
 
     class Meta:
         model = Task
@@ -97,7 +110,7 @@ class TaskSerializer(serializers.ModelSerializer):
         if "class" in data:
             del data["class"]
         data["code"] = data.pop("id")
-        return data
+        return super().to_internal_value(data)
 
     def to_representation(self, instance):
         data = super().to_representation(instance)
@@ -117,7 +130,7 @@ class TaskSerializer(serializers.ModelSerializer):
         self._create_constraints(task, constraints_data)
         self._create_merits(task, merits_data)
         if target_data:
-            pass
+            self._create_target(task, target_data)
         return task
 
     def update(self, task: Task, validated_data):
@@ -161,6 +174,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def _create_target(task: Task, target_data):
         if target_data is None:
             return
+        print("target_data:", target_data)
         Target.objects.create(
             task=task, **TargetSerializer().to_internal_value(target_data)
         )
