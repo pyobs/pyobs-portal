@@ -97,7 +97,7 @@ class TargetSerializer(serializers.ModelSerializer):
 class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
-    target = TargetSerializer()
+    target = TargetSerializer(allow_null=True)
     project = serializers.SlugRelatedField(
         slug_field="code", queryset=Project.objects.all()
     )
@@ -137,11 +137,6 @@ class TaskSerializer(serializers.ModelSerializer):
         merits_data = validated_data.pop("merits")
         constraints_data = validated_data.pop("constraints")
         target_data = validated_data.pop("target", None)
-        project_code = validated_data.pop("project")
-        try:
-            validated_data["project"] = Project.objects.get(code=project_code)
-        except Project.DoesNotExist:
-            raise ValidationError("Project not found")
         super().update(task, validated_data)
 
         task.constraints.all().delete()
@@ -159,22 +154,15 @@ class TaskSerializer(serializers.ModelSerializer):
     @staticmethod
     def _create_merits(task: Task, merits_data):
         for merit in merits_data:
-            Merit.objects.create(
-                task=task, **MeritSerializer().to_internal_value(merit)
-            )
+            Merit.objects.create(task=task, **merit)
 
     @staticmethod
     def _create_constraints(task: Task, constraints_data):
         for constraint in constraints_data:
-            Constraint.objects.create(
-                task=task, **ConstraintSerializer().to_internal_value(constraint)
-            )
+            Constraint.objects.create(task=task, **constraint)
 
     @staticmethod
     def _create_target(task: Task, target_data):
         if target_data is None:
             return
-        print("target_data:", target_data)
-        Target.objects.create(
-            task=task, **TargetSerializer().to_internal_value(target_data)
-        )
+        Target.objects.create(task=task, **target_data)
