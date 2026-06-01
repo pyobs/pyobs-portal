@@ -1492,7 +1492,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "1.41.0"
+version = "1.46.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1516,11 +1516,12 @@ dependencies = [
     { name = "scipy" },
     { name = "single-source" },
     { name = "slixmpp" },
+    { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/99/9e/5be11f3119c906f9a5205a4a54b3ff9a31187abd6bb6e77b24b28adc31f5/pyobs_core-1.41.0.tar.gz", hash = "sha256:f468a6c618fdb92354383f29eff4b3abe945dd9c2d20ce8dd9ff5ca7b5a606be", size = 275986, upload-time = "2026-04-27T11:29:18.02Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/76/67/9c56a632558d5d406f915ba726805d4b37675431749bd0df554bfc8f6933/pyobs_core-1.46.0.tar.gz", hash = "sha256:d2eb3f70ec5ef8ff538aa85005dd1097ab71cbcf48ee371aeef80939a36c64ae", size = 283079, upload-time = "2026-06-01T12:42:47.323Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/1a/07/597769730200f7f0319c454fa27290847bf0ee6e8e6329c24d4754b00ed3/pyobs_core-1.41.0-py3-none-any.whl", hash = "sha256:e318a4d8eb142d6cec92f478b60a16d737d70d258fa709b4e5af660e19115fb2", size = 471408, upload-time = "2026-04-27T11:29:19.745Z" },
+    { url = "https://files.pythonhosted.org/packages/6d/39/30b68e5a8f8af9451797ab80fb722d2ac6e395b1436bee282f1894f39664/pyobs_core-1.46.0-py3-none-any.whl", hash = "sha256:70e4e07ec855c693081c0b27d012c2e16ae84a432c6fa1b8a14c1572dccdc878", size = 486976, upload-time = "2026-06-01T12:42:45.583Z" },
 ]
 
 [[package]]
@@ -1558,7 +1559,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
-    { name = "pyobs-core", specifier = ">=1.41.0" },
+    { name = "pyobs-core", specifier = ">=1.46.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
 
@@ -1793,6 +1794,15 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/90/76/437d71068094df0726366574cf3432a4ed754217b436eb7429415cf2d480/sqlparse-0.5.5.tar.gz", hash = "sha256:e20d4a9b0b8585fdf63b10d30066c7c94c5d7a7ec47c889a2d83a3caa93ff28e", size = 120815, upload-time = "2025-12-19T07:17:45.073Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/49/4b/359f28a903c13438ef59ebeee215fb25da53066db67b305c125f1c6d2a25/sqlparse-0.5.5-py3-none-any.whl", hash = "sha256:12a08b3bf3eec877c519589833aed092e2444e68240a3577e8e26148acc7b1ba", size = 46138, upload-time = "2025-12-19T07:17:46.573Z" },
+]
+
+[[package]]
+name = "tenacity"
+version = "9.1.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/47/c6/ee486fd809e357697ee8a44d3d69222b344920433d3b6666ccd9b374630c/tenacity-9.1.4.tar.gz", hash = "sha256:adb31d4c263f2bd041081ab33b498309a57c77f9acf2db65aadf0898179cf93a", size = 49413, upload-time = "2026-02-07T10:45:33.841Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/d7/c1/eb8f9debc45d3b7918a32ab756658a0904732f75e555402972246b0b8e71/tenacity-9.1.4-py3-none-any.whl", hash = "sha256:6095a360c919085f28c6527de529e76a06ad89b23659fa881ae0649b867a9d55", size = 28926, upload-time = "2026-02-07T10:45:32.24Z" },
 ]
 
 [[package]]
