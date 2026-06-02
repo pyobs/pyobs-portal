@@ -74,6 +74,7 @@ class Observation(models.Model):
     start = models.DateTimeField()
     end = models.DateTimeField()
     state = models.CharField(max_length=15, default="pending")
+    target = models.JSONField(null=True, blank=True)
 
     class Meta:
         ordering = ["start"]

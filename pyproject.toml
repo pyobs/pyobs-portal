@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-robotic-backend"
-version = "1.0.0"
+version = "1.0.1"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 requires-python = ">=3.13"
@@ -14,7 +14,7 @@ dependencies = [
     "djangorestframework>=3.17.1",
     "gunicorn>=26.0.0",
     "psycopg2-binary>=2.9.12",
-    "pyobs-core>=1.41.0",
+    "pyobs-core>=1.46.0",
     "unicorn>=2.1.4",
 ]
 
