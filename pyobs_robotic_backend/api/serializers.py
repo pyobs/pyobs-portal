@@ -48,9 +48,7 @@ class ObservationSerializer(serializers.ModelSerializer):
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    users = serializers.SlugRelatedField(
-        many=True, slug_field="username", queryset=User.objects.all()
-    )
+    users = serializers.SlugRelatedField(many=True, slug_field="username", queryset=User.objects.all())
 
     class Meta:
         model = Project
@@ -98,9 +96,7 @@ class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
     target = TargetSerializer(allow_null=True)
-    project = serializers.SlugRelatedField(
-        slug_field="code", queryset=Project.objects.all()
-    )
+    project = serializers.SlugRelatedField(slug_field="code", queryset=Project.objects.all())
 
     class Meta:
         model = Task
@@ -121,12 +117,7 @@ class TaskSerializer(serializers.ModelSerializer):
         merits_data = validated_data.pop("merits")
         constraints_data = validated_data.pop("constraints")
         target_data = validated_data.pop("target", None)
-        project_code = validated_data.pop("project")
-        try:
-            project = Project.objects.get(code=project_code)
-        except Project.DoesNotExist:
-            raise ValidationError("Project not found")
-        task = Task.objects.create(project=project, **validated_data)
+        task = Task.objects.create(**validated_data)
         self._create_constraints(task, constraints_data)
         self._create_merits(task, merits_data)
         if target_data:
