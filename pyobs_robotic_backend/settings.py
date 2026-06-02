@@ -25,16 +25,14 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 SECRET_KEY = os.environ.get("SECRET_KEY", "foo")
 
 # SECURITY WARNING: don't run with debug turned on in production!
-DEBUG = bool(os.environ.get("DEBUG", default=1))
+DEBUG = os.environ.get("DEBUG", "1") == "1"
 
 # 'DJANGO_ALLOWED_HOSTS' should be a single string of hosts with a comma between each.
 # For example: 'DJANGO_ALLOWED_HOSTS=localhost,127.0.0.1,[::1]'
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 # same as DJANGO_ALLOWED_HOSTS
-CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost").split(
-    ","
-)
+CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost").split(",")
 
 
 # Application definition
