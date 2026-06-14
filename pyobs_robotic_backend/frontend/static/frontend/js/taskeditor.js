@@ -76,37 +76,48 @@ class TypedListEditor {
       const idx = this.entries.indexOf(entry);
       if (idx >= 0) this.entries.splice(idx, 1);
       card.remove();
+      this._refreshSelect();
     });
     this.entries.push(entry);
+    this._refreshSelect();
   }
 
-  _buildAddControl(container) {
-    const row = document.createElement("div");
-    row.className = "d-flex gap-2";
-
-    const select = document.createElement("select");
-    select.className = "form-select form-select-sm w-auto";
+  _refreshSelect() {
+    if (!this.select) return;
+    const used = new Set(this.entries.map((e) => classToType(e.klass, this.prefix)));
+    this.select.innerHTML = "";
     Object.keys(this.schemas)
       .sort()
+      .filter((name) => !used.has(name))
       .forEach((name) => {
         const o = document.createElement("option");
         o.value = name;
         o.textContent = name;
-        select.appendChild(o);
+        this.select.appendChild(o);
       });
+    this.addRow.classList.toggle("d-none", this.select.options.length === 0);
+  }
+
+  _buildAddControl(container) {
+    this.addRow = document.createElement("div");
+    this.addRow.className = "d-flex gap-2";
+
+    this.select = document.createElement("select");
+    this.select.className = "form-select form-select-sm w-auto";
 
     const addBtn = document.createElement("button");
     addBtn.type = "button";
     addBtn.className = "btn btn-sm btn-outline-secondary";
     addBtn.innerHTML = '<i class="bi bi-plus"></i> Add';
     addBtn.addEventListener("click", () => {
-      if (!select.value) return;
-      this._addItem({ class: this.prefix + select.value });
+      if (!this.select.value) return;
+      this._addItem({ class: this.prefix + this.select.value });
     });
 
-    row.appendChild(select);
-    row.appendChild(addBtn);
-    container.appendChild(row);
+    this.addRow.appendChild(this.select);
+    this.addRow.appendChild(addBtn);
+    container.appendChild(this.addRow);
+    this._refreshSelect();
   }
 
   getData() {
