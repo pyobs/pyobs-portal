@@ -40,15 +40,15 @@ function sunBackgrounds(lat, lon, windowStart, windowEnd) {
   const morning = SunCalc.getTimes(windowEnd, lat, lon);
 
   const segments = [
-    [windowStart,                ok(evening.sunset),       "timeline-day"],
-    [ok(evening.sunset),        ok(evening.dusk),          "timeline-civil"],
-    [ok(evening.dusk),          ok(evening.nauticalDusk),  "timeline-nautical"],
-    [ok(evening.nauticalDusk),  ok(evening.night),         "timeline-astro"],
-    [ok(evening.night),         ok(morning.nightEnd),      "timeline-night"],
-    [ok(morning.nightEnd),      ok(morning.nauticalDawn),  "timeline-astro"],
-    [ok(morning.nauticalDawn),  ok(morning.dawn),          "timeline-nautical"],
-    [ok(morning.dawn),          ok(morning.sunrise),       "timeline-civil"],
-    [ok(morning.sunrise),       windowEnd,                 "timeline-day"],
+    [windowStart,               ok(evening.sunset),       "timeline-day"],
+    [ok(evening.sunset),        ok(evening.dusk),         "timeline-civil"],
+    [ok(evening.dusk),          ok(evening.nauticalDusk), "timeline-nautical"],
+    [ok(evening.nauticalDusk),  ok(evening.night),        "timeline-astro"],
+    [ok(evening.night),         ok(morning.nightEnd),     "timeline-night"],
+    [ok(morning.nightEnd),      ok(morning.nauticalDawn), "timeline-astro"],
+    [ok(morning.nauticalDawn),  ok(morning.dawn),         "timeline-nautical"],
+    [ok(morning.dawn),          ok(morning.sunrise),      "timeline-civil"],
+    [ok(morning.sunrise),       windowEnd,                "timeline-day"],
   ];
 
   return segments
@@ -64,23 +64,15 @@ function sunBackgrounds(lat, lon, windowStart, windowEnd) {
     }));
 }
 
-async function loadTimeline(projects, tasks) {
+function renderTimeline(projects, tasks, siteInfo, observations) {
   try {
-    const [siteInfo, pending, running] = await Promise.all([
-      apiRequest("site/"),
-      apiList("observations/", { state: "pending" }),
-      apiList("observations/", { state: "running" }),
-    ]);
-
     const hasSite = siteInfo.latitude != null && siteInfo.longitude != null;
-    const observations = [...running, ...pending];
 
     if (!hasSite && !observations.length) {
       setTimelineStatus("No pending observations. Set SITE_LATITUDE and SITE_LONGITUDE to enable day/night display.");
       return;
     }
 
-    // Build lookup maps
     const projectIdx = {};
     projects.forEach((p, i) => (projectIdx[p.code] = i));
     const taskProject = {}, taskName = {};
@@ -94,8 +86,6 @@ async function loadTimeline(projects, tasks) {
         content: `<span title="${p.name}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${p.name}</span>`,
       }))
     );
-
-    // Add a catch-all group for observations whose project isn't in the list
     groups.add({ id: "__other__", content: "Other" });
 
     const items = new vis.DataSet();
@@ -107,11 +97,10 @@ async function loadTimeline(projects, tasks) {
 
     observations.forEach((obs) => {
       const proj = taskProject[obs.task] ?? "__other__";
-      const idx = projectIdx[proj] ?? 0;
-      const color = PROJECT_COLORS[idx % PROJECT_COLORS.length];
+      const color = PROJECT_COLORS[(projectIdx[proj] ?? 0) % PROJECT_COLORS.length];
       const name = taskName[obs.task] || obs.task;
       const start = new Date(obs.start);
-      const end = new Date(obs.end);
+      const end   = new Date(obs.end);
       items.add({
         id: `obs-${obs.id}`,
         group: proj,
@@ -124,7 +113,6 @@ async function loadTimeline(projects, tasks) {
       });
     });
 
-    // Remove the "Other" group if unused
     if (!items.get().some((it) => it.group === "__other__")) {
       groups.remove("__other__");
     }
@@ -154,20 +142,28 @@ async function loadTimeline(projects, tasks) {
       }
     );
   } catch (e) {
-    setTimelineStatus(`Failed to load timeline: ${e.message}`, true);
+    console.error("Timeline render error:", e);
+    setTimelineStatus(`Failed to render timeline: ${e.message}`, true);
   }
 }
 
 async function loadDashboard() {
   try {
-    const [projects, tasks] = await Promise.all([
-      apiList("projects/"),
-      apiList("tasks/"),
-    ]);
+    // Sequential fetches to avoid session-lock contention on the dev server
+    const projects  = await apiList("projects/");
+    const tasks     = await apiList("tasks/");
+    const siteInfo  = await apiRequest("site/");
+    const pending   = await apiList("observations/", { state: "pending" });
+    const running   = await apiList("observations/", { state: "running" });
+    const completed = await apiList("observations/", { state: "completed" });
 
-    document.getElementById("stat-projects").textContent = projects.length;
-    document.getElementById("stat-tasks").textContent = tasks.length;
+    // Stats
+    document.getElementById("stat-projects").textContent  = projects.length;
+    document.getElementById("stat-tasks").textContent     = tasks.length;
+    document.getElementById("stat-pending").textContent   = pending.length;
+    document.getElementById("stat-completed").textContent = completed.length;
 
+    // Projects table
     const tbody = document.getElementById("projects-table");
     tbody.innerHTML = "";
     if (!projects.length) {
@@ -180,22 +176,14 @@ async function loadDashboard() {
       });
     }
 
-    loadTimeline(projects, tasks); // intentionally not awaited — runs independently
-  } catch (e) {
-    document.getElementById("projects-table").innerHTML =
-      `<tr><td colspan="3" class="text-danger">${e.message}</td></tr>`;
-    setTimelineStatus(`Failed to load dashboard: ${e.message}`, true);
-  }
+    // Timeline
+    renderTimeline(projects, tasks, siteInfo, [...running, ...pending]);
 
-  try {
-    const [pending, completed] = await Promise.all([
-      apiList("observations/", { state: "pending" }),
-      apiList("observations/", { state: "completed" }),
-    ]);
-    document.getElementById("stat-pending").textContent = pending.length;
-    document.getElementById("stat-completed").textContent = completed.length;
-  } catch (_) {
-    /* best-effort */
+  } catch (e) {
+    console.error("Dashboard load error:", e);
+    const tbody = document.getElementById("projects-table");
+    if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="text-danger">${e.message}</td></tr>`;
+    setTimelineStatus(`Failed to load: ${e.message}`, true);
   }
 }
 
