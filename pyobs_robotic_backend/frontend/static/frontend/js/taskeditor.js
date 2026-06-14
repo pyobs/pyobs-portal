@@ -296,18 +296,28 @@ async function initTaskEditor(taskId) {
     constraints: document.getElementById("constraints-editor"),
     merits: document.getElementById("merits-editor"),
     script: document.getElementById("script-editor"),
+    schedule: document.getElementById("schedule-table"),
     observations: document.getElementById("observations-table"),
     saveBtn: document.getElementById("btn-save"),
     saveStatus: document.getElementById("save-status"),
     title: document.getElementById("page-title"),
   };
 
-  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree] = await Promise.all([
+  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects] = await Promise.all([
     apiRequest("schema/constraints/"),
     apiRequest("schema/merits/"),
     apiRequest("schema/targets/"),
     apiRequest("schema/scripts/"),
+    apiList("projects/"),
   ]);
+
+  els.project.innerHTML = "";
+  projects.forEach((p) => {
+    const o = document.createElement("option");
+    o.value = p.code;
+    o.textContent = `${p.name} (${p.code})`;
+    els.project.appendChild(o);
+  });
 
   let task = null;
   if (taskId) {
@@ -316,7 +326,6 @@ async function initTaskEditor(taskId) {
     els.code.value = task.id;
     els.code.disabled = true;
     els.project.value = task.project;
-    els.project.disabled = true;
   } else {
     els.title.textContent = "New task";
     task = {
@@ -331,15 +340,6 @@ async function initTaskEditor(taskId) {
       target: null,
       script: {},
     };
-    // Let the user pick a project for new tasks.
-    const projects = await apiList("projects/");
-    els.project.innerHTML = "";
-    projects.forEach((p) => {
-      const o = document.createElement("option");
-      o.value = p.code;
-      o.textContent = `${p.name} (${p.code})`;
-      els.project.appendChild(o);
-    });
   }
 
   els.name.value = task.name || "";
@@ -353,9 +353,11 @@ async function initTaskEditor(taskId) {
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
 
   if (taskId) {
-    loadObservations(taskId, els.observations);
+    loadObservationTable(taskId, els.schedule, ["pending", "running"], true);
+    loadObservationTable(taskId, els.observations, ["completed", "canceled"], false);
   } else {
-    els.observations.closest(".card").classList.add("d-none");
+    document.getElementById("tab-schedule-nav").classList.add("d-none");
+    document.getElementById("tab-observations-nav").classList.add("d-none");
   }
 
   els.saveBtn.addEventListener("click", async () => {
@@ -392,35 +394,37 @@ async function initTaskEditor(taskId) {
   });
 }
 
-async function loadObservations(taskId, tableEl) {
+async function loadObservationTable(taskId, tableEl, states, ascending) {
   const tbody = tableEl.querySelector("tbody");
-  tbody.innerHTML = '<tr><td colspan="4" class="text-muted">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>';
   try {
-    const observations = await apiList("observations/", { task: taskId });
+    const all = await Promise.all(states.map((s) => apiList("observations/", { task: taskId, state: s })));
+    const observations = all.flat();
     tbody.innerHTML = "";
     if (!observations.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-muted">No observations.</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">None.</td></tr>';
       return;
     }
+    const stateBadge = {
+      pending: "text-bg-secondary",
+      completed: "text-bg-success",
+      canceled: "text-bg-danger",
+      running: "text-bg-primary",
+    };
     observations
-      .sort((a, b) => (a.start < b.start ? 1 : -1))
+      .sort((a, b) => (ascending ? 1 : -1) * (a.start < b.start ? -1 : 1))
       .forEach((obs) => {
         const tr = document.createElement("tr");
-        const stateBadge = {
-          pending: "text-bg-secondary",
-          completed: "text-bg-success",
-          canceled: "text-bg-danger",
-          running: "text-bg-primary",
-        }[obs.state] || "text-bg-secondary";
+        const badge = stateBadge[obs.state] || "text-bg-secondary";
         tr.innerHTML = `
-          <td>${new Date(obs.start).toLocaleString()}</td>
+          <td class="ps-3">${new Date(obs.start).toLocaleString()}</td>
           <td>${new Date(obs.end).toLocaleString()}</td>
-          <td><span class="badge ${stateBadge}">${obs.state}</span></td>
+          <td><span class="badge ${badge}">${obs.state}</span></td>
           <td>${obs.target ? (obs.target.name || "") : ""}</td>
         `;
         tbody.appendChild(tr);
       });
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-danger">${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="4" class="text-danger ps-3">${e.message}</td></tr>`;
   }
 }
