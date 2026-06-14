@@ -49,8 +49,12 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "pyobs_robotic_backend.api",
-    "pyobs_robotic_backend.frontend",
 ]
+
+FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
+
+if FRONTEND_ENABLED:
+    INSTALLED_APPS.append("pyobs_robotic_backend.frontend")
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -124,9 +128,10 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 100,
 }
 
-LOGIN_URL = "frontend:login"
-LOGIN_REDIRECT_URL = "frontend:dashboard"
-LOGOUT_REDIRECT_URL = "frontend:login"
+if FRONTEND_ENABLED:
+    LOGIN_URL = "frontend:login"
+    LOGIN_REDIRECT_URL = "frontend:dashboard"
+    LOGOUT_REDIRECT_URL = "frontend:login"
 
 CACHES = {
     "default": {
