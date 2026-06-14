@@ -29,7 +29,7 @@ pip install -e .
 
 ## Configuration
 
-All settings are controlled by environment variables. Copy `pyobs_robotic_backend/local_settings.py` for local overrides, or set the following in your environment / Docker compose file:
+All settings are controlled by environment variables. Copy `pyobs_robotic_backend/local_settings.example.py` to `pyobs_robotic_backend/local_settings.py` for local overrides, or set the following in your environment / Docker compose file:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -47,6 +47,8 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `CELERY_RESULT_BACKEND` | `rpc://` | Celery result backend |
 | `STATIC_ROOT` | `static/` | Directory for collected static files |
 
+The web frontend is **disabled by default**. To enable it, set `FRONTEND_ENABLED = True` in `local_settings.py`.
+
 ## Running
 
 ### Development
@@ -57,7 +59,7 @@ python manage.py createsuperuser
 python manage.py runserver
 ```
 
-The web frontend is served at `http://localhost:8000/` and the API at `http://localhost:8000/api/`.
+The API is served at `http://localhost:8000/api/`. If the frontend is enabled, the UI is available at `http://localhost:8000/`.
 
 ### Docker
 
