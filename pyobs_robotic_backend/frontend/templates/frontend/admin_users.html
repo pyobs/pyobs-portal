@@ -1,0 +1,61 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Users — pyobs Robotic{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Users</h4>
+
+<div class="card border-secondary mb-3">
+  <div class="card-header">New user</div>
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Username</label>
+        <input type="text" class="form-control form-control-sm" id="new-username">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Email</label>
+        <input type="email" class="form-control form-control-sm" id="new-email">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Password</label>
+        <input type="password" class="form-control form-control-sm" id="new-password">
+      </div>
+      <div class="col-6 col-md-2">
+        <div class="form-check">
+          <input class="form-check-input" type="checkbox" id="new-superuser">
+          <label class="form-check-label small" for="new-superuser">Superuser</label>
+        </div>
+      </div>
+      <div class="col-6 col-md-1">
+        <button class="btn btn-sm btn-primary w-100" id="btn-add-user">Add</button>
+      </div>
+    </div>
+    <div id="new-user-status" class="small mt-2"></div>
+  </div>
+</div>
+
+<div class="card border-secondary">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr class="text-muted small">
+          <th class="ps-3">Username</th>
+          <th>Email</th>
+          <th>New password</th>
+          <th>Superuser</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="users-table">
+        <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'frontend/js/admin_users.js' %}"></script>
+{% endblock %}
