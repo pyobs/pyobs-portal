@@ -46,8 +46,7 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `CELERY_BROKER_URL` | `amqp://` | Celery broker URL |
 | `CELERY_RESULT_BACKEND` | `rpc://` | Celery result backend |
 | `STATIC_ROOT` | `static/` | Directory for collected static files |
-
-The web frontend is **disabled by default**. To enable it, set `FRONTEND_ENABLED = True` in `local_settings.py`.
+| `ENABLE_FRONTEND` | `0` | Set to `1` to enable the web frontend |
 
 ## Running
 

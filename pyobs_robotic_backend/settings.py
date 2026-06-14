@@ -51,7 +51,7 @@ INSTALLED_APPS = [
     "pyobs_robotic_backend.api",
 ]
 
-FRONTEND_ENABLED = False
+FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
