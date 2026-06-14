@@ -51,10 +51,7 @@ INSTALLED_APPS = [
     "pyobs_robotic_backend.api",
 ]
 
-FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
-
-if FRONTEND_ENABLED:
-    INSTALLED_APPS.append("pyobs_robotic_backend.frontend")
+FRONTEND_ENABLED = False
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
@@ -128,11 +125,6 @@ REST_FRAMEWORK = {
     "PAGE_SIZE": 100,
 }
 
-if FRONTEND_ENABLED:
-    LOGIN_URL = "frontend:login"
-    LOGIN_REDIRECT_URL = "frontend:dashboard"
-    LOGOUT_REDIRECT_URL = "frontend:login"
-
 CACHES = {
     "default": {
         "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
@@ -179,3 +171,10 @@ try:
     from .local_settings import *
 except ImportError:
     pass
+
+if FRONTEND_ENABLED:
+    if "pyobs_robotic_backend.frontend" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("pyobs_robotic_backend.frontend")
+    LOGIN_URL = "frontend:login"
+    LOGIN_REDIRECT_URL = "frontend:dashboard"
+    LOGOUT_REDIRECT_URL = "frontend:login"
