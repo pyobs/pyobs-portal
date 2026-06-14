@@ -114,3 +114,13 @@ def validate_script(data: Any) -> dict[str, Any]:
         return {"valid": True}
     except Exception as e:
         return {"valid": False, "error": str(e)}
+
+
+def estimate_duration(data: Any) -> dict[str, Any]:
+    if not isinstance(data, dict):
+        return {"error": "Script must be a YAML/JSON object."}
+    try:
+        script = Script.model_validate(data)
+        return {"duration": script.estimate_duration()}
+    except Exception as e:
+        return {"error": str(e)}

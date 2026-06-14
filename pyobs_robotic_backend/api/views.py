@@ -213,3 +213,9 @@ def schema_scripts(request):
 @permission_classes([IsAuthenticated])
 def validate_script(request):
     return Response(schema.validate_script(request.data))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def estimate_duration(request):
+    return Response(schema.estimate_duration(request.data))

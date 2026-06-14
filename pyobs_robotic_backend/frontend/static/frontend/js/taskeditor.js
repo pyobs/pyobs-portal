@@ -352,6 +352,27 @@ async function initTaskEditor(taskId) {
   const targetEditor = new TargetEditor(els.target, targetSchemas, task.target);
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
 
+  document.getElementById("btn-estimate-duration").addEventListener("click", async () => {
+    const btn = document.getElementById("btn-estimate-duration");
+    btn.disabled = true;
+    try {
+      const result = await apiRequest("estimate_duration/", { method: "POST", body: scriptEditor.getData() });
+      if (result.error) {
+        els.saveStatus.textContent = `✗ ${result.error}`;
+        els.saveStatus.className = "small ms-2 text-danger";
+      } else {
+        els.duration.value = result.duration;
+        els.saveStatus.textContent = `Estimated: ${result.duration} s`;
+        els.saveStatus.className = "small ms-2 text-secondary";
+      }
+    } catch (e) {
+      els.saveStatus.textContent = `✗ ${e.message}`;
+      els.saveStatus.className = "small ms-2 text-danger";
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
   if (taskId) {
     loadObservationTable(taskId, els.schedule, ["pending", "running"], true);
     loadObservationTable(taskId, els.observations, ["completed", "canceled"], false);

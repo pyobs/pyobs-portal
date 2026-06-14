@@ -41,6 +41,7 @@ urlpatterns = [
     path("schema/targets/", views.schema_targets),
     path("schema/scripts/", views.schema_scripts),
     path("validate_script/", views.validate_script),
+    path("estimate_duration/", views.estimate_duration),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

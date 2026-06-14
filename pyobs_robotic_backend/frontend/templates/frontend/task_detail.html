@@ -52,7 +52,12 @@
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Duration (s)</label>
-                <input type="number" step="any" class="form-control form-control-sm" id="field-duration">
+                <div class="input-group input-group-sm">
+                  <input type="number" step="any" class="form-control form-control-sm" id="field-duration">
+                  <button class="btn btn-outline-secondary" type="button" id="btn-estimate-duration" title="Estimate from script">
+                    <i class="bi bi-stopwatch"></i>
+                  </button>
+                </div>
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Priority</label>
