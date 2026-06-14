@@ -3,6 +3,36 @@
 
 {% block title %}Dashboard — pyobs Robotic{% endblock %}
 
+{% block extra_head %}
+<link href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css" rel="stylesheet">
+<style>
+  /* ── vis-timeline dark theme ─────────────────────────────────────────── */
+  .vis-timeline { background: #1a1d21; border-color: #2d3035; color: #adb5bd; }
+  .vis-panel.vis-center,
+  .vis-panel.vis-left,
+  .vis-panel.vis-right,
+  .vis-panel.vis-top,
+  .vis-panel.vis-bottom { border-color: #2d3035; }
+  .vis-time-axis .vis-text { color: #6c757d; font-size: 0.7rem; }
+  .vis-time-axis .vis-grid.vis-minor { border-color: #2d3035; }
+  .vis-time-axis .vis-grid.vis-major { border-color: #3d4045; }
+  .vis-label { color: #adb5bd; font-size: 0.75rem; border-color: #2d3035; background: #1a1d21; }
+  .vis-group { border-color: #2d3035; }
+  .vis-current-time { background-color: rgba(255, 100, 100, 0.7); }
+  /* ── Day/night background bands ─────────────────────────────────────── */
+  .vis-item.vis-background.timeline-day      { background: rgba(70, 100, 150, 0.12); }
+  .vis-item.vis-background.timeline-civil    { background: rgba(30, 50, 100, 0.25); }
+  .vis-item.vis-background.timeline-nautical { background: rgba(10, 20, 70, 0.40); }
+  .vis-item.vis-background.timeline-astro    { background: rgba(5,  10, 50, 0.55); }
+  .vis-item.vis-background.timeline-night    { background: rgba(0,   0, 20, 0.70); }
+  /* ── Observation items ───────────────────────────────────────────────── */
+  .vis-item { border-radius: 3px; font-size: 0.72rem; }
+  .vis-item.vis-range .vis-item-overflow { overflow: hidden; }
+  .vis-item.obs-running { border-style: dashed !important; }
+  .vis-tooltip { background: #2d3035; border-color: #3d4045; color: #adb5bd; font-size: 0.75rem; }
+</style>
+{% endblock %}
+
 {% block content %}
 <h4 class="mb-4">Dashboard</h4>
 
@@ -33,6 +63,14 @@
   </div>
 </div>
 
+<div class="card border-secondary mb-4">
+  <div class="card-header">Schedule — tonight</div>
+  <div class="card-body p-0">
+    <div id="timeline-status" class="text-muted small p-3">Loading…</div>
+    <div id="schedule-timeline" style="border-radius:0 0 .375rem .375rem; overflow:hidden; display:none;"></div>
+  </div>
+</div>
+
 <div class="card border-secondary">
   <div class="card-header d-flex justify-content-between align-items-center">
     Your projects
@@ -58,5 +96,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/suncalc@1.9.0/suncalc.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/standalone/umd/vis-timeline-graph2d.min.js"></script>
 <script src="{% static 'frontend/js/dashboard.js' %}"></script>
 {% endblock %}

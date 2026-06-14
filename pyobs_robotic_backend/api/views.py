@@ -219,3 +219,14 @@ def validate_script(request):
 @permission_classes([IsAuthenticated])
 def estimate_duration(request):
     return Response(schema.estimate_duration(request.data))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def site(request):
+    from django.conf import settings
+    return Response({
+        "latitude": getattr(settings, "SITE_LATITUDE", None),
+        "longitude": getattr(settings, "SITE_LONGITUDE", None),
+        "elevation": getattr(settings, "SITE_ELEVATION", None),
+    })

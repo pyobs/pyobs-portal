@@ -167,6 +167,10 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.environ.get("STATIC_ROOT", os.path.join(BASE_DIR, "static"))
 
+SITE_LATITUDE = float(os.environ["SITE_LATITUDE"]) if os.environ.get("SITE_LATITUDE") else None
+SITE_LONGITUDE = float(os.environ["SITE_LONGITUDE"]) if os.environ.get("SITE_LONGITUDE") else None
+SITE_ELEVATION = float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
+
 try:
     from .local_settings import *
 except ImportError:
