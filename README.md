@@ -79,7 +79,7 @@ docker run -p 8000:8000 \
 
 ### Docker Compose
 
-A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). Copy [`.env.example`](.env.example) to `.env`, adjust the values, and place an `nginx.conf` in the project root (see the nginx docs for a basic reverse-proxy config).
+A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
 
 Before starting for the first time, run migrations and collect static files:
 
