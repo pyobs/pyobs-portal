@@ -77,6 +77,117 @@ docker run -p 8000:8000 \
   uv run gunicorn pyobs_robotic_backend.wsgi:application --bind 0.0.0.0:8000
 ```
 
+### Docker Compose
+
+A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx:
+
+```yaml
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: pyobs
+      POSTGRES_USER: pyobs
+      POSTGRES_PASSWORD: secret
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+  rabbitmq:
+    image: rabbitmq:4-alpine
+    restart: unless-stopped
+
+  web:
+    build: .
+    restart: unless-stopped
+    command: uv run gunicorn pyobs_robotic_backend.wsgi:application --bind 0.0.0.0:8000
+    expose:
+      - 8000
+    volumes:
+      - static_files:/src/static
+    environment:
+      DATABASE: postgres
+      SECRET_KEY: changeme
+      DEBUG: 0
+      DJANGO_ALLOWED_HOSTS: your.domain.com
+      CSRF_TRUSTED_ORIGINS: https://your.domain.com
+      SQL_ENGINE: django.db.backends.postgresql
+      SQL_DATABASE: pyobs
+      SQL_USER: pyobs
+      SQL_PASSWORD: secret
+      SQL_HOST: db
+      SQL_PORT: 5432
+      CELERY_BROKER_URL: amqp://rabbitmq//
+      CELERY_RESULT_BACKEND: rpc://
+      STATIC_ROOT: /src/static
+    depends_on:
+      - db
+      - rabbitmq
+
+  worker:
+    build: .
+    restart: unless-stopped
+    command: uv run celery -A pyobs_robotic_backend worker --loglevel=info
+    environment:
+      DATABASE: postgres
+      SECRET_KEY: changeme
+      SQL_ENGINE: django.db.backends.postgresql
+      SQL_DATABASE: pyobs
+      SQL_USER: pyobs
+      SQL_PASSWORD: secret
+      SQL_HOST: db
+      SQL_PORT: 5432
+      CELERY_BROKER_URL: amqp://rabbitmq//
+      CELERY_RESULT_BACKEND: rpc://
+    depends_on:
+      - db
+      - rabbitmq
+
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - static_files:/srv/static:ro
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  static_files:
+```
+
+Minimal `nginx.conf`:
+
+```nginx
+server {
+    listen 80;
+
+    location /static/ {
+        alias /srv/static/;
+    }
+
+    location / {
+        proxy_pass http://web:8000;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+Before starting for the first time, run migrations and collect static files:
+
+```bash
+docker compose run --rm web uv run python manage.py migrate
+docker compose run --rm web uv run python manage.py createsuperuser
+docker compose run --rm web uv run python manage.py collectstatic --no-input
+docker compose up -d
+```
+
 ## API Overview
 
 Authentication is via token (`Authorization: Token <token>`) or Django session cookie. Obtain a token at `/api-token-auth/`.
