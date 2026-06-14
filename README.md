@@ -47,6 +47,9 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `CELERY_RESULT_BACKEND` | `rpc://` | Celery result backend |
 | `STATIC_ROOT` | `static/` | Directory for collected static files |
 | `ENABLE_FRONTEND` | `0` | Set to `1` to enable the web frontend |
+| `SITE_LATITUDE` | — | Observatory latitude in decimal degrees (enables day/night timeline) |
+| `SITE_LONGITUDE` | — | Observatory longitude in decimal degrees |
+| `SITE_ELEVATION` | — | Observatory elevation in metres |
 
 ## Running
 
