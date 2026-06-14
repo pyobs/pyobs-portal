@@ -61,22 +61,6 @@ python manage.py runserver
 
 The API is served at `http://localhost:8000/api/`. If the frontend is enabled, the UI is available at `http://localhost:8000/`.
 
-### Docker
-
-```bash
-docker build -t pyobs-robotic-backend .
-docker run -p 8000:8000 \
-  -e SECRET_KEY=changeme \
-  -e DEBUG=0 \
-  -e DATABASE=postgres \
-  -e SQL_HOST=db \
-  -e SQL_DATABASE=pyobs \
-  -e SQL_USER=pyobs \
-  -e SQL_PASSWORD=secret \
-  pyobs-robotic-backend \
-  uv run gunicorn pyobs_robotic_backend.wsgi:application --bind 0.0.0.0:8000
-```
-
 ### Docker Compose
 
 A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
