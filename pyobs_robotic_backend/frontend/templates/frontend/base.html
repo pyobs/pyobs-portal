@@ -212,21 +212,21 @@ async function loadSidebarTasks() {
     }
 
     const currentPath = window.location.pathname;
-    Object.keys(byProject).sort().forEach(code => {
+    Object.keys(byProject).sort().forEach((code, idx) => {
       const proj = projectsByCode[code];
       const group = document.createElement('div');
-      group.className = 'mb-1';
+      group.className = idx > 0 ? 'mt-2' : '';
 
       const label = document.createElement('div');
-      label.className = 'text-muted px-2 pt-1';
-      label.style.cssText = 'font-size:0.65rem;letter-spacing:.04em;text-transform:uppercase';
-      label.textContent = proj ? proj.name : code;
+      label.className = 'text-muted fw-semibold px-2 py-1 d-flex align-items-center gap-1';
+      label.style.cssText = 'font-size:0.65rem;letter-spacing:.06em;text-transform:uppercase;border-top:1px solid #2d3035;' + (idx === 0 ? 'border-top:none;' : '');
+      label.innerHTML = `<i class="bi bi-folder2" style="font-size:0.75rem"></i> ${proj ? proj.name : code}`;
       group.appendChild(label);
 
       byProject[code].sort((a, b) => a.id.localeCompare(b.id)).forEach(task => {
         const a = document.createElement('a');
         a.href = `/tasks/${encodeURIComponent(task.id)}/`;
-        a.className = 'sidebar-link d-flex align-items-center px-2 py-1';
+        a.className = 'sidebar-link d-flex align-items-center px-3 py-1';
         if (currentPath === `/tasks/${encodeURIComponent(task.id)}/`) a.classList.add('active');
         a.style.fontSize = '0.8rem';
         a.textContent = task.name || task.id;
