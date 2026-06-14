@@ -102,7 +102,7 @@ Authentication is via token (`Authorization: Token <token>`) or Django session c
 
 ## Web Frontend
 
-The browser UI is mounted at `/` and requires a login. It mirrors the look of [pyobs-web-admin](https://github.com/pyobs/pyobs-web-admin) (Bootstrap 5, dark theme, collapsible sidebar).
+The browser UI is mounted at `/` and requires a login. Features:
 
 - **Sidebar** — task list grouped by project; click a task to open it directly.
 - **Task editor** — tabbed view with **Task** (general fields, target, constraints, merits), **Script** (YAML editor with live validation and template insertion), **Schedule** (upcoming observations), and **Observations** (completed/cancelled history).
