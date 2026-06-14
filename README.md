@@ -79,17 +79,32 @@ docker run -p 8000:8000 \
 
 ### Docker Compose
 
-A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx:
+A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx. Copy `.env.example` to `.env` and adjust the values, then use the following `docker-compose.yml`:
+
+`.env.example`:
+
+```env
+SECRET_KEY=changeme
+DEBUG=0
+DJANGO_ALLOWED_HOSTS=your.domain.com
+CSRF_TRUSTED_ORIGINS=https://your.domain.com
+
+POSTGRES_DB=pyobs
+POSTGRES_USER=pyobs
+POSTGRES_PASSWORD=secret
+
+CELERY_BROKER_URL=amqp://rabbitmq//
+CELERY_RESULT_BACKEND=rpc://
+```
+
+`docker-compose.yml`:
 
 ```yaml
 services:
   db:
     image: postgres:17-alpine
     restart: unless-stopped
-    environment:
-      POSTGRES_DB: pyobs
-      POSTGRES_USER: pyobs
-      POSTGRES_PASSWORD: secret
+    env_file: .env
     volumes:
       - postgres_data:/var/lib/postgresql/data
 
@@ -105,20 +120,15 @@ services:
       - 8000
     volumes:
       - static_files:/src/static
+    env_file: .env
     environment:
       DATABASE: postgres
-      SECRET_KEY: changeme
-      DEBUG: 0
-      DJANGO_ALLOWED_HOSTS: your.domain.com
-      CSRF_TRUSTED_ORIGINS: https://your.domain.com
       SQL_ENGINE: django.db.backends.postgresql
-      SQL_DATABASE: pyobs
-      SQL_USER: pyobs
-      SQL_PASSWORD: secret
+      SQL_DATABASE: ${POSTGRES_DB}
+      SQL_USER: ${POSTGRES_USER}
+      SQL_PASSWORD: ${POSTGRES_PASSWORD}
       SQL_HOST: db
       SQL_PORT: 5432
-      CELERY_BROKER_URL: amqp://rabbitmq//
-      CELERY_RESULT_BACKEND: rpc://
       STATIC_ROOT: /src/static
     depends_on:
       - db
@@ -128,17 +138,15 @@ services:
     build: .
     restart: unless-stopped
     command: uv run celery -A pyobs_robotic_backend worker --loglevel=info
+    env_file: .env
     environment:
       DATABASE: postgres
-      SECRET_KEY: changeme
       SQL_ENGINE: django.db.backends.postgresql
-      SQL_DATABASE: pyobs
-      SQL_USER: pyobs
-      SQL_PASSWORD: secret
+      SQL_DATABASE: ${POSTGRES_DB}
+      SQL_USER: ${POSTGRES_USER}
+      SQL_PASSWORD: ${POSTGRES_PASSWORD}
       SQL_HOST: db
       SQL_PORT: 5432
-      CELERY_BROKER_URL: amqp://rabbitmq//
-      CELERY_RESULT_BACKEND: rpc://
     depends_on:
       - db
       - rabbitmq
