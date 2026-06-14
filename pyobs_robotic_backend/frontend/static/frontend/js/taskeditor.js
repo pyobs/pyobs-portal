@@ -384,6 +384,7 @@ async function initTaskEditor(taskId) {
       }
       els.saveStatus.textContent = "✓ Saved";
       els.saveStatus.className = "small ms-2 text-success";
+      loadSidebarTasks();
       if (!taskId) {
         window.location.href = `/tasks/${encodeURIComponent(payload.id)}/`;
       }
