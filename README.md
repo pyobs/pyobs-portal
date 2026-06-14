@@ -81,13 +81,16 @@ docker run -p 8000:8000 \
 
 A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
 
-Before starting for the first time, run migrations and collect static files:
+Then start everything with:
 
 ```bash
-docker compose run --rm web uv run python manage.py migrate
-docker compose run --rm web uv run python manage.py createsuperuser
-docker compose run --rm web uv run python manage.py collectstatic --no-input
 docker compose up -d
+```
+
+Migrations and static file collection run automatically on startup. To create a superuser:
+
+```bash
+docker compose run --rm web uv run python manage.py createsuperuser
 ```
 
 ## API Overview
