@@ -23,4 +23,5 @@ urlpatterns = [
     path("admin/", admin.site.urls),
     path("api/", include("pyobs_robotic_backend.api.urls")),
     path("api-token-auth/", views.obtain_auth_token),
+    path("", include("pyobs_robotic_backend.frontend.urls")),
 ]

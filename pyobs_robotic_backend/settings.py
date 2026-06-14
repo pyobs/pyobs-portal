@@ -49,6 +49,7 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "pyobs_robotic_backend.api",
+    "pyobs_robotic_backend.frontend",
 ]
 
 MIDDLEWARE = [
@@ -117,10 +118,15 @@ AUTH_PASSWORD_VALIDATORS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
 }
+
+LOGIN_URL = "frontend:login"
+LOGIN_REDIRECT_URL = "frontend:dashboard"
+LOGOUT_REDIRECT_URL = "frontend:login"
 
 CACHES = {
     "default": {
