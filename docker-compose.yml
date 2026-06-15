@@ -11,7 +11,7 @@ services:
     restart: unless-stopped
 
   web:
-    build: .
+    image: ghcr.io/pyobs/pyobs-robotic-backend:latest
     restart: unless-stopped
     command: >
       sh -c "uv run python manage.py migrate &&
@@ -27,7 +27,7 @@ services:
       - rabbitmq
 
   worker:
-    build: .
+    image: ghcr.io/pyobs/pyobs-robotic-backend:latest
     restart: unless-stopped
     command: uv run celery -A pyobs_robotic_backend worker --loglevel=info
     env_file: .env
