@@ -9,6 +9,8 @@ services:
   rabbitmq:
     image: rabbitmq:4-alpine
     restart: unless-stopped
+    environment:
+      RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_deprecated_features permit transient_nonexcl_queues true"
 
   web:
     image: ghcr.io/pyobs/pyobs-robotic-backend:latest
