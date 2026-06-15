@@ -19,8 +19,6 @@ services:
       sh -c "uv run python manage.py migrate &&
              uv run python manage.py collectstatic --no-input &&
              uv run gunicorn pyobs_robotic_backend.wsgi:application --bind 0.0.0.0:8000"
-    expose:
-      - 8000
     volumes:
       - static_files:/src/static
     env_file: .env
