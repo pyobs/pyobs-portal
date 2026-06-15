@@ -22,15 +22,6 @@ services:
     volumes:
       - static_files:/src/static
     env_file: .env
-    environment:
-      DATABASE: postgres
-      SQL_ENGINE: django.db.backends.postgresql
-      SQL_DATABASE: ${POSTGRES_DB}
-      SQL_USER: ${POSTGRES_USER}
-      SQL_PASSWORD: ${POSTGRES_PASSWORD}
-      SQL_HOST: db
-      SQL_PORT: 5432
-      STATIC_ROOT: /src/static
     depends_on:
       - db
       - rabbitmq
@@ -40,14 +31,6 @@ services:
     restart: unless-stopped
     command: uv run celery -A pyobs_robotic_backend worker --loglevel=info
     env_file: .env
-    environment:
-      DATABASE: postgres
-      SQL_ENGINE: django.db.backends.postgresql
-      SQL_DATABASE: ${POSTGRES_DB}
-      SQL_USER: ${POSTGRES_USER}
-      SQL_PASSWORD: ${POSTGRES_PASSWORD}
-      SQL_HOST: db
-      SQL_PORT: 5432
     depends_on:
       - db
       - rabbitmq
