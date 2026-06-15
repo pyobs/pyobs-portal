@@ -36,6 +36,13 @@ urlpatterns = [
     path("me/", views.me),
     path("last_task_update/", views.last_task_update),
     path("last_observation_update/", views.last_observation_update),
+    path("schema/constraints/", views.schema_constraints),
+    path("schema/merits/", views.schema_merits),
+    path("schema/targets/", views.schema_targets),
+    path("schema/scripts/", views.schema_scripts),
+    path("validate_script/", views.validate_script),
+    path("estimate_duration/", views.estimate_duration),
+    path("site/", views.site),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)

@@ -15,6 +15,7 @@ Including another URLconf
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
 
+from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
 from rest_framework.authtoken import views
@@ -24,3 +25,6 @@ urlpatterns = [
     path("api/", include("pyobs_robotic_backend.api.urls")),
     path("api-token-auth/", views.obtain_auth_token),
 ]
+
+if settings.FRONTEND_ENABLED:
+    urlpatterns += [path("", include("pyobs_robotic_backend.frontend.urls"))]

@@ -1,0 +1,27 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Tasks — pyobs Robotic{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+  <h4 class="mb-0">Tasks</h4>
+  <div class="d-flex gap-2">
+    <div class="form-check form-switch d-flex align-items-center me-2">
+      <input class="form-check-input me-2" type="checkbox" id="show-inactive">
+      <label class="form-check-label small text-secondary" for="show-inactive">Show inactive</label>
+    </div>
+    <a href="{% url 'frontend:task_new' %}" class="btn btn-sm btn-primary">
+      <i class="bi bi-plus-lg"></i> New task
+    </a>
+  </div>
+</div>
+
+<div id="task-groups">
+  <p class="text-muted">Loading…</p>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'frontend/js/tasks.js' %}"></script>
+{% endblock %}

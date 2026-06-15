@@ -51,6 +51,8 @@ INSTALLED_APPS = [
     "pyobs_robotic_backend.api",
 ]
 
+FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
+
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
@@ -117,6 +119,7 @@ AUTH_PASSWORD_VALIDATORS = [
 REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
@@ -164,7 +167,18 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.environ.get("STATIC_ROOT", os.path.join(BASE_DIR, "static"))
 
+SITE_LATITUDE = float(os.environ["SITE_LATITUDE"]) if os.environ.get("SITE_LATITUDE") else None
+SITE_LONGITUDE = float(os.environ["SITE_LONGITUDE"]) if os.environ.get("SITE_LONGITUDE") else None
+SITE_ELEVATION = float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
+
 try:
     from .local_settings import *
 except ImportError:
     pass
+
+if FRONTEND_ENABLED:
+    if "pyobs_robotic_backend.frontend" not in INSTALLED_APPS:
+        INSTALLED_APPS.append("pyobs_robotic_backend.frontend")
+    LOGIN_URL = "frontend:login"
+    LOGIN_REDIRECT_URL = "frontend:dashboard"
+    LOGOUT_REDIRECT_URL = "frontend:login"

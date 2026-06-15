@@ -1,0 +1,59 @@
+{% extends "frontend/base.html" %}
+{% load static %}
+
+{% block title %}Projects — pyobs Robotic{% endblock %}
+
+{% block content %}
+<h4 class="mb-4">Projects</h4>
+
+<div class="card border-secondary mb-3">
+  <div class="card-header">New project</div>
+  <div class="card-body">
+    <div class="row g-2 align-items-end">
+      <div class="col-12 col-md-2">
+        <label class="form-label small text-secondary mb-1">Code</label>
+        <input type="text" class="form-control form-control-sm" id="new-code">
+      </div>
+      <div class="col-12 col-md-3">
+        <label class="form-label small text-secondary mb-1">Name</label>
+        <input type="text" class="form-control form-control-sm" id="new-name">
+      </div>
+      <div class="col-12 col-md-2">
+        <label class="form-label small text-secondary mb-1">Priority</label>
+        <input type="number" step="any" class="form-control form-control-sm" id="new-priority" value="1">
+      </div>
+      <div class="col-12 col-md-4">
+        <label class="form-label small text-secondary mb-1">Users (comma-separated usernames)</label>
+        <input type="text" class="form-control form-control-sm" id="new-users">
+      </div>
+      <div class="col-12 col-md-1">
+        <button class="btn btn-sm btn-primary w-100" id="btn-add-project">Add</button>
+      </div>
+    </div>
+    <div id="new-project-status" class="small mt-2"></div>
+  </div>
+</div>
+
+<div class="card border-secondary">
+  <div class="card-body p-0">
+    <table class="table table-sm table-hover mb-0">
+      <thead>
+        <tr class="text-muted small">
+          <th class="ps-3">Code</th>
+          <th>Name</th>
+          <th>Priority</th>
+          <th>Users</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody id="projects-table">
+        <tr><td colspan="5" class="text-muted">Loading…</td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{% static 'frontend/js/admin_projects.js' %}"></script>
+{% endblock %}

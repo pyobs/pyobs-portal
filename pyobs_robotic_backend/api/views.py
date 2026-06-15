@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 from django.core.cache import cache
 from django_filters.rest_framework import DjangoFilterBackend
 
+from . import schema
 from .filters import ObservationFilter
 from .models import Task, Observation, Project
 from .serializers import (
@@ -179,3 +180,53 @@ def last_task_update(request):
 def last_observation_update(request):
     time = cache.get("last_observation_update", Time("1970-01-01T00:00:00"), None)
     return Response({"last_observation_update": time.isot})
+
+
+# ── Schema introspection for the dynamic frontend forms ─────────────────────
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def schema_constraints(request):
+    return Response(schema.constraint_schemas())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def schema_merits(request):
+    return Response(schema.merit_schemas())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def schema_targets(request):
+    return Response(schema.target_schemas())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def schema_scripts(request):
+    return Response(schema.script_tree())
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def validate_script(request):
+    return Response(schema.validate_script(request.data))
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def estimate_duration(request):
+    return Response(schema.estimate_duration(request.data))
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def site(request):
+    from django.conf import settings
+    return Response({
+        "latitude": getattr(settings, "SITE_LATITUDE", None),
+        "longitude": getattr(settings, "SITE_LONGITUDE", None),
+        "elevation": getattr(settings, "SITE_ELEVATION", None),
+    })
