@@ -65,7 +65,9 @@ The API is served at `http://localhost:8000/api/`. If the frontend is enabled, t
 
 ### Docker Compose
 
-A minimal production-like setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
+A production-ready setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). The application image is pulled from `ghcr.io/pyobs/pyobs-robotic-backend:latest`. Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
+
+The UI is served by nginx on port **8472**.
 
 Then start everything with:
 
