@@ -32,8 +32,17 @@ DEBUG = os.environ.get("DEBUG", "1") == "1"
 ALLOWED_HOSTS = os.environ.get("DJANGO_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
 
 # same as DJANGO_ALLOWED_HOSTS
-CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost").split(",")
+CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost").split(
+    ","
+)
 
+# The bundled nginx.conf.example sets "X-Forwarded-Proto: $scheme" and is the
+# only public entry point (gunicorn itself is not published), so it's safe to
+# trust this header to tell Django the original request was HTTPS. Without
+# this, request.build_absolute_uri() (e.g. DRF's pagination "next"/"previous"
+# links) would always use "http://", causing mixed-content errors behind a
+# TLS-terminating proxy.
+SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
 # Application definition
 
@@ -167,9 +176,15 @@ USE_TZ = True
 STATIC_URL = "static/"
 STATIC_ROOT = os.environ.get("STATIC_ROOT", os.path.join(BASE_DIR, "static"))
 
-SITE_LATITUDE = float(os.environ["SITE_LATITUDE"]) if os.environ.get("SITE_LATITUDE") else None
-SITE_LONGITUDE = float(os.environ["SITE_LONGITUDE"]) if os.environ.get("SITE_LONGITUDE") else None
-SITE_ELEVATION = float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
+SITE_LATITUDE = (
+    float(os.environ["SITE_LATITUDE"]) if os.environ.get("SITE_LATITUDE") else None
+)
+SITE_LONGITUDE = (
+    float(os.environ["SITE_LONGITUDE"]) if os.environ.get("SITE_LONGITUDE") else None
+)
+SITE_ELEVATION = (
+    float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
+)
 
 try:
     from .local_settings import *
