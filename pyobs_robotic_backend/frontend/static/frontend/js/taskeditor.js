@@ -567,7 +567,17 @@ async function initTaskEditor(taskId) {
     const btn = document.getElementById("btn-estimate-duration");
     btn.disabled = true;
     try {
-      const result = await apiRequest("estimate_duration/", { method: "POST", body: scriptEditor.getData() });
+      // Send the full task payload (not just the script) so that scripts like
+      // TransitImagingScript can find their TransitMerit and return the correct
+      // window duration rather than falling back to summing exposure times.
+      const payload = {
+        id: els.code.value,
+        project: els.project.value,
+        constraints: constraintsEditor.getData(),
+        merits: meritsEditor.getData(),
+        script: scriptEditor.getData(),
+      };
+      const result = await apiRequest("estimate_duration/", { method: "POST", body: payload });
       if (result.error) {
         els.saveStatus.textContent = `✗ ${result.error}`;
         els.saveStatus.className = "small ms-2 text-danger";
