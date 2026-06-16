@@ -261,6 +261,19 @@ class TargetEditor {
       }
     });
     group.appendChild(btn);
+
+    const openBtn = document.createElement("a");
+    openBtn.className = "btn btn-outline-secondary";
+    openBtn.title = "Open in Simbad";
+    openBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>';
+    openBtn.target = "_blank";
+    openBtn.rel = "noopener noreferrer";
+    openBtn.addEventListener("click", () => {
+      const name = nameInput.value.trim();
+      if (name) openBtn.href = `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(name)}`;
+    });
+    group.appendChild(openBtn);
+
     nameField.rowEl.appendChild(statusEl);
   }
 
