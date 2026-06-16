@@ -11,10 +11,19 @@
       <input class="form-check-input me-2" type="checkbox" id="show-inactive">
       <label class="form-check-label small text-secondary" for="show-inactive">Show inactive</label>
     </div>
+    <label for="import-task-file" class="btn btn-sm btn-outline-secondary" style="cursor:pointer">
+      <i class="bi bi-upload"></i> Import
+    </label>
     <a href="{% url 'frontend:task_new' %}" class="btn btn-sm btn-primary">
       <i class="bi bi-plus-lg"></i> New task
     </a>
   </div>
+</div>
+
+<div id="bulk-bar" class="d-none d-flex align-items-center gap-2 mb-3 p-2 bg-body-tertiary border rounded">
+  <span id="bulk-count" class="small text-secondary me-auto"></span>
+  <button class="btn btn-sm btn-outline-success" id="btn-bulk-activate">Activate</button>
+  <button class="btn btn-sm btn-outline-secondary" id="btn-bulk-deactivate">Deactivate</button>
 </div>
 
 <div id="task-groups">

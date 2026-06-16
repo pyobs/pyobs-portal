@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from astropy.coordinates import Angle
+import astropy.units as u
 
 from .models import Task, Observation, Merit, Constraint, Project, Target
 
@@ -93,6 +95,12 @@ class TargetSerializer(serializers.ModelSerializer):
             typ = "dynamic"
         else:
             typ = klass.split(".")[-1].replace("Target", "").lower()
+        # parse hms/dms strings for sidereal targets
+        if typ == "sidereal":
+            if isinstance(data.get("ra"), str):
+                data["ra"] = Angle(data["ra"], unit=u.hourangle).deg
+            if isinstance(data.get("dec"), str):
+                data["dec"] = Angle(data["dec"], unit=u.deg).deg
         # everything remaining goes into coords
         return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
@@ -125,7 +133,8 @@ class TaskSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if "class" in data:
             del data["class"]
-        data["code"] = data.pop("id")
+        if "id" in data:
+            data["code"] = data.pop("id")
         return super().to_internal_value(data)
 
     def to_representation(self, instance):
@@ -145,15 +154,17 @@ class TaskSerializer(serializers.ModelSerializer):
         return task
 
     def update(self, task: Task, validated_data):
-        merits_data = validated_data.pop("merits")
-        constraints_data = validated_data.pop("constraints")
+        merits_data = validated_data.pop("merits", None)
+        constraints_data = validated_data.pop("constraints", None)
         target_data = validated_data.pop("target", None)
         super().update(task, validated_data)
 
-        task.constraints.all().delete()
-        self._create_constraints(task, constraints_data)
-        task.merits.all().delete()
-        self._create_merits(task, merits_data)
+        if constraints_data is not None:
+            task.constraints.all().delete()
+            self._create_constraints(task, constraints_data)
+        if merits_data is not None:
+            task.merits.all().delete()
+            self._create_merits(task, merits_data)
         try:
             task.target.delete()
         except Task.target.RelatedObjectDoesNotExist:

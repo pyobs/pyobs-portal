@@ -166,6 +166,102 @@ class TargetEditor {
     delete rest.class;
     this.form = new SchemaForm(schema, schema.$defs || {}, rest, { ignoredFields: IGNORED_TASK_FIELDS });
     this.formContainer.appendChild(this.form.element);
+
+    if (type === "SiderealTarget") {
+      this._makeCoordsFlexible();
+      this._injectSimbadButton();
+    }
+  }
+
+  _makeCoordsFlexible() {
+    for (const fieldName of ["ra", "dec"]) {
+      const field = this.form.fields[fieldName];
+      if (!field) continue;
+      const numInput = field.rowEl.querySelector("input[type=number]");
+      if (!numInput) continue;
+
+      const textInput = document.createElement("input");
+      textInput.type = "text";
+      textInput.className = numInput.className;
+      textInput.placeholder = fieldName === "ra" ? "deg or hms (15:52:56.1)" : "deg or dms (+12:54:44)";
+      const initDeg = Number(numInput.value);
+      if (!isNaN(initDeg) && numInput.value !== "") {
+        textInput.value = fieldName === "ra" ? degToHms(initDeg) : degToDms(initDeg);
+      } else {
+        textInput.value = numInput.value;
+      }
+      numInput.replaceWith(textInput);
+
+      const hint = document.createElement("div");
+      hint.className = "small text-secondary mt-1";
+      field.rowEl.appendChild(hint);
+
+      const parse = fieldName === "ra" ? parseHmsToDeg : parseDmsToDeg;
+      const updateHint = () => {
+        const v = textInput.value.trim();
+        if (!v || !isNaN(Number(v))) { hint.textContent = ""; return; }
+        const deg = parse(v);
+        hint.textContent = deg !== null ? `= ${deg.toFixed(6)}°` : "";
+      };
+      textInput.addEventListener("input", updateHint);
+      updateHint();
+
+      field.getValue = () => {
+        const v = textInput.value.trim();
+        const n = Number(v);
+        return isNaN(n) || v === "" ? v : n;
+      };
+    }
+  }
+
+  _injectSimbadButton() {
+    const nameField = this.form.fields["name"];
+    if (!nameField) return;
+    const nameInput = nameField.rowEl.querySelector("input");
+    if (!nameInput) return;
+
+    const group = document.createElement("div");
+    group.className = "input-group input-group-sm";
+    nameInput.classList.remove("form-control-sm");
+    nameInput.parentNode.insertBefore(group, nameInput);
+    group.appendChild(nameInput);
+
+    const statusEl = document.createElement("span");
+    statusEl.className = "small ms-1 mt-1 d-block";
+
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "btn btn-outline-secondary";
+    btn.title = "Look up coordinates in Simbad";
+    btn.innerHTML = '<i class="bi bi-search"></i> Simbad';
+    btn.addEventListener("click", async () => {
+      const name = nameInput.value.trim();
+      if (!name) return;
+      btn.disabled = true;
+      statusEl.textContent = "Searching…";
+      statusEl.className = "small ms-1 mt-1 d-block text-secondary";
+      try {
+        const result = await simbadSearch(name);
+        if (result) {
+          const hms = degToHms(result.ra);
+          const dms = degToDms(result.dec);
+          this.form.setFieldValue("ra", hms);
+          this.form.setFieldValue("dec", dms);
+          statusEl.textContent = `✓ ${hms}  ${dms}`;
+          statusEl.className = "small ms-1 mt-1 d-block text-success";
+        } else {
+          statusEl.textContent = `No result found for "${name}"`;
+          statusEl.className = "small ms-1 mt-1 d-block text-warning";
+        }
+      } catch (e) {
+        statusEl.textContent = `✗ ${e.message}`;
+        statusEl.className = "small ms-1 mt-1 d-block text-danger";
+      } finally {
+        btn.disabled = false;
+      }
+    });
+    group.appendChild(btn);
+    nameField.rowEl.appendChild(statusEl);
   }
 
   getData() {
@@ -282,6 +378,50 @@ class ScriptEditor {
   }
 }
 
+function parseHmsToDeg(val) {
+  const m = val.trim().match(/^(\d+)[h:\s]\s*(\d+)[m:\s]\s*([\d.]+)s?$/i);
+  if (m) return (Number(m[1]) + Number(m[2]) / 60 + Number(m[3]) / 3600) * 15;
+  return null;
+}
+
+function parseDmsToDeg(val) {
+  const m = val.trim().match(/^([+-]?\d+)[d°:\s]\s*(\d+)[m':\s]\s*([\d.]+)[s"]?$/i);
+  if (m) {
+    const sign = Number(m[1]) < 0 ? -1 : 1;
+    return sign * (Math.abs(Number(m[1])) + Number(m[2]) / 60 + Number(m[3]) / 3600);
+  }
+  return null;
+}
+
+function degToHms(deg) {
+  const totalSec = (deg / 15) * 3600;
+  const h = Math.floor(totalSec / 3600);
+  const m = Math.floor((totalSec % 3600) / 60);
+  const s = totalSec % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+}
+
+function degToDms(deg) {
+  const sign = deg < 0 ? "-" : "+";
+  const abs = Math.abs(deg);
+  const d = Math.floor(abs);
+  const m = Math.floor((abs % 1) * 60);
+  const s = (((abs % 1) * 60) % 1) * 60;
+  return `${sign}${String(d).padStart(2, "0")}:${String(m).padStart(2, "0")}:${s.toFixed(2).padStart(5, "0")}`;
+}
+
+async function simbadSearch(name) {
+  const query = `SELECT ra, dec FROM basic JOIN ident ON ident.oidref = basic.oid WHERE ident.id = '${name.replace(/'/g, "\\'")}'`;
+  const url = `https://simbad.cds.unistra.fr/simbad/sim-tap/sync?REQUEST=doQuery&LANG=ADQL&FORMAT=json&QUERY=${encodeURIComponent(query)}`;
+  const resp = await fetch(url);
+  if (!resp.ok) throw new Error(`Simbad returned HTTP ${resp.status}`);
+  const data = await resp.json();
+  if (data.data && data.data.length > 0) {
+    return { ra: data.data[0][0], dec: data.data[0][1] };
+  }
+  return null;
+}
+
 /** Build a minimal-but-valid instance of a schema, for "insert template". */
 function templateForSchema(schema, defs) {
   const resolved = resolveSchema(schema, defs);
@@ -309,6 +449,7 @@ async function initTaskEditor(taskId) {
     script: document.getElementById("script-editor"),
     schedule: document.getElementById("schedule-table"),
     observations: document.getElementById("observations-table"),
+    exportBtn: document.getElementById("btn-export"),
     saveBtn: document.getElementById("btn-save"),
     saveStatus: document.getElementById("save-status"),
     title: document.getElementById("page-title"),
@@ -338,19 +479,34 @@ async function initTaskEditor(taskId) {
     els.code.disabled = true;
     els.project.value = task.project;
   } else {
-    els.title.textContent = "New task";
-    task = {
-      id: "",
-      name: "",
-      project: "",
-      duration: 0,
-      priority: 1.0,
-      active: true,
-      constraints: [],
-      merits: [],
-      target: null,
-      script: {},
-    };
+    const params = new URLSearchParams(window.location.search);
+    const cloneFrom = params.get("clone");
+    const importedRaw = sessionStorage.getItem("importTask");
+    if (cloneFrom) {
+      task = await apiRequest(`tasks/${encodeURIComponent(cloneFrom)}/`);
+      task.id = params.get("code") || "";
+      els.title.textContent = `Clone of ${cloneFrom}`;
+    } else if (importedRaw) {
+      sessionStorage.removeItem("importTask");
+      task = JSON.parse(importedRaw);
+      els.title.textContent = "Import task";
+    } else {
+      task = {
+        id: "",
+        name: "",
+        project: "",
+        duration: 0,
+        priority: 1.0,
+        active: true,
+        constraints: [],
+        merits: [],
+        target: null,
+        script: {},
+      };
+      els.title.textContent = "New task";
+    }
+    els.code.value = task.id;
+    els.project.value = task.project;
   }
 
   els.name.value = task.name || "";
@@ -392,19 +548,32 @@ async function initTaskEditor(taskId) {
     document.getElementById("tab-observations-nav").classList.add("d-none");
   }
 
+  const buildPayload = () => ({
+    id: els.code.value,
+    name: els.name.value,
+    project: els.project.value,
+    duration: Number(els.duration.value),
+    priority: Number(els.priority.value),
+    active: els.active.checked,
+    constraints: constraintsEditor.getData(),
+    merits: meritsEditor.getData(),
+    target: targetEditor.getData(),
+    script: scriptEditor.getData(),
+  });
+
+  els.exportBtn.addEventListener("click", () => {
+    const payload = buildPayload();
+    const yaml = jsyaml.dump(payload);
+    const blob = new Blob([yaml], { type: "text/yaml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${payload.id || "task"}.yaml`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   els.saveBtn.addEventListener("click", async () => {
-    const payload = {
-      id: els.code.value,
-      name: els.name.value,
-      project: els.project.value,
-      duration: Number(els.duration.value),
-      priority: Number(els.priority.value),
-      active: els.active.checked,
-      constraints: constraintsEditor.getData(),
-      merits: meritsEditor.getData(),
-      target: targetEditor.getData(),
-      script: scriptEditor.getData(),
-    };
+    const payload = buildPayload();
 
     els.saveStatus.textContent = "Saving…";
     els.saveStatus.className = "small ms-2 text-secondary";

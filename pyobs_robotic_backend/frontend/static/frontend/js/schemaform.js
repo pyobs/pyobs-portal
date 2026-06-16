@@ -30,7 +30,10 @@ function resolveSchema(schema, defs) {
   return schema;
 }
 
+const LABEL_OVERRIDES = { ra: "RA" };
+
 function prettyLabel(name, schema) {
+  if (name in LABEL_OVERRIDES) return LABEL_OVERRIDES[name];
   if (schema && schema.title) return schema.title;
   return name.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -54,8 +57,13 @@ function defaultValueFor(schema, defs) {
       return resolved.format === "date-time" ? new Date().toISOString().slice(0, 19) : "";
     case "array":
       return [];
-    case "object":
-      return {};
+    case "object": {
+      const result = {};
+      for (const [name, prop] of Object.entries(resolved.properties || {})) {
+        result[name] = defaultValueFor(prop, defs);
+      }
+      return result;
+    }
     default:
       return null;
   }
@@ -92,8 +100,6 @@ class SchemaForm {
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
       const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored);
-      this.fields[name] = { getValue, schema: resolved };
-
       const row = document.createElement("div");
       row.className = "mb-2";
       const label = document.createElement("label");
@@ -102,6 +108,7 @@ class SchemaForm {
       row.appendChild(label);
       row.appendChild(control);
       this.element.appendChild(row);
+      this.fields[name] = { getValue, schema: resolved, rowEl: row };
     }
     if (!Object.keys(props).length) {
       const p = document.createElement("p");
@@ -117,6 +124,15 @@ class SchemaForm {
       result[name] = field.getValue();
     }
     return result;
+  }
+
+  setFieldValue(name, value) {
+    const field = this.fields[name];
+    if (!field) return;
+    const input = field.rowEl.querySelector("input");
+    if (!input) return;
+    input.value = value;
+    input.dispatchEvent(new Event("input"));
   }
 }
 
