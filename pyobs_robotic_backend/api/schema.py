@@ -117,10 +117,31 @@ def validate_script(data: Any) -> dict[str, Any]:
 
 
 def estimate_duration(data: Any) -> dict[str, Any]:
+    """Estimate the duration of a script, given the full task payload.
+
+    The full task dict (not just the script sub-dict) must be passed so that
+    scripts like TransitImagingScript can find their TransitMerit and return
+    the correct window duration rather than falling back to the base
+    ImagingScript calculation (which only sums exposure times).
+    """
     if not isinstance(data, dict):
         return {"error": "Script must be a YAML/JSON object."}
     try:
-        script = Script.model_validate(data)
-        return {"duration": script.estimate_duration()}
+        # If the caller passed the full task dict, validate the whole task
+        # and create the script from it so estimate_duration gets TaskData.
+        if "script" in data and isinstance(data["script"], dict):
+            from pyobs.robotic.task import Task, TaskData
+
+            # target ra/dec may arrive as hms/dms strings; strip them so
+            # Task.model_validate doesn't choke (the scheduler converts them
+            # at runtime; we only need merits here).
+            task_dict = {k: v for k, v in data.items() if k != "target"}
+            task = Task.model_validate(task_dict)
+            script = task.create_script()
+            return {"duration": script.estimate_duration(data=TaskData(task=task), time=None)}
+        else:
+            # Legacy: called with just the script dict.
+            script = Script.model_validate(data)
+            return {"duration": script.estimate_duration()}
     except Exception as e:
         return {"error": str(e)}
