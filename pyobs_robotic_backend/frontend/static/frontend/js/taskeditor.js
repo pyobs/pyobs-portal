@@ -159,6 +159,7 @@ class TargetEditor {
     this.formContainer.innerHTML = "";
     this.type = type;
     this.form = null;
+    document.getElementById("aladin-container")?.classList.add("d-none");
     if (!type) return;
     const schema = this.schemas[type];
     if (!schema) return;
@@ -170,6 +171,34 @@ class TargetEditor {
     if (type === "SiderealTarget") {
       this._makeCoordsFlexible();
       this._injectSimbadButton();
+      this._initAladin();
+    }
+  }
+
+  _initAladin() {
+    const container = document.getElementById("aladin-container");
+    if (!container || typeof A === "undefined") return;
+    container.classList.remove("d-none");
+    if (!this._aladin) {
+      this._aladin = A.aladin(container, {
+        survey: "P/DSS2/color",
+        fov: 0.25,
+        showReticle: true,
+        showZoomControl: true,
+        showFullscreenControl: false,
+      });
+    }
+    this._updateAladin();
+  }
+
+  _updateAladin() {
+    if (!this._aladin || !this.form) return;
+    const ra = this.form.fields["ra"]?.getValue();
+    const dec = this.form.fields["dec"]?.getValue();
+    const raDeg = typeof ra === "number" ? ra : parseHmsToDeg(String(ra ?? ""));
+    const decDeg = typeof dec === "number" ? dec : parseDmsToDeg(String(dec ?? ""));
+    if (raDeg !== null && decDeg !== null) {
+      this._aladin.gotoRaDec(raDeg, decDeg);
     }
   }
 
@@ -204,6 +233,7 @@ class TargetEditor {
         hint.textContent = deg !== null ? `= ${deg.toFixed(6)}°` : "";
       };
       textInput.addEventListener("input", updateHint);
+      textInput.addEventListener("input", () => this._updateAladin());
       updateHint();
 
       field.getValue = () => {

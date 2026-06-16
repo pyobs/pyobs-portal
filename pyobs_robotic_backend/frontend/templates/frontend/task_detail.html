@@ -91,6 +91,7 @@
         <div class="card border-secondary mb-3">
           <div class="card-header">Target</div>
           <div class="card-body" id="target-editor"></div>
+          <div id="aladin-container" class="d-none" style="height:300px"></div>
         </div>
       </div>
 
@@ -158,6 +159,7 @@
 {% endblock %}
 
 {% block scripts %}
+<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
 <script src="{% static 'frontend/js/schemaform.js' %}"></script>
 <script src="{% static 'frontend/js/taskeditor.js' %}"></script>
 <script>
