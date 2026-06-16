@@ -115,7 +115,7 @@ The browser UI is mounted at `/` and requires a login. Features:
 - **Sidebar** — task list grouped by project; click a task to open it. Upload icon imports a task from YAML; `+` creates a new task.
 - **Task overview** — tabular view of all tasks grouped by project with bulk activate/deactivate via checkboxes.
 - **Task editor** — tabbed view with **Task** (general fields, target, constraints, merits), **Script** (YAML editor with live validation and template insertion), **Schedule** (upcoming observations), and **Observations** (completed/cancelled history).
-  - **Sidereal target** — RA/Dec fields accept decimal degrees or hms/dms (e.g. `15:52:56.12` / `+12:54:44`). A Simbad name-search button resolves object names and populates the coordinates.
+  - **Sidereal target** — RA/Dec fields accept decimal degrees or hms/dms (e.g. `15:52:56.12` / `+12:54:44`). A Simbad name-search button resolves object names and populates the coordinates. An [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) DSS sky view is shown below the target form and pans live as coordinates change.
   - **Duration estimation** — stopwatch button calls `/api/estimate_duration/` on the current script.
   - **Clone** — copies the current task to a new code, opening a pre-filled editor without saving.
   - **Export YAML** — downloads the current form state as a `.yaml` file.
