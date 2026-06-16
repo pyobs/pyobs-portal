@@ -449,6 +449,7 @@ async function initTaskEditor(taskId) {
     script: document.getElementById("script-editor"),
     schedule: document.getElementById("schedule-table"),
     observations: document.getElementById("observations-table"),
+    exportBtn: document.getElementById("btn-export"),
     saveBtn: document.getElementById("btn-save"),
     saveStatus: document.getElementById("save-status"),
     title: document.getElementById("page-title"),
@@ -542,19 +543,32 @@ async function initTaskEditor(taskId) {
     document.getElementById("tab-observations-nav").classList.add("d-none");
   }
 
+  const buildPayload = () => ({
+    id: els.code.value,
+    name: els.name.value,
+    project: els.project.value,
+    duration: Number(els.duration.value),
+    priority: Number(els.priority.value),
+    active: els.active.checked,
+    constraints: constraintsEditor.getData(),
+    merits: meritsEditor.getData(),
+    target: targetEditor.getData(),
+    script: scriptEditor.getData(),
+  });
+
+  els.exportBtn.addEventListener("click", () => {
+    const payload = buildPayload();
+    const yaml = jsyaml.dump(payload);
+    const blob = new Blob([yaml], { type: "text/yaml" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${payload.id || "task"}.yaml`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
   els.saveBtn.addEventListener("click", async () => {
-    const payload = {
-      id: els.code.value,
-      name: els.name.value,
-      project: els.project.value,
-      duration: Number(els.duration.value),
-      priority: Number(els.priority.value),
-      active: els.active.checked,
-      constraints: constraintsEditor.getData(),
-      merits: meritsEditor.getData(),
-      target: targetEditor.getData(),
-      script: scriptEditor.getData(),
-    };
+    const payload = buildPayload();
 
     els.saveStatus.textContent = "Saving…";
     els.saveStatus.className = "small ms-2 text-secondary";
