@@ -1,6 +1,8 @@
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
+from astropy.coordinates import Angle
+import astropy.units as u
 
 from .models import Task, Observation, Merit, Constraint, Project, Target
 
@@ -93,6 +95,12 @@ class TargetSerializer(serializers.ModelSerializer):
             typ = "dynamic"
         else:
             typ = klass.split(".")[-1].replace("Target", "").lower()
+        # parse hms/dms strings for sidereal targets
+        if typ == "sidereal":
+            if isinstance(data.get("ra"), str):
+                data["ra"] = Angle(data["ra"], unit=u.hourangle).deg
+            if isinstance(data.get("dec"), str):
+                data["dec"] = Angle(data["dec"], unit=u.deg).deg
         # everything remaining goes into coords
         return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
