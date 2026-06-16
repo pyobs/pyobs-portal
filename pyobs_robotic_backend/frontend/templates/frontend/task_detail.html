@@ -9,9 +9,16 @@
   <div class="d-flex align-items-center">
     <span id="save-status" class="small ms-2"></span>
     {% if task_id %}
-    <button class="btn btn-sm btn-outline-secondary ms-2" id="btn-clone">
-      <i class="bi bi-copy"></i> Clone
-    </button>
+    <div class="d-flex align-items-center ms-2" id="clone-ui">
+      <button class="btn btn-sm btn-outline-secondary" id="btn-clone">
+        <i class="bi bi-copy"></i> Clone
+      </button>
+      <div class="input-group input-group-sm ms-1 d-none" id="clone-form" style="width:220px">
+        <input type="text" class="form-control" id="clone-code" placeholder="New code…">
+        <button class="btn btn-outline-primary" id="btn-clone-ok">OK</button>
+        <button class="btn btn-outline-secondary" id="btn-clone-cancel">Cancel</button>
+      </div>
+    </div>
     {% endif %}
     <button class="btn btn-sm btn-outline-secondary ms-2" id="btn-export">
       <i class="bi bi-download"></i> Export YAML
@@ -157,11 +164,23 @@
 <script>
 {% if task_id %}
 initTaskEditor("{{ task_id|escapejs }}");
+const cloneForm = document.getElementById("clone-form");
+const cloneCodeInput = document.getElementById("clone-code");
 document.getElementById("btn-clone").addEventListener("click", () => {
-  const newCode = prompt("Enter code for the cloned task:");
-  if (newCode) {
-    window.location.href = `/tasks/new/?clone={{ task_id|escapejs }}&code=${encodeURIComponent(newCode)}`;
-  }
+  cloneForm.classList.remove("d-none");
+  cloneCodeInput.value = "";
+  cloneCodeInput.focus();
+});
+document.getElementById("btn-clone-cancel").addEventListener("click", () => {
+  cloneForm.classList.add("d-none");
+});
+document.getElementById("btn-clone-ok").addEventListener("click", () => {
+  const newCode = cloneCodeInput.value.trim();
+  if (newCode) window.location.href = `/tasks/new/?clone={{ task_id|escapejs }}&code=${encodeURIComponent(newCode)}`;
+});
+cloneCodeInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("btn-clone-ok").click();
+  if (e.key === "Escape") cloneForm.classList.add("d-none");
 });
 {% else %}
 initTaskEditor(null);
