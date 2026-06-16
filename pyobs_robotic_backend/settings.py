@@ -186,10 +186,25 @@ SITE_ELEVATION = (
     float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
 )
 
+# Default constraints/merits pre-filled when creating a new task in the
+# web frontend.  Set via JSON env vars, e.g.:
+#   DEFAULT_CONSTRAINTS='[{"class":"pyobs.robotic.scheduler.constraints.AirmassConstraint","max_airmass":2.0}]'
+#   DEFAULT_MERITS='[{"class":"pyobs.robotic.scheduler.merits.ConstantMerit","value":1.0}]'
+import json as _json
+
+DEFAULT_CONSTRAINTS = _json.loads(os.environ.get("DEFAULT_CONSTRAINTS") or "[]")
+DEFAULT_MERITS = _json.loads(os.environ.get("DEFAULT_MERITS") or "[]")
+
 try:
     from .local_settings import *
 except ImportError:
     pass
+
+# local_settings may set these as JSON strings (mirrors the env-var format)
+if isinstance(DEFAULT_CONSTRAINTS, str):
+    DEFAULT_CONSTRAINTS = _json.loads(DEFAULT_CONSTRAINTS)
+if isinstance(DEFAULT_MERITS, str):
+    DEFAULT_MERITS = _json.loads(DEFAULT_MERITS)
 
 if FRONTEND_ENABLED:
     if "pyobs_robotic_backend.frontend" not in INSTALLED_APPS:

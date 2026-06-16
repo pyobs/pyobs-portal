@@ -229,4 +229,6 @@ def site(request):
         "latitude": getattr(settings, "SITE_LATITUDE", None),
         "longitude": getattr(settings, "SITE_LONGITUDE", None),
         "elevation": getattr(settings, "SITE_ELEVATION", None),
+        "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
+        "default_merits": getattr(settings, "DEFAULT_MERITS", []),
     })

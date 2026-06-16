@@ -455,12 +455,13 @@ async function initTaskEditor(taskId) {
     title: document.getElementById("page-title"),
   };
 
-  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects] = await Promise.all([
+  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects, siteConfig] = await Promise.all([
     apiRequest("schema/constraints/"),
     apiRequest("schema/merits/"),
     apiRequest("schema/targets/"),
     apiRequest("schema/scripts/"),
     apiList("projects/"),
+    apiRequest("site/"),
   ]);
 
   els.project.innerHTML = "";
@@ -498,8 +499,8 @@ async function initTaskEditor(taskId) {
         duration: 0,
         priority: 1.0,
         active: true,
-        constraints: [],
-        merits: [],
+        constraints: siteConfig.default_constraints || [],
+        merits: siteConfig.default_merits || [],
         target: null,
         script: {},
       };
