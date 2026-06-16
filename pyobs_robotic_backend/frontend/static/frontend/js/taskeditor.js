@@ -478,19 +478,29 @@ async function initTaskEditor(taskId) {
     els.code.disabled = true;
     els.project.value = task.project;
   } else {
-    els.title.textContent = "New task";
-    task = {
-      id: "",
-      name: "",
-      project: "",
-      duration: 0,
-      priority: 1.0,
-      active: true,
-      constraints: [],
-      merits: [],
-      target: null,
-      script: {},
-    };
+    const params = new URLSearchParams(window.location.search);
+    const cloneFrom = params.get("clone");
+    if (cloneFrom) {
+      task = await apiRequest(`tasks/${encodeURIComponent(cloneFrom)}/`);
+      task.id = params.get("code") || "";
+      els.title.textContent = `Clone of ${cloneFrom}`;
+    } else {
+      task = {
+        id: "",
+        name: "",
+        project: "",
+        duration: 0,
+        priority: 1.0,
+        active: true,
+        constraints: [],
+        merits: [],
+        target: null,
+        script: {},
+      };
+      els.title.textContent = "New task";
+    }
+    els.code.value = task.id;
+    els.project.value = task.project;
   }
 
   els.name.value = task.name || "";
