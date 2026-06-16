@@ -133,7 +133,8 @@ class TaskSerializer(serializers.ModelSerializer):
     def to_internal_value(self, data):
         if "class" in data:
             del data["class"]
-        data["code"] = data.pop("id")
+        if "id" in data:
+            data["code"] = data.pop("id")
         return super().to_internal_value(data)
 
     def to_representation(self, instance):
@@ -153,15 +154,17 @@ class TaskSerializer(serializers.ModelSerializer):
         return task
 
     def update(self, task: Task, validated_data):
-        merits_data = validated_data.pop("merits")
-        constraints_data = validated_data.pop("constraints")
+        merits_data = validated_data.pop("merits", None)
+        constraints_data = validated_data.pop("constraints", None)
         target_data = validated_data.pop("target", None)
         super().update(task, validated_data)
 
-        task.constraints.all().delete()
-        self._create_constraints(task, constraints_data)
-        task.merits.all().delete()
-        self._create_merits(task, merits_data)
+        if constraints_data is not None:
+            task.constraints.all().delete()
+            self._create_constraints(task, constraints_data)
+        if merits_data is not None:
+            task.merits.all().delete()
+            self._create_merits(task, merits_data)
         try:
             task.target.delete()
         except Task.target.RelatedObjectDoesNotExist:
