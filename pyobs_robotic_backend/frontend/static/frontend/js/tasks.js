@@ -36,7 +36,15 @@ async function loadTasks(showInactive) {
         body.className = "card-body p-0";
         const table = document.createElement("table");
         table.className = "table table-sm table-hover mb-0";
+        table.style.tableLayout = "fixed";
         table.innerHTML = `
+          <colgroup>
+            <col style="width:12%">
+            <col style="width:48%">
+            <col style="width:15%">
+            <col style="width:15%">
+            <col style="width:10%">
+          </colgroup>
           <thead>
             <tr class="text-muted small">
               <th class="ps-3">Code</th>
@@ -55,6 +63,7 @@ async function loadTasks(showInactive) {
           .forEach((task) => {
             const tr = document.createElement("tr");
             tr.style.cursor = "pointer";
+            if (!task.active) tr.classList.add("text-muted", "opacity-50");
             tr.innerHTML = `
               <td class="ps-3">${task.id}</td>
               <td>${task.name || ""}</td>
@@ -77,5 +86,7 @@ async function loadTasks(showInactive) {
   }
 }
 
-document.getElementById("show-inactive").addEventListener("change", (e) => loadTasks(e.target.checked));
-loadTasks(false);
+const showInactiveToggle = document.getElementById("show-inactive");
+showInactiveToggle.checked = true;
+showInactiveToggle.addEventListener("change", (e) => loadTasks(e.target.checked));
+loadTasks(true);
