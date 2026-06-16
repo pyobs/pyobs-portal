@@ -57,8 +57,13 @@ function defaultValueFor(schema, defs) {
       return resolved.format === "date-time" ? new Date().toISOString().slice(0, 19) : "";
     case "array":
       return [];
-    case "object":
-      return {};
+    case "object": {
+      const result = {};
+      for (const [name, prop] of Object.entries(resolved.properties || {})) {
+        result[name] = defaultValueFor(prop, defs);
+      }
+      return result;
+    }
     default:
       return null;
   }
