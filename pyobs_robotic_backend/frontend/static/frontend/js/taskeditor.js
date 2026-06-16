@@ -159,6 +159,7 @@ class TargetEditor {
     this.formContainer.innerHTML = "";
     this.type = type;
     this.form = null;
+    document.getElementById("aladin-container")?.classList.add("d-none");
     if (!type) return;
     const schema = this.schemas[type];
     if (!schema) return;
@@ -170,6 +171,34 @@ class TargetEditor {
     if (type === "SiderealTarget") {
       this._makeCoordsFlexible();
       this._injectSimbadButton();
+      this._initAladin();
+    }
+  }
+
+  _initAladin() {
+    const container = document.getElementById("aladin-container");
+    if (!container || typeof A === "undefined") return;
+    container.classList.remove("d-none");
+    if (!this._aladin) {
+      this._aladin = A.aladin(container, {
+        survey: "P/DSS2/color",
+        fov: 0.25,
+        showReticle: true,
+        showZoomControl: true,
+        showFullscreenControl: false,
+      });
+    }
+    this._updateAladin();
+  }
+
+  _updateAladin() {
+    if (!this._aladin || !this.form) return;
+    const ra = this.form.fields["ra"]?.getValue();
+    const dec = this.form.fields["dec"]?.getValue();
+    const raDeg = typeof ra === "number" ? ra : parseHmsToDeg(String(ra ?? ""));
+    const decDeg = typeof dec === "number" ? dec : parseDmsToDeg(String(dec ?? ""));
+    if (raDeg !== null && decDeg !== null) {
+      this._aladin.gotoRaDec(raDeg, decDeg);
     }
   }
 
@@ -204,6 +233,7 @@ class TargetEditor {
         hint.textContent = deg !== null ? `= ${deg.toFixed(6)}°` : "";
       };
       textInput.addEventListener("input", updateHint);
+      textInput.addEventListener("input", () => this._updateAladin());
       updateHint();
 
       field.getValue = () => {
@@ -261,6 +291,19 @@ class TargetEditor {
       }
     });
     group.appendChild(btn);
+
+    const openBtn = document.createElement("a");
+    openBtn.className = "btn btn-outline-secondary";
+    openBtn.title = "Open in Simbad";
+    openBtn.innerHTML = '<i class="bi bi-box-arrow-up-right"></i>';
+    openBtn.target = "_blank";
+    openBtn.rel = "noopener noreferrer";
+    openBtn.addEventListener("click", () => {
+      const name = nameInput.value.trim();
+      if (name) openBtn.href = `https://simbad.cds.unistra.fr/simbad/sim-id?Ident=${encodeURIComponent(name)}`;
+    });
+    group.appendChild(openBtn);
+
     nameField.rowEl.appendChild(statusEl);
   }
 
@@ -455,12 +498,13 @@ async function initTaskEditor(taskId) {
     title: document.getElementById("page-title"),
   };
 
-  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects] = await Promise.all([
+  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects, siteConfig] = await Promise.all([
     apiRequest("schema/constraints/"),
     apiRequest("schema/merits/"),
     apiRequest("schema/targets/"),
     apiRequest("schema/scripts/"),
     apiList("projects/"),
+    apiRequest("site/"),
   ]);
 
   els.project.innerHTML = "";
@@ -498,8 +542,8 @@ async function initTaskEditor(taskId) {
         duration: 0,
         priority: 1.0,
         active: true,
-        constraints: [],
-        merits: [],
+        constraints: siteConfig.default_constraints || [],
+        merits: siteConfig.default_merits || [],
         target: null,
         script: {},
       };
