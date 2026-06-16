@@ -120,9 +120,14 @@
 
       <div class="px-2 pb-1 d-flex align-items-center justify-content-between">
         <a href="{% url 'frontend:task_list' %}" class="text-uppercase text-muted fw-semibold text-decoration-none" style="font-size:0.65rem;letter-spacing:.08em">Tasks</a>
-        <a href="{% url 'frontend:task_new' %}" class="sidebar-link px-1 py-0 lh-1" title="New task" style="font-size:0.85rem">
-          <i class="bi bi-plus-lg"></i>
-        </a>
+        <div class="d-flex align-items-center gap-1">
+          <label for="import-task-file" class="sidebar-link px-1 py-0 lh-1 mb-0" title="Import task from YAML" style="font-size:0.85rem;cursor:pointer">
+            <i class="bi bi-upload"></i>
+          </label>
+          <a href="{% url 'frontend:task_new' %}" class="sidebar-link px-1 py-0 lh-1" title="New task" style="font-size:0.85rem">
+            <i class="bi bi-plus-lg"></i>
+          </a>
+        </div>
       </div>
       <div class="px-2 pb-2" id="sidebar-task-list">
         <div class="text-muted small px-2 py-1">Loading…</div>
@@ -168,7 +173,9 @@
 </div>
 
 {% load static %}
+<input type="file" id="import-task-file" accept=".yaml,.yml" style="display:none">
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/js-yaml/4.1.0/js-yaml.min.js"></script>
 <script src="{% static 'frontend/js/api.js' %}"></script>
 <script>
 function getCsrfToken() {
@@ -243,6 +250,20 @@ async function loadSidebarTasks() {
   }
 }
 loadSidebarTasks();
+
+document.getElementById('import-task-file').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  e.target.value = '';
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const data = jsyaml.load(text);
+    sessionStorage.setItem('importTask', JSON.stringify(data));
+    window.location.href = '/tasks/new/';
+  } catch(err) {
+    alert(`Import failed: ${err.message}`);
+  }
+});
 </script>
 {% block scripts %}{% endblock %}
 </body>

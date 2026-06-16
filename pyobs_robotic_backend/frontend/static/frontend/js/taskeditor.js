@@ -481,10 +481,15 @@ async function initTaskEditor(taskId) {
   } else {
     const params = new URLSearchParams(window.location.search);
     const cloneFrom = params.get("clone");
+    const importedRaw = sessionStorage.getItem("importTask");
     if (cloneFrom) {
       task = await apiRequest(`tasks/${encodeURIComponent(cloneFrom)}/`);
       task.id = params.get("code") || "";
       els.title.textContent = `Clone of ${cloneFrom}`;
+    } else if (importedRaw) {
+      sessionStorage.removeItem("importTask");
+      task = JSON.parse(importedRaw);
+      els.title.textContent = "Import task";
     } else {
       task = {
         id: "",
