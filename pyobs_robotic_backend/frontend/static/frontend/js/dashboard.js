@@ -189,7 +189,7 @@ async function loadDashboard() {
     const projects  = await apiList("projects/");
     const tasks     = await apiList("tasks/");
     const siteInfo  = await apiRequest("site/");
-    const pending   = await apiList("observations/", { state: "pending" });
+    const pending   = await apiList("observations/", { state: "pending", end_after: new Date().toISOString() });
     const running   = await apiList("observations/", { state: "in_progress" });
     const completed = await apiList("observations/", { state: "completed" });
 
