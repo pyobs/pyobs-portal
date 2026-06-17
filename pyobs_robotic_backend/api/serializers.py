@@ -83,9 +83,9 @@ class TargetSerializer(serializers.ModelSerializer):
         fields = ["name", "type", "coords"]
 
     def to_internal_value(self, data):
-        print("TargetSerializer.to_internal_value called with:", data)
         if data is None:
             return None
+        data = dict(data)  # don't mutate input
         klass = data.pop("class", "")
         name = data.pop("name")
         # extract type from class name
@@ -101,7 +101,13 @@ class TargetSerializer(serializers.ModelSerializer):
                 data["ra"] = Angle(data["ra"], unit=u.hourangle).deg
             if isinstance(data.get("dec"), str):
                 data["dec"] = Angle(data["dec"], unit=u.deg).deg
-        # everything remaining goes into coords
+        # DynamicTarget: keep picker as nested object
+        elif typ == "dynamic":
+            coords = {k: v for k, v in data.items() if k != "picker"}
+            if "picker" in data:
+                coords["picker"] = data["picker"]
+            return super().to_internal_value({"name": name, "type": typ, "coords": coords})
+        # everything else goes into coords
         return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
     def to_representation(self, instance):
@@ -116,7 +122,13 @@ class TargetSerializer(serializers.ModelSerializer):
             ),
             "name": instance.name,
         }
-        data.update(instance.coords)
+        # DynamicTarget: preserve picker as nested object
+        if instance.type == "dynamic" and "picker" in instance.coords:
+            data["picker"] = instance.coords["picker"]
+            coords = {k: v for k, v in instance.coords.items() if k != "picker"}
+            data.update(coords)
+        else:
+            data.update(instance.coords)
         return data
 
 
