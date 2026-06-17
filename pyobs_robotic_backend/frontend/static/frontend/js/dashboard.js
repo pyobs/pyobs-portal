@@ -101,6 +101,7 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
       const name = taskName[obs.task] || obs.task;
       const start = new Date(obs.start);
       const end   = new Date(obs.end);
+      const isCompleted = obs.state === "completed";
       items.add({
         id: `obs-${obs.id}`,
         group: proj,
@@ -108,8 +109,12 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
         start,
         end,
         title: `<b>${name}</b><br>${start.toUTCString()}<br>→ ${end.toUTCString()}`,
-        style: `background-color:${color.bg};border-color:${color.border};color:#fff;`,
-        className: obs.state === "running" ? "obs-running" : "",
+        style: isCompleted
+          ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
+          : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
+        className: obs.state === "running" ? "obs-running"
+                 : isCompleted            ? "obs-completed"
+                 : "",
       });
     });
 
@@ -177,7 +182,7 @@ async function loadDashboard() {
     }
 
     // Timeline
-    renderTimeline(projects, tasks, siteInfo, [...running, ...pending]);
+    renderTimeline(projects, tasks, siteInfo, [...running, ...pending, ...completed]);
 
   } catch (e) {
     console.error("Dashboard load error:", e);
