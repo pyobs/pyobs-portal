@@ -774,6 +774,7 @@ const OBS_STATE_BADGE = {
   aborted: "text-bg-warning",
   canceled: "text-bg-danger",
   failed: "text-bg-danger",
+  window_expired: "text-bg-secondary",
 };
 
 async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}) {

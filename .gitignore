@@ -12,3 +12,9 @@ wheels/
 # Local configuration
 .env
 local_settings.py
+
+# IDE
+.idea/
+
+# Database
+db.sqlite3
