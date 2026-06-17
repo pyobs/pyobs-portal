@@ -595,8 +595,8 @@ async function initTaskEditor(taskId) {
   });
 
   if (taskId) {
-    loadObservationTable(taskId, els.schedule, ["pending", "running"], true);
-    loadObservationTable(taskId, els.observations, ["completed", "canceled"], false);
+    loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true);
+    loadObservationTable(taskId, els.observations, ["completed", "aborted", "canceled", "failed"], false);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
     document.getElementById("tab-observations-nav").classList.add("d-none");
@@ -663,9 +663,11 @@ async function loadObservationTable(taskId, tableEl, states, ascending) {
     }
     const stateBadge = {
       pending: "text-bg-secondary",
+      in_progress: "text-bg-primary",
       completed: "text-bg-success",
+      aborted: "text-bg-warning",
       canceled: "text-bg-danger",
-      running: "text-bg-primary",
+      failed: "text-bg-danger",
     };
     observations
       .sort((a, b) => (ascending ? 1 : -1) * (a.start < b.start ? -1 : 1))

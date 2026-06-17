@@ -117,8 +117,8 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
         style: isCompleted
           ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
           : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
-        className: obs.state === "running" ? "obs-running"
-                 : isCompleted            ? "obs-completed"
+        className: obs.state === "in_progress" ? "obs-running"
+                 : isCompleted                 ? "obs-completed"
                  : "",
       });
     });
@@ -164,7 +164,7 @@ async function loadDashboard() {
     const tasks     = await apiList("tasks/");
     const siteInfo  = await apiRequest("site/");
     const pending   = await apiList("observations/", { state: "pending" });
-    const running   = await apiList("observations/", { state: "running" });
+    const running   = await apiList("observations/", { state: "in_progress" });
     const completed = await apiList("observations/", { state: "completed" });
 
     // Stats

@@ -1,7 +1,10 @@
 import datetime
+
 from django.contrib.auth.models import User
 from django.db import models
 import logging
+
+from pyobs.robotic.observation import ObservationState
 
 log = logging.getLogger(__name__)
 
@@ -73,7 +76,11 @@ class Observation(models.Model):
     )
     start = models.DateTimeField()
     end = models.DateTimeField()
-    state = models.CharField(max_length=15, default="pending")
+    state = models.CharField(
+        max_length=15,
+        choices=[(s, s) for s in ObservationState],
+        default=ObservationState.PENDING,
+    )
     target = models.JSONField(null=True, blank=True)
 
     class Meta:
@@ -84,7 +91,7 @@ class Observation(models.Model):
         observations = Observation.objects.filter(
             start__lt=until.isoformat(),
             end__lt=until.isoformat(),
-            state__in=["canceled", "pending"],
+            state__in=[ObservationState.CANCELED, ObservationState.PENDING],
         )
         log.info(
             f"There are {observations.count()} observations to be deleted. Only the first 100,000 will be deleted this run"
