@@ -416,19 +416,28 @@ class ScriptEditor {
     toolbar.appendChild(select);
     container.appendChild(toolbar);
 
-    this.textarea = document.createElement("textarea");
-    this.textarea.className = "form-control font-monospace";
-    this.textarea.rows = 16;
-    this.textarea.spellcheck = false;
-    this.textarea.value = scriptData ? jsyaml.dump(scriptData) : "";
-    container.appendChild(this.textarea);
+    const ta = document.createElement("textarea");
+    ta.value = scriptData ? jsyaml.dump(scriptData) : "";
+    container.appendChild(ta);
+
+    this.editor = CodeMirror.fromTextArea(ta, {
+      mode: "yaml",
+      theme: "material-darker",
+      lineNumbers: true,
+      indentUnit: 2,
+      tabSize: 2,
+      indentWithTabs: false,
+      lineWrapping: true,
+      viewportMargin: Infinity,
+    });
+    setTimeout(() => this.editor.refresh(), 0);
 
     this.status = document.createElement("div");
     this.status.className = "small mt-1";
     container.appendChild(this.status);
 
     let timer = null;
-    this.textarea.addEventListener("input", () => {
+    this.editor.on("change", () => {
       clearTimeout(timer);
       timer = setTimeout(() => this._validate(), 400);
     });
@@ -460,10 +469,11 @@ class ScriptEditor {
     const defs = schema.$defs || {};
     const template = { class: entry.class, ...templateForSchema(schema, defs) };
     const snippet = jsyaml.dump(template);
-    if (!this.textarea.value.trim()) {
-      this.textarea.value = snippet;
+    const currentValue = this.editor.getValue();
+    if (!currentValue.trim()) {
+      this.editor.setValue(snippet);
     } else {
-      this.textarea.value += (this.textarea.value.endsWith("\n") ? "" : "\n") + snippet;
+      this.editor.setValue(currentValue + (currentValue.endsWith("\n") ? "" : "\n") + snippet);
     }
     this._validate();
   }
@@ -471,7 +481,7 @@ class ScriptEditor {
   async _validate() {
     let data;
     try {
-      data = jsyaml.load(this.textarea.value) || {};
+      data = jsyaml.load(this.editor.getValue()) || {};
     } catch (e) {
       this.status.textContent = `✗ Invalid YAML: ${e.message}`;
       this.status.className = "small mt-1 text-danger";
@@ -494,10 +504,15 @@ class ScriptEditor {
 
   getData() {
     try {
-      return jsyaml.load(this.textarea.value) || {};
+      return jsyaml.load(this.editor.getValue()) || {};
     } catch (e) {
       return {};
     }
+  }
+
+  /** Update editor content and refresh. */
+  setContent(data) {
+    this.editor.setValue(data ? jsyaml.dump(data) : "");
   }
 }
 
@@ -707,8 +722,25 @@ async function initTaskEditor(taskId) {
     URL.revokeObjectURL(a.href);
   });
 
+  document.getElementById("tab-script-nav").addEventListener("show.bs.tab", () => {
+    setTimeout(() => scriptEditor.editor.refresh(), 0);
+  });
+
+  let yamlPreviewEditor = null;
   document.getElementById("tab-yaml-nav").addEventListener("show.bs.tab", () => {
-    document.getElementById("yaml-preview").textContent = jsyaml.dump(buildPayload());
+    const container = document.getElementById("yaml-preview-editor");
+    if (!yamlPreviewEditor) {
+      yamlPreviewEditor = CodeMirror(container, {
+        mode: "yaml",
+        theme: "material-darker",
+        lineNumbers: true,
+        indentUnit: 2,
+        readOnly: true,
+        viewportMargin: Infinity,
+      });
+    }
+    yamlPreviewEditor.setValue(jsyaml.dump(buildPayload()));
+    setTimeout(() => yamlPreviewEditor.refresh(), 0);
   });
 
   els.saveBtn.addEventListener("click", async () => {
