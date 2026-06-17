@@ -205,6 +205,12 @@ def schema_targets(request):
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
+def schema_pickers(request):
+    return Response(schema.picker_schemas())
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
 def schema_scripts(request):
     return Response(schema.script_tree())
 

@@ -125,10 +125,78 @@ class TypedListEditor {
   }
 }
 
+/** Editor for picker (CsvPicker, etc.) within DynamicTarget. */
+class PickerEditor {
+  constructor(container, pickerSchemas, data) {
+    this.pickerSchemas = pickerSchemas;
+    this.form = null;
+
+    const typeContainer = document.createElement("div");
+    typeContainer.className = "mb-3";
+
+    const label = document.createElement("label");
+    label.className = "form-label small";
+    label.textContent = "Picker Type";
+    typeContainer.appendChild(label);
+
+    this.typeSelect = document.createElement("select");
+    this.typeSelect.className = "form-select form-select-sm";
+    const noneOpt = document.createElement("option");
+    noneOpt.value = "";
+    noneOpt.textContent = "(select picker)";
+    this.typeSelect.appendChild(noneOpt);
+    Object.keys(pickerSchemas)
+      .sort()
+      .forEach((name) => {
+        const o = document.createElement("option");
+        o.value = name;
+        o.textContent = name;
+        this.typeSelect.appendChild(o);
+      });
+    typeContainer.appendChild(this.typeSelect);
+    container.appendChild(typeContainer);
+
+    this.formContainer = document.createElement("div");
+    container.appendChild(this.formContainer);
+
+    if (data && data.class) {
+      const pickerType = data.class.split(".").pop();
+      this.typeSelect.value = pickerType;
+      this._renderPickerForm(pickerType, data);
+    }
+
+    this.typeSelect.addEventListener("change", () => this._renderPickerForm(this.typeSelect.value || null, null));
+  }
+
+  _renderPickerForm(pickerType, data) {
+    this.formContainer.innerHTML = "";
+    this.form = null;
+    if (!pickerType) return;
+
+    const schema = this.pickerSchemas[pickerType];
+    if (!schema) return;
+
+    const rest = data ? { ...data } : {};
+    delete rest.class;
+    this.form = new SchemaForm(schema, schema.$defs || {}, rest, { ignoredFields: IGNORED_TASK_FIELDS });
+    this.formContainer.appendChild(this.form.element);
+  }
+
+  getData() {
+    if (!this.typeSelect.value || !this.form) return null;
+    const pickerType = this.typeSelect.value;
+    return {
+      class: `pyobs.robotic.scheduler.targets.picker.${pickerType.toLowerCase()}.${pickerType}`,
+      ...this.form.getData()
+    };
+  }
+}
+
 /** Single, optional, typed target (sidereal / dynamic / ...). */
 class TargetEditor {
-  constructor(container, schemas, data) {
+  constructor(container, schemas, pickerSchemas, data) {
     this.schemas = schemas;
+    this.pickerSchemas = pickerSchemas;
     this.type = data ? classToType(data.class, TARGET_PREFIX) : null;
 
     this.select = document.createElement("select");
@@ -159,19 +227,26 @@ class TargetEditor {
     this.formContainer.innerHTML = "";
     this.type = type;
     this.form = null;
+    this.pickerEditor = null;
     document.getElementById("aladin-container")?.classList.add("d-none");
     if (!type) return;
     const schema = this.schemas[type];
     if (!schema) return;
-    const rest = data ? { ...data } : {};
-    delete rest.class;
-    this.form = new SchemaForm(schema, schema.$defs || {}, rest, { ignoredFields: IGNORED_TASK_FIELDS });
-    this.formContainer.appendChild(this.form.element);
 
-    if (type === "SiderealTarget") {
-      this._makeCoordsFlexible();
-      this._injectSimbadButton();
-      this._initAladin();
+    if (type === "DynamicTarget") {
+      // Special handling for DynamicTarget: use PickerEditor for the picker field
+      this.pickerEditor = new PickerEditor(this.formContainer, this.pickerSchemas, data?.picker);
+    } else {
+      const rest = data ? { ...data } : {};
+      delete rest.class;
+      this.form = new SchemaForm(schema, schema.$defs || {}, rest, { ignoredFields: IGNORED_TASK_FIELDS });
+      this.formContainer.appendChild(this.form.element);
+
+      if (type === "SiderealTarget") {
+        this._makeCoordsFlexible();
+        this._injectSimbadButton();
+        this._initAladin();
+      }
     }
   }
 
@@ -308,7 +383,12 @@ class TargetEditor {
   }
 
   getData() {
-    if (!this.type || !this.form) return null;
+    if (!this.type) return null;
+    if (this.type === "DynamicTarget") {
+      const picker = this.pickerEditor?.getData();
+      return picker ? { class: TARGET_PREFIX + this.type, name: "DynamicTarget", picker } : null;
+    }
+    if (!this.form) return null;
     return { class: TARGET_PREFIX + this.type, ...this.form.getData() };
   }
 }
@@ -498,10 +578,11 @@ async function initTaskEditor(taskId) {
     title: document.getElementById("page-title"),
   };
 
-  const [constraintSchemas, meritSchemas, targetSchemas, scriptTree, projects, siteConfig] = await Promise.all([
+  const [constraintSchemas, meritSchemas, targetSchemas, pickerSchemas, scriptTree, projects, siteConfig] = await Promise.all([
     apiRequest("schema/constraints/"),
     apiRequest("schema/merits/"),
     apiRequest("schema/targets/"),
+    apiRequest("schema/pickers/"),
     apiRequest("schema/scripts/"),
     apiList("projects/"),
     apiRequest("site/"),
@@ -560,7 +641,7 @@ async function initTaskEditor(taskId) {
 
   const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints);
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
-  const targetEditor = new TargetEditor(els.target, targetSchemas, task.target);
+  const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
 
   document.getElementById("btn-estimate-duration").addEventListener("click", async () => {

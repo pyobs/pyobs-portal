@@ -15,7 +15,13 @@ import pyobs.robotic.scripts as scripts_module
 from pyobs.robotic.scheduler.constraints.constraint import Constraint
 from pyobs.robotic.scheduler.merits.merit import Merit
 from pyobs.robotic.scheduler.targets.target import Target
+from pyobs.robotic.scheduler.targets.picker.picker import Picker
 from pyobs.robotic.scripts.script import Script
+
+try:
+    import pyobs.robotic.scheduler.targets.picker as picker_module
+except ImportError:
+    picker_module = None
 
 IGNORED_FIELDS = {"cost", "target_dependent", "exptime_done"}
 
@@ -65,6 +71,17 @@ def merit_schemas() -> dict[str, Any]:
 def target_schemas() -> dict[str, Any]:
     result = {}
     for name, cls in _subclasses(targets_module, Target).items():
+        s = _schema_for(cls)
+        if s is not None:
+            result[name] = s
+    return result
+
+
+def picker_schemas() -> dict[str, Any]:
+    result = {}
+    if picker_module is None:
+        return result
+    for name, cls in _subclasses(picker_module, Picker).items():
         s = _schema_for(cls)
         if s is not None:
             result[name] = s
