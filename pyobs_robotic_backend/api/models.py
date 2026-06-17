@@ -1,5 +1,3 @@
-import datetime
-
 from django.contrib.auth.models import User
 from django.db import models
 import logging
@@ -85,20 +83,3 @@ class Observation(models.Model):
 
     class Meta:
         ordering = ["start"]
-
-    @staticmethod
-    def delete_old_observations(until: datetime.datetime):
-        observations = Observation.objects.filter(
-            start__lt=until.isoformat(),
-            end__lt=until.isoformat(),
-            state__in=[ObservationState.CANCELED, ObservationState.PENDING],
-        )
-        log.info(
-            f"There are {observations.count()} observations to be deleted. Only the first 100,000 will be deleted this run"
-        )
-        total_deleted = 0
-        for observation in observations[:100000]:
-            num_deleted, _ = observation.delete()
-            total_deleted += num_deleted
-
-        log.warning(f"Deleted {total_deleted} observations.")
