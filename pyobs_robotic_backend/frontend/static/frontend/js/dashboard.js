@@ -80,8 +80,13 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
 
     const { start: windowStart, end: windowEnd } = nightWindow();
 
+    const activeProjectCodes = new Set(
+      observations.map((obs) => taskProject[obs.task]).filter(Boolean)
+    );
+    const activeProjects = projects.filter((p) => activeProjectCodes.has(p.code));
+
     const groups = new vis.DataSet(
-      projects.map((p) => ({
+      activeProjects.map((p) => ({
         id: p.code,
         content: `<span title="${p.name}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${p.name}</span>`,
       }))
