@@ -595,8 +595,8 @@ async function initTaskEditor(taskId) {
   });
 
   if (taskId) {
-    loadObservationTable(taskId, els.schedule, ["pending", "running"], true);
-    loadObservationTable(taskId, els.observations, ["completed", "canceled"], false);
+    loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true, 1, { end_after: new Date().toISOString() });
+    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
     document.getElementById("tab-observations-nav").classList.add("d-none");
@@ -650,28 +650,36 @@ async function initTaskEditor(taskId) {
   });
 }
 
-async function loadObservationTable(taskId, tableEl, states, ascending) {
+const OBS_STATE_BADGE = {
+  pending: "text-bg-secondary",
+  in_progress: "text-bg-primary",
+  completed: "text-bg-success",
+  aborted: "text-bg-warning",
+  canceled: "text-bg-danger",
+  failed: "text-bg-danger",
+};
+
+async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}) {
   const tbody = tableEl.querySelector("tbody");
   tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>';
+
+  const card = tableEl.closest(".card");
+  card.querySelector(".card-footer")?.remove();
+
   try {
-    const all = await Promise.all(states.map((s) => apiList("observations/", { task: taskId, state: s })));
-    const observations = all.flat();
+    const params = new URLSearchParams({ task: taskId, state: states.join(","), page, ...extraParams });
+    const data = await apiRequest(`observations/?${params}`);
+    const observations = (data.results || []).sort(
+      (a, b) => (ascending ? 1 : -1) * (a.start < b.start ? -1 : 1)
+    );
+
     tbody.innerHTML = "";
     if (!observations.length) {
       tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">None.</td></tr>';
-      return;
-    }
-    const stateBadge = {
-      pending: "text-bg-secondary",
-      completed: "text-bg-success",
-      canceled: "text-bg-danger",
-      running: "text-bg-primary",
-    };
-    observations
-      .sort((a, b) => (ascending ? 1 : -1) * (a.start < b.start ? -1 : 1))
-      .forEach((obs) => {
+    } else {
+      observations.forEach((obs) => {
         const tr = document.createElement("tr");
-        const badge = stateBadge[obs.state] || "text-bg-secondary";
+        const badge = OBS_STATE_BADGE[obs.state] || "text-bg-secondary";
         tr.innerHTML = `
           <td class="ps-3">${new Date(obs.start).toLocaleString()}</td>
           <td>${new Date(obs.end).toLocaleString()}</td>
@@ -680,6 +688,21 @@ async function loadObservationTable(taskId, tableEl, states, ascending) {
         `;
         tbody.appendChild(tr);
       });
+    }
+
+    if (data.previous || data.next) {
+      const footer = document.createElement("div");
+      footer.className = "card-footer d-flex justify-content-between align-items-center small text-muted py-2";
+      footer.innerHTML = `
+        <button class="btn btn-sm btn-outline-secondary" ${!data.previous ? "disabled" : ""}>← Previous</button>
+        <span>${data.count} total</span>
+        <button class="btn btn-sm btn-outline-secondary" ${!data.next ? "disabled" : ""}>Next →</button>
+      `;
+      const [prevBtn, nextBtn] = footer.querySelectorAll("button");
+      prevBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page - 1, extraParams));
+      nextBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page + 1, extraParams));
+      card.appendChild(footer);
+    }
   } catch (e) {
     tbody.innerHTML = `<tr><td colspan="4" class="text-danger ps-3">${e.message}</td></tr>`;
   }

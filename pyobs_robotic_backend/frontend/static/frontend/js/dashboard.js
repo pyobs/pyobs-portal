@@ -80,8 +80,13 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
 
     const { start: windowStart, end: windowEnd } = nightWindow();
 
+    const activeProjectCodes = new Set(
+      observations.map((obs) => taskProject[obs.task]).filter(Boolean)
+    );
+    const activeProjects = projects.filter((p) => activeProjectCodes.has(p.code));
+
     const groups = new vis.DataSet(
-      projects.map((p) => ({
+      activeProjects.map((p) => ({
         id: p.code,
         content: `<span title="${p.name}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${p.name}</span>`,
       }))
@@ -101,6 +106,7 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
       const name = taskName[obs.task] || obs.task;
       const start = new Date(obs.start);
       const end   = new Date(obs.end);
+      const isCompleted = obs.state === "completed";
       items.add({
         id: `obs-${obs.id}`,
         group: proj,
@@ -108,8 +114,12 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
         start,
         end,
         title: `<b>${name}</b><br>${start.toUTCString()}<br>→ ${end.toUTCString()}`,
-        style: `background-color:${color.bg};border-color:${color.border};color:#fff;`,
-        className: obs.state === "running" ? "obs-running" : "",
+        style: isCompleted
+          ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
+          : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
+        className: obs.state === "in_progress" ? "obs-running"
+                 : isCompleted                 ? "obs-completed"
+                 : "",
       });
     });
 
@@ -154,7 +164,7 @@ async function loadDashboard() {
     const tasks     = await apiList("tasks/");
     const siteInfo  = await apiRequest("site/");
     const pending   = await apiList("observations/", { state: "pending" });
-    const running   = await apiList("observations/", { state: "running" });
+    const running   = await apiList("observations/", { state: "in_progress" });
     const completed = await apiList("observations/", { state: "completed" });
 
     // Stats
@@ -177,7 +187,7 @@ async function loadDashboard() {
     }
 
     // Timeline
-    renderTimeline(projects, tasks, siteInfo, [...running, ...pending]);
+    renderTimeline(projects, tasks, siteInfo, [...running, ...pending, ...completed]);
 
   } catch (e) {
     console.error("Dashboard load error:", e);

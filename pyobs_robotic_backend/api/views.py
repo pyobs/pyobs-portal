@@ -15,7 +15,7 @@ from django_filters.rest_framework import DjangoFilterBackend
 
 from . import schema
 from .filters import ObservationFilter
-from .models import Task, Observation, Project
+from .models import Task, Observation, ObservationState, Project
 from .serializers import (
     TaskSerializer,
     ObservationSerializer,
@@ -150,8 +150,8 @@ class CancelObservations(APIView):
             raise Http404("Please provide a value for after.")
         tz = timezone.get_current_timezone()
         Observation.objects.filter(
-            end__gte=Time(after).to_datetime(tz), state="pending"
-        ).update(state="canceled")
+            end__gte=Time(after).to_datetime(tz), state=ObservationState.PENDING
+        ).update(state=ObservationState.CANCELED)
         return Response({})
 
 

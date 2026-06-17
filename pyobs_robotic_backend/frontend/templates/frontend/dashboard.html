@@ -13,10 +13,10 @@
   .vis-panel.vis-right,
   .vis-panel.vis-top,
   .vis-panel.vis-bottom { border-color: #2d3035; }
-  .vis-time-axis .vis-text { color: #6c757d; font-size: 0.7rem; }
+  .vis-time-axis .vis-text { color: #ced4da !important; font-size: 0.7rem; }
   .vis-time-axis .vis-grid.vis-minor { border-color: #2d3035; }
   .vis-time-axis .vis-grid.vis-major { border-color: #3d4045; }
-  .vis-label { color: #adb5bd; font-size: 0.75rem; border-color: #2d3035; background: #1a1d21; }
+  .vis-label { color: #ced4da !important; font-size: 0.75rem; border-color: #2d3035; background: #1a1d21; }
   .vis-group { border-color: #2d3035; }
   .vis-current-time { background-color: rgba(255, 100, 100, 0.7); }
   /* ── Day/night background bands ─────────────────────────────────────── */
@@ -29,6 +29,7 @@
   .vis-item { border-radius: 3px; font-size: 0.72rem; }
   .vis-item.vis-range .vis-item-overflow { overflow: hidden; }
   .vis-item.obs-running { border-style: dashed !important; }
+  .vis-item.obs-completed { opacity: 0.6; }
   .vis-tooltip { background: #2d3035; border-color: #3d4045; color: #adb5bd; font-size: 0.75rem; }
 </style>
 {% endblock %}
