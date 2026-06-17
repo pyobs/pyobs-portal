@@ -39,6 +39,7 @@ urlpatterns = [
     path("schema/constraints/", views.schema_constraints),
     path("schema/merits/", views.schema_merits),
     path("schema/targets/", views.schema_targets),
+    path("schema/pickers/", views.schema_pickers),
     path("schema/scripts/", views.schema_scripts),
     path("validate_script/", views.validate_script),
     path("estimate_duration/", views.estimate_duration),
