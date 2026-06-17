@@ -595,7 +595,7 @@ async function initTaskEditor(taskId) {
   });
 
   if (taskId) {
-    loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true);
+    loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true, 1, { end_after: new Date().toISOString() });
     loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
@@ -659,7 +659,7 @@ const OBS_STATE_BADGE = {
   failed: "text-bg-danger",
 };
 
-async function loadObservationTable(taskId, tableEl, states, ascending, page = 1) {
+async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}) {
   const tbody = tableEl.querySelector("tbody");
   tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>';
 
@@ -667,7 +667,7 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
   card.querySelector(".card-footer")?.remove();
 
   try {
-    const params = new URLSearchParams({ task: taskId, state: states.join(","), page });
+    const params = new URLSearchParams({ task: taskId, state: states.join(","), page, ...extraParams });
     const data = await apiRequest(`observations/?${params}`);
     const observations = (data.results || []).sort(
       (a, b) => (ascending ? 1 : -1) * (a.start < b.start ? -1 : 1)
@@ -699,8 +699,8 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
         <button class="btn btn-sm btn-outline-secondary" ${!data.next ? "disabled" : ""}>Next →</button>
       `;
       const [prevBtn, nextBtn] = footer.querySelectorAll("button");
-      prevBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page - 1));
-      nextBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page + 1));
+      prevBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page - 1, extraParams));
+      nextBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page + 1, extraParams));
       card.appendChild(footer);
     }
   } catch (e) {
