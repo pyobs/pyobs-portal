@@ -22,15 +22,41 @@ function showTimeline() {
   if (el) el.style.display = "";
 }
 
-/** Noon-to-noon UTC window centred on the current night. */
-function nightWindow() {
+/** Local noon-to-noon window at the observatory location. Falls back to UTC noon-to-noon if no location. */
+function nightWindow(siteInfo) {
   const now = new Date();
-  const start = new Date(now);
-  start.setUTCHours(12, 0, 0, 0);
-  if (now.getUTCHours() < 12) start.setUTCDate(start.getUTCDate() - 1);
-  const end = new Date(start);
-  end.setUTCDate(end.getUTCDate() + 1);
-  return { start, end };
+
+  // If no site info, use fixed noon-to-noon UTC
+  if (!siteInfo || siteInfo.latitude == null || siteInfo.longitude == null) {
+    const start = new Date(now);
+    start.setUTCHours(12, 0, 0, 0);
+    if (now.getUTCHours() < 12) start.setUTCDate(start.getUTCDate() - 1);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return { start, end };
+  }
+
+  // Calculate local solar noon-to-noon window at observatory location
+  const lat = siteInfo.latitude;
+  const lon = siteInfo.longitude;
+
+  // Get today's solar noon
+  let times = SunCalc.getTimes(now, lat, lon);
+  let solarNoon = times.solarNoon;
+
+  // If we're before today's solar noon, use yesterday's solar noon as window start
+  if (now < solarNoon) {
+    const yesterday = new Date(now.getTime() - 24 * 3600e3);
+    times = SunCalc.getTimes(yesterday, lat, lon);
+    solarNoon = times.solarNoon;
+  }
+
+  // Tomorrow's solar noon as window end
+  const tomorrow = new Date(now.getTime() + 24 * 3600e3);
+  times = SunCalc.getTimes(tomorrow, lat, lon);
+  const nextSolarNoon = times.solarNoon;
+
+  return { start: solarNoon, end: nextSolarNoon };
 }
 
 /** Return vis-timeline background items representing day/night bands. */
@@ -78,7 +104,7 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
     const taskProject = {}, taskName = {};
     tasks.forEach((t) => { taskProject[t.id] = t.project; taskName[t.id] = t.name || t.id; });
 
-    const { start: windowStart, end: windowEnd } = nightWindow();
+    const { start: windowStart, end: windowEnd } = nightWindow(siteInfo);
 
     const activeProjectCodes = new Set(
       observations.map((obs) => taskProject[obs.task]).filter(Boolean)
