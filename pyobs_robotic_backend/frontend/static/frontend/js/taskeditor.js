@@ -626,6 +626,10 @@ async function initTaskEditor(taskId) {
     URL.revokeObjectURL(a.href);
   });
 
+  document.getElementById("tab-yaml-nav").addEventListener("show.bs.tab", () => {
+    document.getElementById("yaml-preview").textContent = jsyaml.dump(buildPayload());
+  });
+
   els.saveBtn.addEventListener("click", async () => {
     const payload = buildPayload();
 

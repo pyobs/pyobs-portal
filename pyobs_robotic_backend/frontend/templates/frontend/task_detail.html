@@ -42,6 +42,9 @@
   <li class="nav-item" id="tab-observations-nav">
     <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-observations">Observations</button>
   </li>
+  <li class="nav-item">
+    <button class="nav-link" type="button" data-bs-toggle="tab" data-bs-target="#tab-yaml" id="tab-yaml-nav">YAML</button>
+  </li>
 </ul>
 
 <div class="tab-content">
@@ -151,6 +154,14 @@
             <tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>
           </tbody>
         </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="tab-pane fade" id="tab-yaml">
+    <div class="card border-secondary">
+      <div class="card-body p-0">
+        <pre id="yaml-preview" class="m-0 p-3 small" style="white-space:pre; overflow:auto; max-height:70vh;"></pre>
       </div>
     </div>
   </div>
