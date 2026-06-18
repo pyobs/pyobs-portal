@@ -688,6 +688,42 @@ async function initTaskEditor(taskId) {
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
 
+  // Initialise merit plot (requires buildPayload, defined below, so we use a closure)
+  if (typeof initMeritPlot === "function") {
+    // buildPayload is defined later; wrap in a lazy getter
+    initMeritPlot(() => ({
+      id: els.code.value,
+      name: els.name.value,
+      project: els.project.value,
+      duration: Number(els.duration.value),
+      priority: Number(els.priority.value),
+      active: els.active.checked,
+      constraints: constraintsEditor.getData(),
+      merits: meritsEditor.getData(),
+      target: targetEditor.getData(),
+      script: scriptEditor.getData(),
+    }), siteConfig);
+  }
+
+  // Refresh merit plot when constraints / merits are mutated
+  const _origRefresh = typeof window.refreshMeritPlot === "function" ? window.refreshMeritPlot : null;
+  function _maybeMeritRefresh() {
+    if (typeof window.refreshMeritPlot === "function") window.refreshMeritPlot();
+  }
+  // Patch TypedListEditor add/remove to trigger a refresh
+  const _patchEditor = (editor) => {
+    const origAddItem = editor._addItem.bind(editor);
+    editor._addItem = function (data) {
+      origAddItem(data);
+      _maybeMeritRefresh();
+    };
+    // Patch remove buttons retroactively by observing the list element
+    const obs = new MutationObserver(() => _maybeMeritRefresh());
+    obs.observe(editor.listEl, { childList: true });
+  };
+  _patchEditor(constraintsEditor);
+  _patchEditor(meritsEditor);
+
   document.getElementById("btn-estimate-duration").addEventListener("click", async () => {
     const btn = document.getElementById("btn-estimate-duration");
     btn.disabled = true;

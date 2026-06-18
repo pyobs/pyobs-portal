@@ -280,5 +280,7 @@ function initVisibilityPlots(siteConfig) {
     }
     // Debounce 600ms so we don't fire on every keystroke
     _fetchTimer = setTimeout(() => fetchAndRender(raDeg, decDeg), 600);
+    // Also refresh the merit plot when the target changes
+    if (typeof window.refreshMeritPlot === "function") window.refreshMeritPlot();
   };
 }
