@@ -238,3 +238,40 @@ def site(request):
         "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
         "default_merits": getattr(settings, "DEFAULT_MERITS", []),
     })
+
+
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def observability(request):
+    """
+    Return visibility data for a sky position at the configured observatory site.
+
+    Query params: ra (deg), dec (deg)
+    Returns: { night: {...}, year: {...} }
+    """
+    from django.conf import settings
+    from .observability import night_data, year_data
+
+    lat = getattr(settings, "SITE_LATITUDE", None)
+    lon = getattr(settings, "SITE_LONGITUDE", None)
+    elev = getattr(settings, "SITE_ELEVATION", None) or 0.0
+
+    if lat is None or lon is None:
+        return Response(
+            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            status=400,
+        )
+
+    try:
+        ra = float(request.query_params["ra"])
+        dec = float(request.query_params["dec"])
+    except (KeyError, ValueError):
+        return Response({"error": "ra and dec query parameters are required (degrees)."}, status=400)
+
+    try:
+        night = night_data(ra, dec, lat, lon, elev)
+        year = year_data(ra, dec, lat, lon, elev)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=500)
+
+    return Response({"night": night, "year": year})
