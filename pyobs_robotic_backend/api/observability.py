@@ -69,15 +69,17 @@ def night_data(
     target_altaz = target.coord.transform_to(altaz_frame)
     elevation = target_altaz.alt.deg.tolist()
 
-    # Moon distance
     from astropy.coordinates import get_body
     moon_coords = get_body("moon", times)
-    moon_dist = moon_coords.separation(target.coord).deg.tolist()
+    moon_altaz = moon_coords.transform_to(altaz_frame)
+    moon_elevation = moon_altaz.alt.deg.tolist()
+    moon_distance = moon_coords.separation(target.coord).deg.tolist()
 
     return {
         "times_utc": [t.isot for t in times],
         "elevation_deg": elevation,
-        "moon_distance_deg": moon_dist,
+        "moon_elevation_deg": moon_elevation,
+        "moon_distance_deg": moon_distance,
         "twilight_evening_utc": t_eve.isot,
         "twilight_morning_utc": t_morn.isot,
     }
@@ -91,40 +93,36 @@ def year_data(
     elev: float,
 ) -> dict[str, Any]:
     """
-    Elevation at the middle of dark time for each night over the next 365 days.
+    Elevation at the middle of dark time sampled once per month (15th) over 12 months.
 
     Returns a dict ready to be JSON-serialised.
     """
     observer = _make_observer(lat, lon, elev)
     target = FixedTarget(SkyCoord(ra=ra_deg * u.deg, dec=dec_deg * u.deg))
 
-    now = Time.now()
+    year = datetime.datetime.now(datetime.timezone.utc).year
+
+    sample_dts = [
+        datetime.datetime(year, month, 15, 12, 0, 0, tzinfo=datetime.timezone.utc)
+        for month in range(1, 13)
+    ]
+    t_samples = Time(sample_dts)
+
+    t_eve = observer.twilight_evening_astronomical(t_samples, which="next")
+    t_morn = observer.twilight_morning_astronomical(t_eve, which="next")
+    t_mid = t_eve + (t_morn - t_eve) * 0.5
+
+    alts = target.coord.transform_to(observer.altaz(t_mid)).alt.deg
 
     dates: list[str] = []
     elevations: list[float | None] = []
-
-    # Walk through nights; start from tonight's evening
-    t_cursor = observer.twilight_evening_astronomical(now, which="next")
-
-    for _ in range(365):
-        try:
-            t_morn = observer.twilight_morning_astronomical(t_cursor, which="next")
-            t_mid = t_cursor + (t_morn - t_cursor) * 0.5
-
-            altaz = observer.altaz(t_mid)
-            alt = float(target.coord.transform_to(altaz).alt.deg)
-
-            dates.append(t_mid.datetime.strftime("%Y-%m-%d"))
-            elevations.append(round(alt, 2))
-        except Exception:
-            # Polar nights / no twilight: skip gracefully
-            dates.append(t_cursor.datetime.strftime("%Y-%m-%d"))
+    for sample_dt, t, alt in zip(sample_dts, t_mid, alts):
+        if np.isnan(alt) or np.isnan(t.jd):
+            dates.append(sample_dt.strftime("%Y-%m-%d"))
             elevations.append(None)
-
-        # Advance ~1 day from the current evening to find next evening
-        t_cursor = observer.twilight_evening_astronomical(
-            t_cursor + 1.01 * u.day, which="next"
-        )
+        else:
+            dates.append(t.datetime.strftime("%Y-%m-%d"))
+            elevations.append(round(float(alt), 2))
 
     return {
         "dates": dates,

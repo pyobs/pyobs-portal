@@ -111,19 +111,30 @@
         <div class="card border-secondary mb-3">
           <div class="card-header">Target</div>
           <div class="card-body" id="target-editor"></div>
-          <div id="aladin-container" class="d-none" style="height:300px"></div>
           <div id="visibility-container" class="d-none">
-            <div class="border-top border-secondary px-3 pt-3 pb-2">
+            <div class="border-top border-secondary px-2 pt-2 pb-1">
+              <div id="vis-loading" class="d-none text-center text-secondary small py-3">
+                <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+                Loading visibility data…
+              </div>
               <div class="row g-2">
                 <div class="col-12 col-xl-6">
-                  <div id="vis-plot-night" style="height:260px"></div>
+                  <div id="vis-plot-night" style="height:210px"></div>
                 </div>
                 <div class="col-12 col-xl-6">
-                  <div id="vis-plot-year" style="height:260px"></div>
+                  <div id="vis-plot-year" style="height:210px"></div>
                 </div>
               </div>
               <div id="vis-message" class="small text-secondary text-center py-2 d-none"></div>
             </div>
+          </div>
+          <div id="aladin-wrapper" class="d-none">
+            <div class="border-top border-secondary"></div>
+            <div id="aladin-loading" class="text-center text-secondary small py-2">
+              <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+              Loading sky view…
+            </div>
+            <div id="aladin-container" style="height:300px"></div>
           </div>
         </div>
       </div>
@@ -202,7 +213,7 @@
 {% block scripts %}
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/lib/codemirror.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.17/mode/yaml/yaml.min.js"></script>
-<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" charset="utf-8"></script>
+<script src="https://aladin.cds.unistra.fr/AladinLite/api/v3/latest/aladin.js" async charset="utf-8"></script>
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="{% static 'frontend/js/schemaform.js' %}"></script>
 <script src="{% static 'frontend/js/visplot.js' %}"></script>

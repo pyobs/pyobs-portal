@@ -29,7 +29,7 @@ const HORIZON_COLOR = "rgba(255,80,80,0.5)";
 const BASE_LAYOUT = {
   paper_bgcolor: PAPER_BG,
   plot_bgcolor: PLOT_BG,
-  margin: { l: 50, r: 50, t: 36, b: 44 },
+  margin: { l: 44, r: 12, t: 26, b: 36 },
   font: { color: TEXT_COLOR, size: 11, family: "system-ui,sans-serif" },
   xaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
   yaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
@@ -46,12 +46,28 @@ const PLOTLY_CONFIG = {
 function renderNightPlot(el, data) {
   const times = data.times_utc.map((t) => new Date(t));
 
-  // Twilight band: shade the full range as dark time
   const t0 = new Date(data.twilight_evening_utc);
   const t1 = new Date(data.twilight_morning_utc);
 
+  // Annotate moon-target distance at ~4 evenly spaced positions where moon is above horizon
+  const annotations = [];
+  const step = Math.floor(times.length / 5);
+  for (let i = 1; i <= 4; i++) {
+    const idx = Math.min(i * step, times.length - 1);
+    const moonEl = data.moon_elevation_deg[idx];
+    if (moonEl < 0) continue;
+    annotations.push({
+      x: times[idx],
+      y: moonEl,
+      text: `${Math.round(data.moon_distance_deg[idx])}°`,
+      showarrow: false,
+      yshift: 10,
+      font: { color: MOON_COLOR, size: 9 },
+      bgcolor: "rgba(0,0,0,0.45)",
+    });
+  }
+
   const traces = [
-    // Dark-time background via a filled area at full height
     {
       x: [t0, t0, t1, t1],
       y: [0, 90, 90, 0],
@@ -63,7 +79,6 @@ function renderNightPlot(el, data) {
       showlegend: false,
       name: "dark time",
     },
-    // Horizon line
     {
       x: [times[0], times[times.length - 1]],
       y: [0, 0],
@@ -72,24 +87,20 @@ function renderNightPlot(el, data) {
       hoverinfo: "skip",
       showlegend: false,
     },
-    // Elevation
     {
       x: times,
       y: data.elevation_deg,
       mode: "lines",
       line: { color: ELEVATION_COLOR, width: 2 },
       name: "Elevation",
-      yaxis: "y",
       hovertemplate: "%{x|%H:%M UTC}<br>El: %{y:.1f}°<extra></extra>",
     },
-    // Moon distance (right y-axis)
     {
       x: times,
-      y: data.moon_distance_deg,
+      y: data.moon_elevation_deg,
       mode: "lines",
       line: { color: MOON_COLOR, width: 1.5, dash: "dash" },
-      name: "Moon dist.",
-      yaxis: "y2",
+      name: "Moon elev.",
       hovertemplate: "%{x|%H:%M UTC}<br>Moon: %{y:.1f}°<extra></extra>",
     },
   ];
@@ -108,21 +119,14 @@ function renderNightPlot(el, data) {
       title: { text: "Elevation (°)", font: { size: 10 }, standoff: 5 },
       range: [0, 90],
     },
-    yaxis2: {
-      ...BASE_LAYOUT.yaxis,
-      title: { text: "Moon dist. (°)", font: { size: 10 }, standoff: 5 },
-      range: [0, 180],
-      overlaying: "y",
-      side: "right",
-      showgrid: false,
-    },
     legend: {
       orientation: "h",
-      y: -0.18,
+      y: -0.22,
       x: 0.5,
       xanchor: "center",
       font: { size: 10 },
     },
+    annotations,
     hovermode: "x unified",
   };
 
@@ -135,6 +139,7 @@ function renderNightPlot(el, data) {
 function renderYearPlot(el, data) {
   const dates = data.dates.map((d) => new Date(d));
   const elevs = data.elevation_deg;
+  const year = dates[0].getFullYear();
 
   const traces = [
     // Horizon reference
@@ -165,6 +170,8 @@ function renderYearPlot(el, data) {
       type: "date",
       tickformat: "%b",
       dtick: "M1",
+      tick0: `${year}-01-01`,
+      range: [`${year}-01-01`, `${year}-12-31`],
       title: { text: "", font: { size: 10 } },
     },
     yaxis: {
@@ -189,6 +196,7 @@ function renderYearPlot(el, data) {
  */
 function initVisibilityPlots(siteConfig) {
   const container = document.getElementById("visibility-container");
+  const loadingEl = document.getElementById("vis-loading");
   const msgEl = document.getElementById("vis-message");
   const nightEl = document.getElementById("vis-plot-night");
   const yearEl = document.getElementById("vis-plot-year");
@@ -212,15 +220,22 @@ function initVisibilityPlots(siteConfig) {
   let _rendered = false;
 
   function showLoading() {
+    container.classList.remove("d-none");
+    loadingEl.classList.remove("d-none");
     nightEl.style.opacity = "0.4";
     yearEl.style.opacity = "0.4";
   }
 
   function showPlots() {
+    loadingEl.classList.add("d-none");
     container.classList.remove("d-none");
     msgEl.classList.add("d-none");
     nightEl.style.opacity = "1";
     yearEl.style.opacity = "1";
+    requestAnimationFrame(() => {
+      Plotly.relayout(nightEl, { autosize: true });
+      Plotly.relayout(yearEl, { autosize: true });
+    });
   }
 
   function showError(msg) {

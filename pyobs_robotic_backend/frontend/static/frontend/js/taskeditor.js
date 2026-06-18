@@ -228,7 +228,7 @@ class TargetEditor {
     this.type = type;
     this.form = null;
     this.pickerEditor = null;
-    document.getElementById("aladin-container")?.classList.add("d-none");
+    document.getElementById("aladin-wrapper")?.classList.add("d-none");
     document.getElementById("visibility-container")?.classList.add("d-none");
     if (typeof window.updateVisibilityPlots === "function") window.updateVisibilityPlots(null, null);
     if (!type) return;
@@ -253,20 +253,32 @@ class TargetEditor {
   }
 
   _initAladin() {
+    const wrapper = document.getElementById("aladin-wrapper");
     const container = document.getElementById("aladin-container");
-    if (container && typeof A !== "undefined") {
-      container.classList.remove("d-none");
-      if (!this._aladin) {
-        this._aladin = A.aladin(container, {
-          survey: "P/DSS2/color",
-          fov: 0.25,
-          showReticle: true,
-          showZoomControl: true,
-          showFullscreenControl: false,
-        });
-      }
-    }
-    // Always run coord update so visibility plots fire even if Aladin is unavailable
+    const loading = document.getElementById("aladin-loading");
+    if (!container) { this._updateAladin(); return; }
+
+    wrapper.classList.remove("d-none");
+
+    const tryInit = () => {
+      if (typeof A === "undefined") { setTimeout(tryInit, 200); return; }
+      A.init.then(() => {
+        if (!this._aladin) {
+          this._aladin = A.aladin(container, {
+            survey: "P/DSS2/color",
+            fov: 0.25,
+            showReticle: true,
+            showZoomControl: true,
+            showFullscreenControl: false,
+          });
+        }
+        loading?.classList.add("d-none");
+        this._updateAladin();
+      });
+    };
+    tryInit();
+
+    // Fire vis plots immediately without waiting for Aladin
     this._updateAladin();
   }
 
@@ -665,15 +677,16 @@ async function initTaskEditor(taskId) {
   els.priority.value = task.priority ?? 1.0;
   els.active.checked = !!task.active;
 
+  // Initialise visibility plots before TargetEditor so window.updateVisibilityPlots
+  // exists when the editor fires _updateAladin() during construction.
+  if (typeof initVisibilityPlots === "function") {
+    initVisibilityPlots(siteConfig);
+  }
+
   const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints);
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
-
-  // Visibility plots — initialise after siteConfig is available
-  if (typeof initVisibilityPlots === "function") {
-    initVisibilityPlots(siteConfig);
-  }
 
   document.getElementById("btn-estimate-duration").addEventListener("click", async () => {
     const btn = document.getElementById("btn-estimate-duration");
