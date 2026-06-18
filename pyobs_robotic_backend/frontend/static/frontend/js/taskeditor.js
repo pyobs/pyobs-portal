@@ -228,7 +228,9 @@ class TargetEditor {
     this.type = type;
     this.form = null;
     this.pickerEditor = null;
-    document.getElementById("aladin-container")?.classList.add("d-none");
+    document.getElementById("aladin-wrapper")?.classList.add("d-none");
+    document.getElementById("visibility-container")?.classList.add("d-none");
+    if (typeof window.updateVisibilityPlots === "function") window.updateVisibilityPlots(null, null);
     if (!type) return;
     const schema = this.schemas[type];
     if (!schema) return;
@@ -251,29 +253,50 @@ class TargetEditor {
   }
 
   _initAladin() {
+    const wrapper = document.getElementById("aladin-wrapper");
     const container = document.getElementById("aladin-container");
-    if (!container || typeof A === "undefined") return;
-    container.classList.remove("d-none");
-    if (!this._aladin) {
-      this._aladin = A.aladin(container, {
-        survey: "P/DSS2/color",
-        fov: 0.25,
-        showReticle: true,
-        showZoomControl: true,
-        showFullscreenControl: false,
+    const loading = document.getElementById("aladin-loading");
+    if (!container) { this._updateAladin(); return; }
+
+    wrapper.classList.remove("d-none");
+
+    const tryInit = () => {
+      if (typeof A === "undefined") { setTimeout(tryInit, 200); return; }
+      A.init.then(() => {
+        if (!this._aladin) {
+          this._aladin = A.aladin(container, {
+            survey: "P/DSS2/color",
+            fov: 0.25,
+            showReticle: true,
+            showZoomControl: true,
+            showFullscreenControl: false,
+          });
+        }
+        loading?.classList.add("d-none");
+        this._updateAladin();
       });
-    }
+    };
+    tryInit();
+
+    // Fire vis plots immediately without waiting for Aladin
     this._updateAladin();
   }
 
   _updateAladin() {
-    if (!this._aladin || !this.form) return;
+    if (!this.form) return;
     const ra = this.form.fields["ra"]?.getValue();
     const dec = this.form.fields["dec"]?.getValue();
     const raDeg = typeof ra === "number" ? ra : parseHmsToDeg(String(ra ?? ""));
     const decDeg = typeof dec === "number" ? dec : parseDmsToDeg(String(dec ?? ""));
     if (raDeg !== null && decDeg !== null) {
-      this._aladin.gotoRaDec(raDeg, decDeg);
+      if (this._aladin) this._aladin.gotoRaDec(raDeg, decDeg);
+      if (typeof window.updateVisibilityPlots === "function") {
+        window.updateVisibilityPlots(raDeg, decDeg);
+      }
+    } else {
+      if (typeof window.updateVisibilityPlots === "function") {
+        window.updateVisibilityPlots(null, null);
+      }
     }
   }
 
@@ -654,6 +677,12 @@ async function initTaskEditor(taskId) {
   els.priority.value = task.priority ?? 1.0;
   els.active.checked = !!task.active;
 
+  // Initialise visibility plots before TargetEditor so window.updateVisibilityPlots
+  // exists when the editor fires _updateAladin() during construction.
+  if (typeof initVisibilityPlots === "function") {
+    initVisibilityPlots(siteConfig);
+  }
+
   const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints);
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
@@ -713,6 +742,13 @@ async function initTaskEditor(taskId) {
 
   els.exportBtn.addEventListener("click", () => {
     const payload = buildPayload();
+    // Normalize SiderealTarget coordinates to degrees
+    if (payload.target && payload.target.class && payload.target.class.includes("SiderealTarget")) {
+      const ra = parseHmsToDeg(String(payload.target.ra ?? ""));
+      const dec = parseDmsToDeg(String(payload.target.dec ?? ""));
+      if (ra !== null) payload.target.ra = ra;
+      if (dec !== null) payload.target.dec = dec;
+    }
     const yaml = jsyaml.dump(payload);
     const blob = new Blob([yaml], { type: "text/yaml" });
     const a = document.createElement("a");

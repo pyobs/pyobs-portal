@@ -44,6 +44,7 @@ urlpatterns = [
     path("validate_script/", views.validate_script),
     path("estimate_duration/", views.estimate_duration),
     path("site/", views.site),
+    path("observability/", views.observability),
 ]
 
 urlpatterns = format_suffix_patterns(urlpatterns)
