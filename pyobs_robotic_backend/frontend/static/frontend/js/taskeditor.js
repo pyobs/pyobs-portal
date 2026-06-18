@@ -229,6 +229,8 @@ class TargetEditor {
     this.form = null;
     this.pickerEditor = null;
     document.getElementById("aladin-container")?.classList.add("d-none");
+    document.getElementById("visibility-container")?.classList.add("d-none");
+    if (typeof window.updateVisibilityPlots === "function") window.updateVisibilityPlots(null, null);
     if (!type) return;
     const schema = this.schemas[type];
     if (!schema) return;
@@ -252,28 +254,37 @@ class TargetEditor {
 
   _initAladin() {
     const container = document.getElementById("aladin-container");
-    if (!container || typeof A === "undefined") return;
-    container.classList.remove("d-none");
-    if (!this._aladin) {
-      this._aladin = A.aladin(container, {
-        survey: "P/DSS2/color",
-        fov: 0.25,
-        showReticle: true,
-        showZoomControl: true,
-        showFullscreenControl: false,
-      });
+    if (container && typeof A !== "undefined") {
+      container.classList.remove("d-none");
+      if (!this._aladin) {
+        this._aladin = A.aladin(container, {
+          survey: "P/DSS2/color",
+          fov: 0.25,
+          showReticle: true,
+          showZoomControl: true,
+          showFullscreenControl: false,
+        });
+      }
     }
+    // Always run coord update so visibility plots fire even if Aladin is unavailable
     this._updateAladin();
   }
 
   _updateAladin() {
-    if (!this._aladin || !this.form) return;
+    if (!this.form) return;
     const ra = this.form.fields["ra"]?.getValue();
     const dec = this.form.fields["dec"]?.getValue();
     const raDeg = typeof ra === "number" ? ra : parseHmsToDeg(String(ra ?? ""));
     const decDeg = typeof dec === "number" ? dec : parseDmsToDeg(String(dec ?? ""));
     if (raDeg !== null && decDeg !== null) {
-      this._aladin.gotoRaDec(raDeg, decDeg);
+      if (this._aladin) this._aladin.gotoRaDec(raDeg, decDeg);
+      if (typeof window.updateVisibilityPlots === "function") {
+        window.updateVisibilityPlots(raDeg, decDeg);
+      }
+    } else {
+      if (typeof window.updateVisibilityPlots === "function") {
+        window.updateVisibilityPlots(null, null);
+      }
     }
   }
 
@@ -658,6 +669,11 @@ async function initTaskEditor(taskId) {
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
   const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
+
+  // Visibility plots — initialise after siteConfig is available
+  if (typeof initVisibilityPlots === "function") {
+    initVisibilityPlots(siteConfig);
+  }
 
   document.getElementById("btn-estimate-duration").addEventListener("click", async () => {
     const btn = document.getElementById("btn-estimate-duration");
