@@ -29,10 +29,26 @@ const HORIZON_COLOR = "rgba(255,80,80,0.5)";
 const BASE_LAYOUT = {
   paper_bgcolor: PAPER_BG,
   plot_bgcolor: PLOT_BG,
-  margin: { l: 44, r: 12, t: 26, b: 36 },
+  margin: { l: 44, r: 44, t: 26, b: 36 },
   font: { color: TEXT_COLOR, size: 11, family: "system-ui,sans-serif" },
   xaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
   yaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
+};
+
+// Airmass axis: ticks at fixed elevation degrees, labelled with airmass = 1/sin(el).
+const AIRMASS_TICK_VALS = [20, 40, 60, 80];
+const AIRMASS_TICK_TEXT = AIRMASS_TICK_VALS.map(
+  (el) => (1 / Math.sin((Math.PI / 180) * el)).toFixed(2)
+);
+const AIRMASS_YAXIS = {
+  overlaying: "y",
+  side: "right",
+  range: [0, 90],
+  tickvals: AIRMASS_TICK_VALS,
+  ticktext: AIRMASS_TICK_TEXT,
+  title: { text: "Airmass", font: { size: 10 }, standoff: 5 },
+  showgrid: false,
+  zeroline: false,
 };
 
 const PLOTLY_CONFIG = {
@@ -103,6 +119,16 @@ function renderNightPlot(el, data) {
       name: "Moon elev.",
       hovertemplate: "%{x|%H:%M UTC}<br>Moon: %{y:.1f}°<extra></extra>",
     },
+    // Invisible anchor trace — forces Plotly to render the yaxis2 airmass axis
+    {
+      x: [times[0], times[times.length - 1]],
+      y: [0, 90],
+      yaxis: "y2",
+      mode: "lines",
+      line: { width: 0 },
+      hoverinfo: "skip",
+      showlegend: false,
+    },
   ];
 
   const layout = {
@@ -119,6 +145,7 @@ function renderNightPlot(el, data) {
       title: { text: "Elevation (°)", font: { size: 10 }, standoff: 5 },
       range: [0, 90],
     },
+    yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
     legend: {
       orientation: "h",
       y: -0.22,
@@ -160,6 +187,16 @@ function renderYearPlot(el, data) {
       connectgaps: false,
       hovertemplate: "%{x|%b %d}<br>El: %{y:.1f}°<extra></extra>",
     },
+    // Invisible anchor trace — forces Plotly to render the yaxis2 airmass axis
+    {
+      x: [dates[0], dates[dates.length - 1]],
+      y: [0, 90],
+      yaxis: "y2",
+      mode: "lines",
+      line: { width: 0 },
+      hoverinfo: "skip",
+      showlegend: false,
+    },
   ];
 
   const layout = {
@@ -179,6 +216,7 @@ function renderYearPlot(el, data) {
       title: { text: "Elevation (°)", font: { size: 10 }, standoff: 5 },
       range: [0, 90],
     },
+    yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
     showlegend: false,
     hovermode: "x unified",
   };

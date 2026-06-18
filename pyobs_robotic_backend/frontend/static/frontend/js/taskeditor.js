@@ -705,21 +705,20 @@ async function initTaskEditor(taskId) {
     }), siteConfig);
   }
 
-  // Refresh merit plot when constraints / merits are mutated
-  const _origRefresh = typeof window.refreshMeritPlot === "function" ? window.refreshMeritPlot : null;
+  // Refresh merit plot on any constraint / merit change (add, remove, or field edit)
   function _maybeMeritRefresh() {
     if (typeof window.refreshMeritPlot === "function") window.refreshMeritPlot();
   }
-  // Patch TypedListEditor add/remove to trigger a refresh
   const _patchEditor = (editor) => {
     const origAddItem = editor._addItem.bind(editor);
     editor._addItem = function (data) {
       origAddItem(data);
       _maybeMeritRefresh();
     };
-    // Patch remove buttons retroactively by observing the list element
     const obs = new MutationObserver(() => _maybeMeritRefresh());
     obs.observe(editor.listEl, { childList: true });
+    editor.listEl.addEventListener("input", _maybeMeritRefresh);
+    editor.listEl.addEventListener("change", _maybeMeritRefresh);
   };
   _patchEditor(constraintsEditor);
   _patchEditor(meritsEditor);
