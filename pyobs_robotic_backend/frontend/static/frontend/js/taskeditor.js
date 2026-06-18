@@ -713,6 +713,13 @@ async function initTaskEditor(taskId) {
 
   els.exportBtn.addEventListener("click", () => {
     const payload = buildPayload();
+    // Normalize SiderealTarget coordinates to degrees
+    if (payload.target && payload.target.class && payload.target.class.includes("SiderealTarget")) {
+      const ra = parseHmsToDeg(String(payload.target.ra ?? ""));
+      const dec = parseDmsToDeg(String(payload.target.dec ?? ""));
+      if (ra !== null) payload.target.ra = ra;
+      if (dec !== null) payload.target.dec = dec;
+    }
     const yaml = jsyaml.dump(payload);
     const blob = new Blob([yaml], { type: "text/yaml" });
     const a = document.createElement("a");
