@@ -229,6 +229,7 @@ class TargetEditor {
     this.form = null;
     this.pickerEditor = null;
     document.getElementById("aladin-wrapper")?.classList.add("d-none");
+    document.getElementById("sdo-wrapper")?.classList.add("d-none");
     document.getElementById("visibility-container")?.classList.add("d-none");
     if (typeof window.updateVisibilityPlots === "function") window.updateVisibilityPlots(null, null);
     if (!type) return;
@@ -248,6 +249,8 @@ class TargetEditor {
         this._makeCoordsFlexible();
         this._injectSimbadButton();
         this._initAladin();
+      } else if (type === "HelioprojectiveRadialTarget") {
+        this._initSdoViewer();
       }
     }
   }
@@ -340,6 +343,72 @@ class TargetEditor {
         return isNaN(n) || v === "" ? v : n;
       };
     }
+  }
+
+  _initSdoViewer() {
+    const wrapper = document.getElementById("sdo-wrapper");
+    if (!wrapper) return;
+    wrapper.classList.remove("d-none");
+
+    document.getElementById("sdo-channel")?.addEventListener("change", () => this._updateSdo());
+    this.form?.element.addEventListener("input", () => this._updateSdo());
+    this._updateSdo();
+  }
+
+  _updateSdo() {
+    const img = document.getElementById("sdo-img");
+    const canvas = document.getElementById("sdo-canvas");
+    const loading = document.getElementById("sdo-loading");
+    const channel = document.getElementById("sdo-channel")?.value || "0171";
+    if (!img || !canvas) return;
+
+    const psi   = parseFloat(this.form?.fields["psi"]?.getValue());
+    const delta = parseFloat(this.form?.fields["delta"]?.getValue());
+    const draw  = () => this._drawSdoMarker(canvas, psi, delta);
+
+    if (img.dataset.channel !== channel) {
+      img.dataset.channel = channel;
+      if (loading) loading.classList.remove("d-none");
+      img.onload  = () => { loading?.classList.add("d-none"); draw(); };
+      img.onerror = () => { loading?.classList.add("d-none"); };
+      img.src = `https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${channel}.jpg`;
+    } else if (img.complete && img.naturalWidth > 0) {
+      draw();
+    } else {
+      img.onload = () => { loading?.classList.add("d-none"); draw(); };
+    }
+  }
+
+  _drawSdoMarker(canvas, psi, delta) {
+    const SIZE = 300;
+    canvas.width = SIZE;
+    canvas.height = SIZE;
+    const ctx = canvas.getContext("2d");
+    ctx.clearRect(0, 0, SIZE, SIZE);
+    if (isNaN(psi) || isNaN(delta)) return;
+
+    // HelioprojectiveRadial: psi = position angle from solar north toward solar west (right on image).
+    // delta = angular distance from disk center, in degrees.
+    // Solar radius ≈ 16'/60° ≈ 0.2667°, occupying ~450px in the 1024px SDO source image.
+    const R_SUN_DEG = 16.0 / 60.0;
+    const scale = (450 / R_SUN_DEG) * (SIZE / 1024);  // display px per degree
+
+    const cx = SIZE / 2;
+    const cy = SIZE / 2;
+    const psiRad = (psi * Math.PI) / 180;
+    const x = cx + scale * delta * Math.sin(psiRad);
+    const y = cy - scale * delta * Math.cos(psiRad);
+
+    ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
+    ctx.lineWidth = 1.5;
+    const r = 8;
+    ctx.beginPath();
+    ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
+    ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(x, y, r / 2, 0, 2 * Math.PI);
+    ctx.stroke();
   }
 
   _injectSimbadButton() {
