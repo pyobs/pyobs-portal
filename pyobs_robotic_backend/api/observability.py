@@ -61,9 +61,18 @@ def night_data(
     now = Time.now()
     t_eve, t_morn = _next_night(observer, now)
 
-    # ~5-minute sampling
-    n_steps = max(int((t_morn - t_eve).to(u.minute).value / 5), 2)
-    times = t_eve + np.linspace(0, 1, n_steps) * (t_morn - t_eve)
+    # If the sun is already below the horizon, tonight's sunset is in the past.
+    sun_alt = observer.sun_altaz(now).alt.deg
+    if sun_alt < 0:
+        t_sunset = observer.sun_set_time(now, which="previous")
+        t_sunrise = observer.sun_rise_time(now, which="next")
+    else:
+        t_sunset = observer.sun_set_time(now, which="next")
+        t_sunrise = observer.sun_rise_time(t_sunset, which="next")
+
+    # ~5-minute sampling across the full sunset-to-sunrise window
+    n_steps = max(int((t_sunrise - t_sunset).to(u.minute).value / 5), 2)
+    times = t_sunset + np.linspace(0, 1, n_steps) * (t_sunrise - t_sunset)
 
     altaz_frame = observer.altaz(times)
     target_altaz = target.coord.transform_to(altaz_frame)

@@ -26,6 +26,14 @@ const YEAR_COLOR = "#66d9a0";
 const TWILIGHT_FILL = "rgba(10,30,80,0.45)";
 const HORIZON_COLOR = "rgba(255,80,80,0.5)";
 
+const NOW_LINE = (x) => ({
+  type: "line",
+  x0: x, x1: x,
+  y0: 0, y1: 1,
+  yref: "paper",
+  line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" },
+});
+
 const BASE_LAYOUT = {
   paper_bgcolor: PAPER_BG,
   plot_bgcolor: PLOT_BG,
@@ -33,6 +41,7 @@ const BASE_LAYOUT = {
   font: { color: TEXT_COLOR, size: 11, family: "system-ui,sans-serif" },
   xaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
   yaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
+  hoverlabel: { bgcolor: "white", bordercolor: "white", font: { color: "black" } },
 };
 
 // Airmass axis: ticks at fixed elevation degrees, labelled with airmass = 1/sin(el).
@@ -154,6 +163,7 @@ function renderNightPlot(el, data) {
       font: { size: 10 },
     },
     annotations,
+    shapes: [NOW_LINE(new Date())],
     hovermode: "x unified",
   };
 
@@ -217,6 +227,7 @@ function renderYearPlot(el, data) {
       range: [0, 90],
     },
     yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
+    shapes: [NOW_LINE(new Date())],
     showlegend: false,
     hovermode: "x unified",
   };

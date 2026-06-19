@@ -43,6 +43,7 @@ const MP_BASE_LAYOUT = {
   font:   { color: MP_TEXT, size: 11, family: "system-ui,sans-serif" },
   xaxis:  { gridcolor: MP_GRID, zerolinecolor: MP_GRID },
   yaxis:  { gridcolor: MP_GRID, zerolinecolor: MP_GRID },
+  hoverlabel: { bgcolor: "white", bordercolor: "white", font: { color: "black" } },
 };
 
 const MP_CONFIG = { displayModeBar: false, responsive: true };
@@ -151,6 +152,13 @@ function renderMeritPlot(el, data) {
       font: { size: 10 },
       groupclick: "toggleitem",
     },
+    shapes: [{
+      type: "line",
+      x0: new Date(), x1: new Date(),
+      y0: 0, y1: 1,
+      yref: "paper",
+      line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" },
+    }],
     hovermode: "x unified",
   };
 
