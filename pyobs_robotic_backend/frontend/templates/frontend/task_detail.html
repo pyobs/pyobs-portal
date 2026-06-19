@@ -136,6 +136,27 @@
             </div>
             <div id="aladin-container" style="height:300px"></div>
           </div>
+          <div id="sdo-wrapper" class="d-none">
+            <div class="border-top border-secondary px-2 pt-2 pb-2">
+              <div class="d-flex align-items-center gap-2 mb-2">
+                <span class="small text-secondary">SDO Image</span>
+                <select id="sdo-channel" class="form-select form-select-sm w-auto">
+                  <option value="0171">AIA 171 Å (corona)</option>
+                  <option value="0304">AIA 304 Å (chromosphere)</option>
+                  <option value="0193">AIA 193 Å (corona)</option>
+                  <option value="0211">AIA 211 Å (active regions)</option>
+                  <option value="0131">AIA 131 Å (flares)</option>
+                  <option value="HMIIF">HMI Intensitygram</option>
+                  <option value="HMIB">HMI Magnetogram</option>
+                </select>
+                <span id="sdo-loading" class="spinner-border spinner-border-sm text-secondary d-none" role="status" aria-hidden="true"></span>
+              </div>
+              <div style="position:relative;display:inline-block;line-height:0">
+                <img id="sdo-img" style="width:300px;height:300px;display:block" alt="SDO Sun image">
+                <canvas id="sdo-canvas" style="position:absolute;top:0;left:0;width:300px;height:300px;"></canvas>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
