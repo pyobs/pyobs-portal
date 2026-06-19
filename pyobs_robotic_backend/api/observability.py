@@ -82,7 +82,7 @@ def night_data(
     moon_coords = get_body("moon", times)
     moon_altaz = moon_coords.transform_to(altaz_frame)
     moon_elevation = moon_altaz.alt.deg.tolist()
-    moon_distance = moon_coords.separation(target.coord).deg.tolist()
+    moon_distance = moon_coords.icrs.separation(target.coord).deg.tolist()
 
     return {
         "times_utc": [t.isot for t in times],
