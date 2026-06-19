@@ -931,6 +931,15 @@ wheels = [
 ]
 
 [[package]]
+name = "logging-journald"
+version = "0.6.11"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/cc/07/77567e0001d3acffddc80470497f0eec3ccb544b72e672550b3c1f02e586/logging_journald-0.6.11.tar.gz", hash = "sha256:1741ae42cf8953e435489a82acf0e88bc21ad23351e867ca4453a354fc6d09e1", size = 5432, upload-time = "2024-12-13T08:17:10.147Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/7b/033a15aea43108af5049d8c0a09c3ea30519295aee1f3ed74c9efa1ee4cb/logging_journald-0.6.11-py3-none-any.whl", hash = "sha256:4d280eb0bddb4bf616297ee2428592b037618b6f0169c873f655aff92496c232", size = 5619, upload-time = "2024-12-13T08:17:09.127Z" },
+]
+
+[[package]]
 name = "more-itertools"
 version = "11.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -1574,7 +1583,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "1.52.5"
+version = "1.52.18"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1586,6 +1595,7 @@ dependencies = [
     { name = "dacite" },
     { name = "dbus-next" },
     { name = "influxdb-client" },
+    { name = "logging-journald" },
     { name = "numpy" },
     { name = "pandas" },
     { name = "paramiko" },
@@ -1602,14 +1612,14 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/9f/827db1e6c2f34f667e08009ff2e68e92ae80010ba924abcde23a417d139d/pyobs_core-1.52.5.tar.gz", hash = "sha256:72117c5bf6a6276faea88a8e62c6481a24479cd44b66d8feb4da2b739b0ae291", size = 290002, upload-time = "2026-06-16T11:46:30.507Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/35/f0/9fd4b0335da729b602b8d14d7a11493e81aeed4ae667497cd2e9a880f790/pyobs_core-1.52.18.tar.gz", hash = "sha256:8bf4a15a6195e4260fe6749d55e359e862f6cc7f1e4db3e6ba39a475cc646e73", size = 293139, upload-time = "2026-06-19T08:09:50.524Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/6f/c4/a016e49756cc6faca2993ab9c981238afd6d49b2d7d2c21daf86c8b5f96b/pyobs_core-1.52.5-py3-none-any.whl", hash = "sha256:9a4155c7b6c6a876c70de253c18a7f7100f290a696c7f3f9d3ca8224c4618e55", size = 500799, upload-time = "2026-06-16T11:46:28.665Z" },
+    { url = "https://files.pythonhosted.org/packages/98/04/0f008875c6b316c0290eb4185a3f702124f690baabe5c782ca887ce7ff11/pyobs_core-1.52.18-py3-none-any.whl", hash = "sha256:8d835c88b96b8a1e294f2a0e986709f67ec8b5d9081d61c93e60791c19ea3ec1", size = 504966, upload-time = "2026-06-19T08:09:49.004Z" },
 ]
 
 [[package]]
 name = "pyobs-robotic-backend"
-version = "1.4.0"
+version = "1.4.1"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -1645,7 +1655,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
-    { name = "pyobs-core", specifier = ">=1.52.5" },
+    { name = "pyobs-core", specifier = ">=1.52.18" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
 
