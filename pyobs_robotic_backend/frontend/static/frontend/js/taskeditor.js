@@ -690,19 +690,29 @@ async function initTaskEditor(taskId) {
 
   // Initialise merit plot (requires buildPayload, defined below, so we use a closure)
   if (typeof initMeritPlot === "function") {
-    // buildPayload is defined later; wrap in a lazy getter
-    initMeritPlot(() => ({
-      id: els.code.value,
-      name: els.name.value,
-      project: els.project.value,
-      duration: Number(els.duration.value),
-      priority: Number(els.priority.value),
-      active: els.active.checked,
-      constraints: constraintsEditor.getData(),
-      merits: meritsEditor.getData(),
-      target: targetEditor.getData(),
-      script: scriptEditor.getData(),
-    }), siteConfig);
+    initMeritPlot(() => {
+      const target = targetEditor.getData();
+      // Normalize SiderealTarget RA/Dec from HMS/DMS strings to decimal degrees
+      // so the backend can parse them into a Target object for constraint evaluation.
+      if (target?.class?.includes("SiderealTarget")) {
+        const ra = parseHmsToDeg(String(target.ra ?? ""));
+        const dec = parseDmsToDeg(String(target.dec ?? ""));
+        if (ra !== null) target.ra = ra;
+        if (dec !== null) target.dec = dec;
+      }
+      return {
+        id: els.code.value,
+        name: els.name.value,
+        project: els.project.value,
+        duration: Number(els.duration.value),
+        priority: Number(els.priority.value),
+        active: els.active.checked,
+        constraints: constraintsEditor.getData(),
+        merits: meritsEditor.getData(),
+        target,
+        script: scriptEditor.getData(),
+      };
+    }, siteConfig);
   }
 
   // Refresh merit plot on any constraint / merit change (add, remove, or field edit)

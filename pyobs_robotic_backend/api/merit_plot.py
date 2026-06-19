@@ -27,6 +27,7 @@ log = logging.getLogger(__name__)
 # helpers
 # ---------------------------------------------------------------------------
 
+
 def _make_observer(lat: float, lon: float, elev: float) -> Observer:
     return Observer(
         latitude=lat * u.deg,
@@ -45,43 +46,67 @@ def _next_night(observer: Observer, now: Time) -> tuple[Time, Time]:
 # async evaluation helpers  (constraints and merits use async __call__)
 # ---------------------------------------------------------------------------
 
-async def _eval_constraint(constraint: Any, time: Time, task: Any, data: Any) -> bool:
+
+async def _eval_constraint(
+    constraint: Any, time: Time, task: Any, data: Any
+) -> tuple[bool, str | None]:
     try:
-        return bool(await constraint(time, task, data))
-    except Exception:
-        return False
+        return bool(await constraint(time, task, data)), None
+    except Exception as exc:
+        return False, f"{type(constraint).__name__}: {exc}"
 
 
-async def _eval_merit(merit: Any, time: Time, task: Any, data: Any) -> float:
+async def _eval_merit(
+    merit: Any, time: Time, task: Any, data: Any
+) -> tuple[float, str | None]:
     try:
-        return float(await merit(time, task, data))
-    except Exception:
-        return 0.0
+        return float(await merit(time, task, data)), None
+    except Exception as exc:
+        return 0.0, f"{type(merit).__name__}: {exc}"
 
 
-async def _eval_all(constraints: list, merits: list, task: Any, data: Any, times_astropy: list[Time]) -> dict:
+async def _eval_all(
+    constraints: list, merits: list, task: Any, data: Any, times_astropy: list[Time]
+) -> dict:
     """Evaluate all constraints and merits at each time step."""
     n = len(times_astropy)
-    n_c = len(constraints)
-    n_m = len(merits)
 
-    constraint_values = [[False] * n for _ in range(n_c)]
-    merit_values = [[0.0] * n for _ in range(n_m)]
+    constraint_values = [[False] * n for _ in range(len(constraints))]
+    merit_values = [[0.0] * n for _ in range(len(merits))]
+    # Collect the first error per constraint/merit for surfacing to the frontend
+    constraint_errors: list[str | None] = [None] * len(constraints)
+    merit_errors: list[str | None] = [None] * len(merits)
 
     for i, t in enumerate(times_astropy):
         for j, c in enumerate(constraints):
-            constraint_values[j][i] = await _eval_constraint(c, t, task, data)
+            val, err = await _eval_constraint(c, t, task, data)
+            constraint_values[j][i] = val
+            if err and constraint_errors[j] is None:
+                constraint_errors[j] = err
+                log.warning("Constraint eval error: %s", err)
         for j, m in enumerate(merits):
-            merit_values[j][i] = await _eval_merit(m, t, task, data)
+            val, err = await _eval_merit(m, t, task, data)
+            merit_values[j][i] = val
+            if err and merit_errors[j] is None:
+                merit_errors[j] = err
+                log.warning("Merit eval error: %s", err)
 
-    return {"constraint_values": constraint_values, "merit_values": merit_values}
+    return {
+        "constraint_values": constraint_values,
+        "merit_values": merit_values,
+        "constraint_errors": constraint_errors,
+        "merit_errors": merit_errors,
+    }
 
 
 # ---------------------------------------------------------------------------
 # public entry point
 # ---------------------------------------------------------------------------
 
-def merit_plot_data(payload: dict[str, Any], lat: float, lon: float, elev: float) -> dict[str, Any]:
+
+def merit_plot_data(
+    payload: dict[str, Any], lat: float, lon: float, elev: float
+) -> dict[str, Any]:
     """
     Compute per-constraint and per-merit time series for the task editor plot.
 
@@ -140,26 +165,18 @@ def merit_plot_data(payload: dict[str, Any], lat: float, lon: float, elev: float
             log.warning("Could not parse merit %r: %s", raw, exc)
 
     # --- build a minimal Task and DataProvider ---
-    # Strip target if it has non-numeric coords (hms/dms strings) so
-    # model_validate doesn't fail; target-dependent constraints will just
-    # return False / 0.0 gracefully.
-    task_dict = {k: v for k, v in payload.items() if k != "target"}
+    # Pass the full payload so pydantic's PolymorphicBaseModel deserializes the
+    # nested target via its "class" field automatically.  Manual reassignment
+    # after construction fails silently because pydantic models are immutable.
     try:
-        task = Task.model_validate(task_dict)
-        # Attach the parsed target if present and parseable
-        raw_target = payload.get("target")
-        if raw_target:
-            from pyobs.robotic.scheduler.targets.target import Target
-            try:
-                task.target = Target.model_validate(raw_target, by_alias=True)
-            except Exception:
-                pass
+        task = Task.model_validate(payload)
     except Exception as exc:
         log.warning("Could not build Task for merit plot: %s", exc)
         task = None
 
     try:
         from pyobs.robotic.scheduler.dataprovider import DataProvider
+
         data_provider = DataProvider(observer=observer)
     except Exception as exc:
         log.warning("Could not build DataProvider: %s", exc)
@@ -177,11 +194,14 @@ def merit_plot_data(payload: dict[str, Any], lat: float, lon: float, elev: float
     except RuntimeError:
         # Already inside a running loop (shouldn't happen under Django, but just in case)
         import concurrent.futures
+
         with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
             result = pool.submit(asyncio.run, _run()).result()
 
     constraint_values = result["constraint_values"]
     merit_values = result["merit_values"]
+    constraint_errors = result["constraint_errors"]
+    merit_errors = result["merit_errors"]
 
     # --- combine: product of merits, zeroed where any constraint fails ---
     n = len(t_grid)
@@ -203,11 +223,19 @@ def merit_plot_data(payload: dict[str, Any], lat: float, lon: float, elev: float
         "twilight_evening_utc": t_eve.isot,
         "twilight_morning_utc": t_morn.isot,
         "constraints": [
-            {"name": name, "values": [bool(v) for v in constraint_values[j]]}
+            {
+                "name": name,
+                "values": [bool(v) for v in constraint_values[j]],
+                **({"error": constraint_errors[j]} if constraint_errors[j] else {}),
+            }
             for j, name in enumerate(constraint_names)
         ],
         "merits": [
-            {"name": name, "values": [round(float(v), 6) for v in merit_values[j]]}
+            {
+                "name": name,
+                "values": [round(float(v), 6) for v in merit_values[j]],
+                **({"error": merit_errors[j]} if merit_errors[j] else {}),
+            }
             for j, name in enumerate(merit_names)
         ],
         "combined": combined,

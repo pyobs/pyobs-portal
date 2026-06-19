@@ -89,12 +89,13 @@ function renderMeritPlot(el, data) {
   // Individual constraint traces (binary 0/1 shown as step lines)
   data.constraints.forEach((c, i) => {
     const color = MP_CONSTRAINT_COLORS[i % MP_CONSTRAINT_COLORS.length];
+    const label = c.error ? `${c.name} ⚠ ${c.error}` : c.name;
     traces.push({
       x: times,
       y: c.values.map((v) => (v ? 1.0 : 0.0)),
       mode: "lines",
       line: { color, width: 1.5, dash: "dot", shape: "hv" },
-      name: c.name,
+      name: label,
       legendgroup: "constraints",
       legendgrouptitle: i === 0 ? { text: "Constraints" } : undefined,
       hovertemplate: `%{x|%H:%M UTC}<br>${c.name}: %{y}<extra></extra>`,
@@ -104,12 +105,13 @@ function renderMeritPlot(el, data) {
   // Individual merit traces
   data.merits.forEach((m, i) => {
     const color = MP_MERIT_COLORS[i % MP_MERIT_COLORS.length];
+    const label = m.error ? `${m.name} ⚠ ${m.error}` : m.name;
     traces.push({
       x: times,
       y: m.values,
       mode: "lines",
       line: { color, width: 1.5, dash: "dash" },
-      name: m.name,
+      name: label,
       legendgroup: "merits",
       legendgrouptitle: i === 0 ? { text: "Merits" } : undefined,
       hovertemplate: `%{x|%H:%M UTC}<br>${m.name}: %{y:.4f}<extra></extra>`,
