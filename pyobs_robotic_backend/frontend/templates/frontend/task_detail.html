@@ -149,6 +149,15 @@
           <div class="card-header">Merits</div>
           <div class="card-body" id="merits-editor"></div>
         </div>
+
+        <div id="merit-plot-container" class="d-none">
+          <div id="merit-plot-loading" class="d-none text-center text-secondary small py-2">
+            <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>
+            Computing merit plot…
+          </div>
+          <div id="merit-plot-message" class="small text-secondary text-center py-2 d-none"></div>
+          <div id="merit-plot" style="height:260px"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -217,6 +226,7 @@
 <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 <script src="{% static 'frontend/js/schemaform.js' %}"></script>
 <script src="{% static 'frontend/js/visplot.js' %}"></script>
+<script src="{% static 'frontend/js/meritplot.js' %}"></script>
 <script src="{% static 'frontend/js/taskeditor.js' %}"></script>
 <script>
 {% if task_id %}

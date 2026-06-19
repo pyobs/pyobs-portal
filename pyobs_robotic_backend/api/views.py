@@ -275,3 +275,41 @@ def observability(request):
         return Response({"error": str(exc)}, status=500)
 
     return Response({"night": night, "year": year})
+
+
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def merit_plot(request):
+    """
+    Evaluate constraints and merits over the coming night for an unsaved task.
+
+    Body: full task dict (same shape as the task editor payload).
+    Returns: { times_utc, twilight_evening_utc, twilight_morning_utc,
+               constraints: [{name, values}], merits: [{name, values}],
+               combined: [float] }
+    """
+    from django.conf import settings
+    from .merit_plot import merit_plot_data
+
+    lat = getattr(settings, "SITE_LATITUDE", None)
+    lon = getattr(settings, "SITE_LONGITUDE", None)
+    elev = getattr(settings, "SITE_ELEVATION", None) or 0.0
+
+    if lat is None or lon is None:
+        return Response(
+            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            status=400,
+        )
+
+    if not isinstance(request.data, dict):
+        return Response({"error": "Request body must be a JSON object."}, status=400)
+
+    try:
+        result = merit_plot_data(request.data, lat, lon, elev)
+    except Exception as exc:
+        return Response({"error": str(exc)}, status=500)
+
+    if "error" in result:
+        return Response(result, status=400)
+
+    return Response(result)

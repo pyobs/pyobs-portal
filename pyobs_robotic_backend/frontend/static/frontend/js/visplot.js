@@ -26,13 +26,38 @@ const YEAR_COLOR = "#66d9a0";
 const TWILIGHT_FILL = "rgba(10,30,80,0.45)";
 const HORIZON_COLOR = "rgba(255,80,80,0.5)";
 
+const NOW_LINE = (x) => ({
+  type: "line",
+  x0: x, x1: x,
+  y0: 0, y1: 1,
+  yref: "paper",
+  line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" },
+});
+
 const BASE_LAYOUT = {
   paper_bgcolor: PAPER_BG,
   plot_bgcolor: PLOT_BG,
-  margin: { l: 44, r: 12, t: 26, b: 36 },
+  margin: { l: 44, r: 44, t: 26, b: 36 },
   font: { color: TEXT_COLOR, size: 11, family: "system-ui,sans-serif" },
   xaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
   yaxis: { gridcolor: GRID_COLOR, zerolinecolor: GRID_COLOR },
+  hoverlabel: { bgcolor: "white", bordercolor: "white", font: { color: "black" } },
+};
+
+// Airmass axis: ticks at fixed elevation degrees, labelled with airmass = 1/sin(el).
+const AIRMASS_TICK_VALS = [20, 40, 60, 80];
+const AIRMASS_TICK_TEXT = AIRMASS_TICK_VALS.map(
+  (el) => (1 / Math.sin((Math.PI / 180) * el)).toFixed(2)
+);
+const AIRMASS_YAXIS = {
+  overlaying: "y",
+  side: "right",
+  range: [0, 90],
+  tickvals: AIRMASS_TICK_VALS,
+  ticktext: AIRMASS_TICK_TEXT,
+  title: { text: "Airmass", font: { size: 10 }, standoff: 5 },
+  showgrid: false,
+  zeroline: false,
 };
 
 const PLOTLY_CONFIG = {
@@ -103,6 +128,16 @@ function renderNightPlot(el, data) {
       name: "Moon elev.",
       hovertemplate: "%{x|%H:%M UTC}<br>Moon: %{y:.1f}°<extra></extra>",
     },
+    // Invisible anchor trace — forces Plotly to render the yaxis2 airmass axis
+    {
+      x: [times[0], times[times.length - 1]],
+      y: [0, 90],
+      yaxis: "y2",
+      mode: "lines",
+      line: { width: 0 },
+      hoverinfo: "skip",
+      showlegend: false,
+    },
   ];
 
   const layout = {
@@ -119,6 +154,7 @@ function renderNightPlot(el, data) {
       title: { text: "Elevation (°)", font: { size: 10 }, standoff: 5 },
       range: [0, 90],
     },
+    yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
     legend: {
       orientation: "h",
       y: -0.22,
@@ -127,6 +163,10 @@ function renderNightPlot(el, data) {
       font: { size: 10 },
     },
     annotations,
+    shapes: (() => {
+      const now = new Date();
+      return now >= times[0] && now <= times[times.length - 1] ? [NOW_LINE(now.toISOString())] : [];
+    })(),
     hovermode: "x unified",
   };
 
@@ -160,6 +200,16 @@ function renderYearPlot(el, data) {
       connectgaps: false,
       hovertemplate: "%{x|%b %d}<br>El: %{y:.1f}°<extra></extra>",
     },
+    // Invisible anchor trace — forces Plotly to render the yaxis2 airmass axis
+    {
+      x: [dates[0], dates[dates.length - 1]],
+      y: [0, 90],
+      yaxis: "y2",
+      mode: "lines",
+      line: { width: 0 },
+      hoverinfo: "skip",
+      showlegend: false,
+    },
   ];
 
   const layout = {
@@ -179,6 +229,8 @@ function renderYearPlot(el, data) {
       title: { text: "Elevation (°)", font: { size: 10 }, standoff: 5 },
       range: [0, 90],
     },
+    yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
+    shapes: [NOW_LINE(new Date().toISOString())],
     showlegend: false,
     hovermode: "x unified",
   };
@@ -280,5 +332,7 @@ function initVisibilityPlots(siteConfig) {
     }
     // Debounce 600ms so we don't fire on every keystroke
     _fetchTimer = setTimeout(() => fetchAndRender(raDeg, decDeg), 600);
+    // Also refresh the merit plot when the target changes
+    if (typeof window.refreshMeritPlot === "function") window.refreshMeritPlot();
   };
 }
