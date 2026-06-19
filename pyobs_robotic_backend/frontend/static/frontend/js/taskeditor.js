@@ -192,6 +192,10 @@ class PickerEditor {
   }
 }
 
+function prettyTargetType(name) {
+  return name.replace(/Target$/, "").replace(/([A-Z])/g, " $1").trim();
+}
+
 /** Single, optional, typed target (sidereal / dynamic / ...). */
 class TargetEditor {
   constructor(container, schemas, pickerSchemas, data) {
@@ -210,7 +214,7 @@ class TargetEditor {
       .forEach((name) => {
         const o = document.createElement("option");
         o.value = name;
-        o.textContent = name;
+        o.textContent = prettyTargetType(name);
         this.select.appendChild(o);
       });
     this.select.value = this.type || "";
