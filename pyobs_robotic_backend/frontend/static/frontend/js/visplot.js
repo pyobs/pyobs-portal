@@ -163,7 +163,10 @@ function renderNightPlot(el, data) {
       font: { size: 10 },
     },
     annotations,
-    shapes: [NOW_LINE(new Date())],
+    shapes: (() => {
+      const now = new Date();
+      return now >= times[0] && now <= times[times.length - 1] ? [NOW_LINE(now.toISOString())] : [];
+    })(),
     hovermode: "x unified",
   };
 
@@ -227,7 +230,7 @@ function renderYearPlot(el, data) {
       range: [0, 90],
     },
     yaxis2: { ...BASE_LAYOUT.yaxis, ...AIRMASS_YAXIS },
-    shapes: [NOW_LINE(new Date())],
+    shapes: [NOW_LINE(new Date().toISOString())],
     showlegend: false,
     hovermode: "x unified",
   };
