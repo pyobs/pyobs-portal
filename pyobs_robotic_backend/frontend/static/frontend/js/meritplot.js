@@ -132,11 +132,11 @@ function renderMeritPlot(el, data) {
 
   const layout = {
     ...MP_BASE_LAYOUT,
-    title: { text: "Merit over tonight", font: { color: MP_TEXT, size: 13 } },
+    title: { text: "Merit (next 24 h)", font: { color: MP_TEXT, size: 13 } },
     xaxis: {
       ...MP_BASE_LAYOUT.xaxis,
       type: "date",
-      tickformat: "%H:%M",
+      tickformat: "%b %d %H:%M",
       title: { text: "UTC", font: { size: 10 } },
     },
     yaxis: {
@@ -154,7 +154,7 @@ function renderMeritPlot(el, data) {
     },
     shapes: [{
       type: "line",
-      x0: new Date(), x1: new Date(),
+      x0: new Date().toISOString(), x1: new Date().toISOString(),
       y0: 0, y1: 1,
       yref: "paper",
       line: { color: "rgba(255,255,255,0.35)", width: 1, dash: "dot" },

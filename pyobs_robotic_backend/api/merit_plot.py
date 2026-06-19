@@ -134,11 +134,13 @@ def merit_plot_data(
 
     observer = _make_observer(lat, lon, elev)
     now = Time.now()
-    t_eve, t_morn = _next_night(observer, now)
 
-    # ~5-minute sampling across the night
-    n_steps = max(int((t_morn - t_eve).to(u.minute).value / 5), 2)
-    t_grid = t_eve + np.linspace(0, 1, n_steps) * (t_morn - t_eve)
+    # ~5-minute sampling across the next 24 hours
+    n_steps = max(int(24 * 60 / 5), 2)
+    t_grid = now + np.linspace(0, 1, n_steps) * (24 * u.hour)
+
+    # Twilight times for shading (next night within the 24h window)
+    t_eve, t_morn = _next_night(observer, now)
 
     # --- parse constraints and merits from the payload ---
     raw_constraints = payload.get("constraints") or []
