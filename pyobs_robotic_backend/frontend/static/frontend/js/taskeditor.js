@@ -351,13 +351,19 @@ class TargetEditor {
     wrapper.classList.remove("d-none");
 
     document.getElementById("sdo-channel")?.addEventListener("change", () => this._updateSdo());
-    this.form?.element.addEventListener("input", () => this._updateSdo());
+
+    // Attach directly to psi/delta inputs so updates fire reliably
+    for (const name of ["psi", "delta"]) {
+      const input = this.form?.fields[name]?.rowEl?.querySelector("input");
+      input?.addEventListener("input", () => this._updateSdo());
+    }
+
     this._updateSdo();
   }
 
   _updateSdo() {
-    const img = document.getElementById("sdo-img");
-    const canvas = document.getElementById("sdo-canvas");
+    const img     = document.getElementById("sdo-img");
+    const canvas  = document.getElementById("sdo-canvas");
     const loading = document.getElementById("sdo-loading");
     const channel = document.getElementById("sdo-channel")?.value || "0171";
     if (!img || !canvas) return;
@@ -368,14 +374,16 @@ class TargetEditor {
 
     if (img.dataset.channel !== channel) {
       img.dataset.channel = channel;
-      if (loading) loading.classList.remove("d-none");
-      img.onload  = () => { loading?.classList.add("d-none"); draw(); };
+      img.dataset.loaded  = "0";
+      loading?.classList.remove("d-none");
+      img.onload  = () => { loading?.classList.add("d-none"); img.dataset.loaded = "1"; draw(); };
       img.onerror = () => { loading?.classList.add("d-none"); };
       img.src = `https://sdo.gsfc.nasa.gov/assets/img/latest/latest_1024_${channel}.jpg`;
-    } else if (img.complete && img.naturalWidth > 0) {
+    } else if (img.dataset.loaded === "1") {
       draw();
     } else {
-      img.onload = () => { loading?.classList.add("d-none"); draw(); };
+      // Image still loading — update onload so it draws with the latest coordinates
+      img.onload = () => { loading?.classList.add("d-none"); img.dataset.loaded = "1"; draw(); };
     }
   }
 
