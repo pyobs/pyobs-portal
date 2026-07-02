@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-robotic-backend"
-version = "1.5.1"
+version = "1.5.2"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 requires-python = ">=3.13"
