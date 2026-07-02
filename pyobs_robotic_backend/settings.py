@@ -36,6 +36,15 @@ CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost"
     ","
 )
 
+# 'CORS_ALLOWED_ORIGINS' should be a single string of origins (scheme + host [+ port])
+# separated by commas, e.g. for a frontend served from a different host/port than the API:
+#   CORS_ALLOWED_ORIGINS=http://localhost:8097,https://your.domain.com
+CORS_ALLOWED_ORIGINS = [
+    origin
+    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
+    if origin
+]
+
 # The bundled nginx.conf.example sets "X-Forwarded-Proto: $scheme" and is the
 # only public entry point (gunicorn itself is not published), so it's safe to
 # trust this header to tell Django the original request was HTTPS. Without
@@ -57,6 +66,7 @@ INSTALLED_APPS = [
     "django_filters",
     "rest_framework",
     "rest_framework.authtoken",
+    "corsheaders",
     "pyobs_robotic_backend.api",
 ]
 
@@ -64,6 +74,7 @@ FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
