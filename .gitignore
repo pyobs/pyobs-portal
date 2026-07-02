@@ -12,6 +12,8 @@ wheels/
 # Local configuration
 .env
 local_settings.py
+docker-compose.override.yml
+deploy/
 
 # IDE
 .idea/
