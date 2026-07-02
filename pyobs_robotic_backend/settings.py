@@ -53,6 +53,14 @@ CORS_ALLOWED_ORIGINS = [
 # TLS-terminating proxy.
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
 
+# Django's SecurityMiddleware sends "Cross-Origin-Opener-Policy: same-origin" by
+# default, but browsers only honor COOP over HTTPS (or localhost) - served over
+# plain HTTP it's just a no-op that logs a console warning. Deployments that
+# terminate TLS can leave this at its default; HTTP-only deployments can set
+# SECURE_CROSS_ORIGIN_OPENER_POLICY=none to silence the warning.
+_coop = os.environ.get("SECURE_CROSS_ORIGIN_OPENER_POLICY", "same-origin")
+SECURE_CROSS_ORIGIN_OPENER_POLICY = None if _coop.lower() == "none" else _coop
+
 # Application definition
 
 INSTALLED_APPS = [
