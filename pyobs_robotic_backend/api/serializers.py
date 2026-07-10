@@ -1,10 +1,27 @@
+import inspect
+
 from django.contrib.auth.models import User
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from astropy.coordinates import Angle
 import astropy.units as u
 
+import pyobs.robotic.scheduler.targets as _targets_module
+from pyobs.robotic.scheduler.targets.target import Target as _TargetModel
+
 from .models import Task, Observation, Merit, Constraint, Project, Target
+
+
+def _target_type_to_class() -> dict[str, str]:
+    """Map lowercase type key (e.g. "sidereal") to the real pyobs target class name."""
+    return {
+        name.replace("Target", "").lower(): name
+        for name, obj in inspect.getmembers(_targets_module)
+        if inspect.isclass(obj) and issubclass(obj, _TargetModel) and obj is not _TargetModel
+    }
+
+
+TARGET_TYPE_TO_CLASS = _target_type_to_class()
 
 
 class UserSerializer(serializers.ModelSerializer):
@@ -89,12 +106,7 @@ class TargetSerializer(serializers.ModelSerializer):
         klass = data.pop("class", "")
         name = data.pop("name")
         # extract type from class name
-        if "SiderealTarget" in klass:
-            typ = "sidereal"
-        elif "DynamicTarget" in klass:
-            typ = "dynamic"
-        else:
-            typ = klass.split(".")[-1].replace("Target", "").lower()
+        typ = klass.split(".")[-1].replace("Target", "").lower()
         # parse hms/dms strings for sidereal targets
         if typ == "sidereal":
             if isinstance(data.get("ra"), str):
@@ -111,15 +123,9 @@ class TargetSerializer(serializers.ModelSerializer):
         return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
     def to_representation(self, instance):
-        klass_map = {
-            "sidereal": "pyobs.robotic.scheduler.targets.SiderealTarget",
-            "dynamic": "pyobs.robotic.scheduler.targets.DynamicTarget",
-        }
+        class_name = TARGET_TYPE_TO_CLASS.get(instance.type, f"{instance.type.capitalize()}Target")
         data = {
-            "class": klass_map.get(
-                instance.type,
-                f"pyobs.robotic.scheduler.targets.{instance.type.capitalize()}Target",
-            ),
+            "class": f"pyobs.robotic.scheduler.targets.{class_name}",
             "name": instance.name,
         }
         # DynamicTarget: preserve picker as nested object

@@ -12,6 +12,9 @@ const TARGET_PREFIX = "pyobs.robotic.scheduler.targets.";
 
 const IGNORED_TASK_FIELDS = new Set(["cost", "target_dependent", "exptime_done"]);
 
+// Apparent solar angular radius, in arcsec, used to scale the SDO preview marker.
+const R_SUN_ARCSEC = 16 * 60;
+
 function classToType(klass, prefix) {
   if (!klass) return null;
   return klass.startsWith(prefix) ? klass.slice(prefix.length) : klass.split(".").pop();
@@ -253,8 +256,8 @@ class TargetEditor {
         this._makeCoordsFlexible();
         this._injectSimbadButton();
         this._initAladin();
-      } else if (type === "HelioprojectiveRadialTarget") {
-        this._initSdoViewer();
+      } else if (type === "HeliocentricPolarTarget" || type === "HelioprojectiveTarget") {
+        this._initSdoViewer(type);
       }
     }
   }
@@ -349,15 +352,16 @@ class TargetEditor {
     }
   }
 
-  _initSdoViewer() {
+  _initSdoViewer(type) {
     const wrapper = document.getElementById("sdo-wrapper");
     if (!wrapper) return;
     wrapper.classList.remove("d-none");
 
     document.getElementById("sdo-channel")?.addEventListener("change", () => this._updateSdo());
 
-    // Attach directly to psi/delta inputs so updates fire reliably
-    for (const name of ["psi", "delta"]) {
+    // Attach directly to the relevant inputs so updates fire reliably
+    const fieldNames = type === "HeliocentricPolarTarget" ? ["mu", "psi"] : ["tx", "ty"];
+    for (const name of fieldNames) {
       const input = this.form?.fields[name]?.rowEl?.querySelector("input");
       input?.addEventListener("input", () => this._updateSdo());
     }
@@ -372,9 +376,8 @@ class TargetEditor {
     const channel = document.getElementById("sdo-channel")?.value || "0171";
     if (!img || !canvas) return;
 
-    const psi   = parseFloat(this.form?.fields["psi"]?.getValue());
-    const delta = parseFloat(this.form?.fields["delta"]?.getValue());
-    const draw  = () => this._drawSdoMarker(canvas, psi, delta);
+    const { tx, ty } = this._sdoTargetToArcsec();
+    const draw = () => this._drawSdoMarker(canvas, tx, ty);
 
     if (img.dataset.channel !== channel) {
       img.dataset.channel = channel;
@@ -391,25 +394,48 @@ class TargetEditor {
     }
   }
 
-  _drawSdoMarker(canvas, psi, delta) {
+  /** Resolve the current form values to helioprojective cartesian offsets (tx, ty), in arcsec. */
+  _sdoTargetToArcsec() {
+    if (this.type === "HelioprojectiveTarget") {
+      // Direct helioprojective cartesian offset, already in arcsec.
+      const tx = parseFloat(this.form?.fields["tx"]?.getValue());
+      const ty = parseFloat(this.form?.fields["ty"]?.getValue());
+      return { tx, ty };
+    }
+    if (this.type === "HeliocentricPolarTarget") {
+      // mu = cos(heliocentric angle), psi = position angle, both in radians per
+      // pyobs.robotic.scheduler.targets.HeliocentricPolarTarget. Mirrors that
+      // class's coordinates() conversion to helioprojective tx/ty for the preview.
+      const mu  = parseFloat(this.form?.fields["mu"]?.getValue());
+      const psi = parseFloat(this.form?.fields["psi"]?.getValue());
+      if (isNaN(mu) || isNaN(psi)) return { tx: NaN, ty: NaN };
+      const rSunRad = (R_SUN_ARCSEC / 3600) * (Math.PI / 180);
+      const dOverRSun = 1 / Math.sin(rSunRad); // d_sun / r_sun, derived from the assumed solar angular radius
+      const alpha = Math.acos(mu);
+      const theta = Math.atan(Math.sin(alpha) / (dOverRSun - mu)); // radians
+      const thetaArcsec = theta * (180 / Math.PI) * 3600;
+      return { tx: -thetaArcsec * Math.sin(psi), ty: thetaArcsec * Math.cos(psi) };
+    }
+    return { tx: NaN, ty: NaN };
+  }
+
+  _drawSdoMarker(canvas, tx, ty) {
     const SIZE = 300;
     canvas.width = SIZE;
     canvas.height = SIZE;
     const ctx = canvas.getContext("2d");
     ctx.clearRect(0, 0, SIZE, SIZE);
-    if (isNaN(psi) || isNaN(delta)) return;
+    if (isNaN(tx) || isNaN(ty)) return;
 
-    // HelioprojectiveRadial: psi = position angle from solar north toward solar west (right on image).
-    // delta = angular distance from disk center, in degrees.
-    // Solar radius ≈ 16'/60° ≈ 0.2667°, occupying ~450px in the 1024px SDO source image.
-    const R_SUN_DEG = 16.0 / 60.0;
-    const scale = (450 / R_SUN_DEG) * (SIZE / 1024);  // display px per degree
+    // tx/ty: helioprojective cartesian offset from disk center, in arcsec
+    // (solar north up, solar west right — same convention as sunpy's Helioprojective frame).
+    // Solar radius ≈ 960″, occupying ~450px in the 1024px SDO source image.
+    const scale = (450 / R_SUN_ARCSEC) * (SIZE / 1024);  // display px per arcsec
 
     const cx = SIZE / 2;
     const cy = SIZE / 2;
-    const psiRad = (psi * Math.PI) / 180;
-    const x = cx + scale * delta * Math.sin(psiRad);
-    const y = cy - scale * delta * Math.cos(psiRad);
+    const x = cx + scale * tx;
+    const y = cy - scale * ty;
 
     ctx.strokeStyle = "rgba(255, 80, 80, 0.9)";
     ctx.lineWidth = 1.5;
