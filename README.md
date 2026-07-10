@@ -37,6 +37,8 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `DEBUG` | `1` | Set to `0` in production |
 | `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of allowed hosts |
 | `CSRF_TRUSTED_ORIGINS` | `http://localhost` | Comma-separated list of trusted origins |
+| `CORS_ALLOWED_ORIGINS` | (empty) | Comma-separated list of origins allowed to make cross-origin requests to the API |
+| `SECURE_CROSS_ORIGIN_OPENER_POLICY` | `same-origin` | Set to `none` to disable the `Cross-Origin-Opener-Policy` header (needed for HTTP-only deployments, since browsers warn/ignore it off HTTPS) |
 | `SQL_ENGINE` | `django.db.backends.sqlite3` | Database backend |
 | `SQL_DATABASE` | `db.sqlite3` | Database name / path |
 | `SQL_USER` | `user` | Database user |
@@ -69,7 +71,7 @@ The API is served at `http://localhost:8000/api/`. If the frontend is enabled, t
 
 A production-ready setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). The application image is pulled from `ghcr.io/pyobs/pyobs-robotic-backend:latest`. Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
 
-The UI is served by nginx on port **8472**.
+The UI is served by nginx on port **8097**.
 
 Then start everything with:
 

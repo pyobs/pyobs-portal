@@ -190,11 +190,11 @@ wheels = [
 
 [[package]]
 name = "astropy-iers-data"
-version = "0.2026.5.4.1.4.54"
+version = "0.2026.7.6.1.1.20"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/1f/1c/1eaeac4da97849c5486211384bfb688dff640d29ea1d2c63db32bf43fe54/astropy_iers_data-0.2026.5.4.1.4.54.tar.gz", hash = "sha256:74b70c810e430c274ff9f0c91680d56f7703add8c367c842902dd53130f70832", size = 1932473, upload-time = "2026-05-04T01:05:39.141Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7f/e3/d32d2401c53fa1aaf118c963c51c4eb9cd10d074a72a52430904dc8ef46e/astropy_iers_data-0.2026.7.6.1.1.20.tar.gz", hash = "sha256:bc38de235802c9f006c8a04693706e2adcc9e7ac1cbf415dc042b5f0ac14f1f3", size = 1939850, upload-time = "2026-07-06T01:02:02.379Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ed/f8/077fbdeb102d298dd4e6b9ad024881156c4bbd96e60eeeb13e7d7487448f/astropy_iers_data-0.2026.5.4.1.4.54-py3-none-any.whl", hash = "sha256:9d9014f530020fec2da8de29d5ada776b95cf3616cfac41311853f9f753d1928", size = 1989192, upload-time = "2026-05-04T01:05:36.699Z" },
+    { url = "https://files.pythonhosted.org/packages/8c/a3/1d816863674c610234afef9a444d4eb562689a3fa1a872ac5687b4e0eac4/astropy_iers_data-0.2026.7.6.1.1.20-py3-none-any.whl", hash = "sha256:7aa50fa7f6d13258357d1e17fa97f3a8c2f04b9a7429d056e986a91cc46576a0", size = 1994649, upload-time = "2026-07-06T01:02:00.977Z" },
 ]
 
 [[package]]
@@ -1596,12 +1596,13 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "1.53.0"
+version = "1.54.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
     { name = "astroplan" },
     { name = "astropy" },
+    { name = "astropy-iers-data" },
     { name = "astropydantic" },
     { name = "astroquery" },
     { name = "colour" },
@@ -1625,14 +1626,14 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/65/7d/2b0dcbe546e863ca3a0e969fcf7916fe89a9a8946664baee6b0e03ca0b0a/pyobs_core-1.53.0.tar.gz", hash = "sha256:1808ed6f579ba70364685f7c1e27fd72e725b653e6bc8918fc14591a4201bf6d", size = 293304, upload-time = "2026-06-19T11:24:01.683Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/79/e7/92724a50aad900867967167e874b2e0604c4204ef88597e507fe0d33014a/pyobs_core-1.54.1.tar.gz", hash = "sha256:3b99a73940e3618e0ef1f0e9789b599d413ed144a56cb0a06c73ef97f44b4367", size = 294068, upload-time = "2026-07-10T11:52:08.615Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/be/c6/26c2dd64d6e90d6becc5427d8921144d535c63ab96b3756e09d60614432f/pyobs_core-1.53.0-py3-none-any.whl", hash = "sha256:9cab66133479b53517da76202880ea9594259d23b2d0ef794d047fad811cfc34", size = 505541, upload-time = "2026-06-19T11:24:00.174Z" },
+    { url = "https://files.pythonhosted.org/packages/ab/d5/11fcb74e9f608ea969e0ea7c07933a9aa409dffff299add7381086924ce0/pyobs_core-1.54.1-py3-none-any.whl", hash = "sha256:d83564e2904d35d66dfa3981a34eed6a011e2a24023b05944143fe0e74714f2f", size = 506749, upload-time = "2026-07-10T11:52:06.895Z" },
 ]
 
 [[package]]
 name = "pyobs-robotic-backend"
-version = "1.5.2"
+version = "1.6.0"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -1670,7 +1671,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
-    { name = "pyobs-core", specifier = ">=1.53.0" },
+    { name = "pyobs-core", specifier = ">=1.54.1" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
 
