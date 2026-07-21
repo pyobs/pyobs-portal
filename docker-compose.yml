@@ -40,7 +40,7 @@ services:
 
   celery:
       image: ghcr.io/pyobs/pyobs/pyobs-robotic-backend:latest
-      command: uv run celery -A pyobs_robotic_backend worker -B --loglevel INFO
+      command: uv run celery -A pyobs_robotic_backend worker -B --loglevel INFO --without-gossip --without-mingle --without-heartbeat
       env_file:
         - ./.env
       depends_on:
