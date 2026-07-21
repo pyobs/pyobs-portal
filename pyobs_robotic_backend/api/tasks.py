@@ -26,8 +26,10 @@ def delete_old_observations():
     logger.info(
         f"There are {observations.count()} observations to be deleted. Only the first 100,000 will be deleted this run"
     )
+    pks = list(observations.values_list("pk", flat=True)[:100000])
     total_deleted = 0
-    for observation in observations[:100000]:
-        num_deleted, _ = observation.delete()
+    chunk_size = 1000
+    for i in range(0, len(pks), chunk_size):
+        num_deleted, _ = Observation.objects.filter(pk__in=pks[i : i + chunk_size]).delete()
         total_deleted += num_deleted
     logger.warning(f"Deleted {total_deleted} observations.")
