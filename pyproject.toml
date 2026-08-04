@@ -24,5 +24,5 @@ dependencies = [
 dev = [
     "black>=26.5.1",
     "celery-types>=0.26.0",
-    "djangorestframework-stubs>=3.17.0",
+    "djangorestframework-stubs>=3.17.1",
 ]
