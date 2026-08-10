@@ -83,7 +83,7 @@ class MeritSerializer(serializers.ModelSerializer):
 class ObservationSerializer(serializers.ModelSerializer):
     class Meta:
         model = Observation
-        fields = ["id", "task", "start", "end", "state", "target"]
+        fields = ["id", "task", "start", "end", "state", "target", "obsnum"]
 
 
 class ProjectSerializer(serializers.ModelSerializer):
