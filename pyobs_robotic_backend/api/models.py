@@ -80,6 +80,7 @@ class Observation(models.Model):
         default=ObservationState.PENDING,
     )
     target = models.JSONField(null=True, blank=True)
+    obsnum = models.CharField(max_length=32, null=True, blank=True)
 
     class Meta:
         ordering = ["start"]
