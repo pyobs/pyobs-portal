@@ -47,6 +47,10 @@ services:
         - db
         - rabbitmq
       restart: always
+      ulimits:
+        nofile:
+          soft: 4096
+          hard: 4096
 
   task_scheduler:
       image: ghcr.io/pyobs/pyobs/pyobs-robotic-backend:latest
