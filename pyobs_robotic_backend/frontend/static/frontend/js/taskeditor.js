@@ -744,7 +744,8 @@ async function initTaskEditor(taskId) {
   let task = null;
   if (taskId) {
     task = await apiRequest(`tasks/${encodeURIComponent(taskId)}/`);
-    els.title.textContent = `Task ${task.id}`;
+    els.title.textContent = task.name ? `${task.name} (${task.id})` : `Task ${task.id}`;
+    document.title = `${task.name || task.id} — pyobs Robotic`;
     els.code.value = task.id;
     els.code.disabled = true;
     els.project.value = task.project;
@@ -756,10 +757,12 @@ async function initTaskEditor(taskId) {
       task = await apiRequest(`tasks/${encodeURIComponent(cloneFrom)}/`);
       task.id = params.get("code") || "";
       els.title.textContent = `Clone of ${cloneFrom}`;
+      document.title = `Clone of ${cloneFrom} — pyobs Robotic`;
     } else if (importedRaw) {
       sessionStorage.removeItem("importTask");
       task = JSON.parse(importedRaw);
       els.title.textContent = "Import task";
+      document.title = "Import task — pyobs Robotic";
     } else {
       task = {
         id: "",
@@ -774,6 +777,7 @@ async function initTaskEditor(taskId) {
         script: {},
       };
       els.title.textContent = "New task";
+      document.title = "New task — pyobs Robotic";
     }
     els.code.value = task.id;
     els.project.value = task.project;
