@@ -6,18 +6,19 @@
 {% block extra_head %}
 <link href="https://cdn.jsdelivr.net/npm/vis-timeline@7.7.3/styles/vis-timeline-graph2d.min.css" rel="stylesheet">
 <style>
-  /* ── vis-timeline dark theme ─────────────────────────────────────────── */
-  .vis-timeline { background: #1a1d21; border-color: #2d3035; color: #adb5bd; }
+  /* ── vis-timeline chrome (theme-aware; day/night bands below stay fixed -
+     they represent sky darkness, not app theme) ───────────────────────── */
+  .vis-timeline { background: var(--pyobs-surface-bg); border-color: var(--pyobs-surface-border); color: var(--pyobs-surface-text-muted); }
   .vis-panel.vis-center,
   .vis-panel.vis-left,
   .vis-panel.vis-right,
   .vis-panel.vis-top,
-  .vis-panel.vis-bottom { border-color: #2d3035; }
-  .vis-time-axis .vis-text { color: #ced4da !important; font-size: 0.7rem; }
-  .vis-time-axis .vis-grid.vis-minor { border-color: #2d3035; }
-  .vis-time-axis .vis-grid.vis-major { border-color: #3d4045; }
-  .vis-label { color: #ced4da !important; font-size: 0.75rem; border-color: #2d3035; background: #1a1d21; }
-  .vis-group { border-color: #2d3035; }
+  .vis-panel.vis-bottom { border-color: var(--pyobs-surface-border); }
+  .vis-time-axis .vis-text { color: var(--pyobs-surface-text) !important; font-size: 0.7rem; }
+  .vis-time-axis .vis-grid.vis-minor { border-color: var(--pyobs-surface-border); }
+  .vis-time-axis .vis-grid.vis-major { border-color: var(--pyobs-surface-hover-bg); }
+  .vis-label { color: var(--pyobs-surface-text) !important; font-size: 0.75rem; border-color: var(--pyobs-surface-border); background: var(--pyobs-surface-bg); }
+  .vis-group { border-color: var(--pyobs-surface-border); }
   .vis-current-time { background-color: rgba(255, 100, 100, 0.7); }
   /* ── Day/night background bands ─────────────────────────────────────── */
   .vis-item.vis-background.timeline-day      { background: rgba(70, 100, 150, 0.12); }
@@ -30,7 +31,7 @@
   .vis-item.vis-range .vis-item-overflow { overflow: hidden; }
   .vis-item.obs-running { border-style: dashed !important; }
   .vis-item.obs-completed { opacity: 0.6; }
-  .vis-tooltip { background: #2d3035; border-color: #3d4045; color: #adb5bd; font-size: 0.75rem; }
+  .vis-tooltip { background: var(--pyobs-surface-hover-bg); border-color: var(--pyobs-surface-border); color: var(--pyobs-surface-text); font-size: 0.75rem; }
 </style>
 {% endblock %}
 
