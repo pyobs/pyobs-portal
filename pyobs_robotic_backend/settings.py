@@ -40,9 +40,7 @@ CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost"
 # separated by commas, e.g. for a frontend served from a different host/port than the API:
 #   CORS_ALLOWED_ORIGINS=http://localhost:8097,https://your.domain.com
 CORS_ALLOWED_ORIGINS = [
-    origin
-    for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",")
-    if origin
+    origin for origin in os.environ.get("CORS_ALLOWED_ORIGINS", "").split(",") if origin
 ]
 
 # The bundled nginx.conf.example sets "X-Forwarded-Proto: $scheme" and is the
@@ -75,7 +73,9 @@ INSTALLED_APPS = [
     "rest_framework",
     "rest_framework.authtoken",
     "corsheaders",
+    "pyobs_auth",
     "pyobs_robotic_backend.api",
+    "pyobs_robotic_backend.authentication",
 ]
 
 FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
@@ -149,9 +149,21 @@ REST_FRAMEWORK = {
     "DEFAULT_AUTHENTICATION_CLASSES": [
         "rest_framework.authentication.TokenAuthentication",
         "rest_framework.authentication.SessionAuthentication",
+        "pyobs_auth.authentication.KeycloakAuthentication",
     ],
     "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
     "PAGE_SIZE": 100,
+}
+
+# Keycloak is optional: leaving SERVER_URL unset means pyobs_auth.settings.get_settings() raises
+# on first use, which only matters if something actually presents a Keycloak Bearer token -
+# existing Token/SessionAuthentication keeps working regardless.
+PYOBS_AUTH = {
+    "SERVER_URL": os.environ.get("KEYCLOAK_SERVER_URL", ""),
+    "REALM": os.environ.get("KEYCLOAK_REALM", "pyobs"),
+    "CLIENT_ID": os.environ.get("KEYCLOAK_CLIENT_ID", "robotic-backend"),
+    "CLIENT_SECRET": os.environ.get("KEYCLOAK_CLIENT_SECRET", ""),
+    "USER_RESOLVER": "pyobs_robotic_backend.authentication.keycloak.resolve_user",
 }
 
 CACHES = {
