@@ -54,9 +54,11 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `SITE_ELEVATION` | — | Observatory elevation in metres |
 | `DEFAULT_CONSTRAINTS` | `[]` | JSON array of constraint objects pre-filled on new tasks |
 | `DEFAULT_MERITS` | `[]` | JSON array of merit objects pre-filled on new tasks |
-| `KEYCLOAK_SERVER_URL` | (empty) | Keycloak Bearer-token auth (optional addon on top of Token/SessionAuthentication; unset disables it) |
+| `KEYCLOAK_SERVER_URL` | (empty) | Keycloak login (optional addon on top of local Django username/password and Token auth; unset disables it) |
 | `KEYCLOAK_REALM` | `pyobs` | Keycloak realm |
 | `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `robotic-backend` / (empty) | This service's Keycloak client credentials |
+| `KEYCLOAK_REDIRECT_URI` | (empty) | Must match the redirect URI registered for this client in Keycloak |
+| `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
 
 ## Running
 

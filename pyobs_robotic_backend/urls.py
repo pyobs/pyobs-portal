@@ -27,4 +27,7 @@ urlpatterns = [
 ]
 
 if settings.FRONTEND_ENABLED:
-    urlpatterns += [path("", include("pyobs_robotic_backend.frontend.urls"))]
+    urlpatterns += [
+        path("", include("pyobs_robotic_backend.frontend.urls")),
+        path("accounts/keycloak/", include("pyobs_auth.urls")),
+    ]

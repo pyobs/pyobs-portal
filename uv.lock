@@ -1656,7 +1656,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-auth"
-version = "2.0.0.dev5"
+version = "2.0.0.dev6"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "django" },
@@ -1664,9 +1664,9 @@ dependencies = [
     { name = "pyjwt", extra = ["crypto"] },
     { name = "requests" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/68/89/c839d5040ae6782e0c3aaeb473a9230dac2ee9e2ad0cd7c891fd97d0abc2/pyobs_auth-2.0.0.dev5.tar.gz", hash = "sha256:9bff91d16870999e44f7797dc13fdb297bb0da8e1afbfa1ab87fdad5b73ea688", size = 9413, upload-time = "2026-08-12T15:34:49.154Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/a2/f54ba6960eeacb2c145c56b2599edfdb6e08593cbe1ecbd158ac36f2dc17/pyobs_auth-2.0.0.dev6.tar.gz", hash = "sha256:c034698206304afd376ba75884cceb9af745750018b4368be36ea12c5fd300d3", size = 9592, upload-time = "2026-08-12T16:04:46.628Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0a/27/2517f3512407044a1fd3b6457c2f5d4374c5d97bfe9a12aa5796b78d87e5/pyobs_auth-2.0.0.dev5-py3-none-any.whl", hash = "sha256:a5bb890fe925a5915b2b454b768580d77902406de1d552bc4493af1a2fb6c6dc", size = 11238, upload-time = "2026-08-12T15:34:48.253Z" },
+    { url = "https://files.pythonhosted.org/packages/62/8d/a15b29fffe8a2ed5b303200417567207ecaa77cd1cce941e60cfe0fc8870/pyobs_auth-2.0.0.dev6-py3-none-any.whl", hash = "sha256:7e731bde75fb226130f2e3bdad45a92c338905cabc0047f193b9f92821953d13", size = 11460, upload-time = "2026-08-12T16:04:45.631Z" },
 ]
 
 [[package]]
@@ -1708,7 +1708,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-robotic-backend"
-version = "2.0.0.dev3"
+version = "2.0.0.dev4"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -1747,7 +1747,7 @@ requires-dist = [
     { name = "djangorestframework", specifier = ">=3.17.1" },
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
-    { name = "pyobs-auth", specifier = ">=2.0.0.dev5" },
+    { name = "pyobs-auth", specifier = ">=2.0.0.dev6" },
     { name = "pyobs-core", specifier = ">=2.0.0.dev71" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
