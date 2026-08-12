@@ -59,6 +59,7 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `robotic-backend` / (empty) | This service's Keycloak client credentials |
 | `KEYCLOAK_REDIRECT_URI` | (empty) | Must match the redirect URI registered for this client in Keycloak |
 | `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
+| `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | (empty) | Settings-configured superuser, synced after every `migrate`; leave unset to use `createsuperuser` instead |
 
 ## Running
 
@@ -71,6 +72,11 @@ python manage.py runserver
 ```
 
 The API is served at `http://localhost:8000/api/`. If the frontend is enabled, the UI is available at `http://localhost:8000/`.
+
+Setting `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` (generate the hash with
+`uv run python -c "from django.contrib.auth.hashers import make_password; print(make_password('yourpassword'))"`)
+syncs a matching superuser automatically after every `migrate`, skipping the interactive
+`createsuperuser` step above.
 
 ### Docker Compose
 
@@ -89,6 +95,9 @@ Migrations and static file collection run automatically on startup. To create a 
 ```bash
 docker compose run --rm web uv run python manage.py createsuperuser
 ```
+
+Or set `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` in `.env` to skip this — a matching superuser is
+synced automatically as part of the migration step above.
 
 ## API Overview
 
