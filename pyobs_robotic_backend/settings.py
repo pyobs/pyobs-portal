@@ -104,6 +104,7 @@ TEMPLATES = [
                 "django.contrib.auth.context_processors.auth",
                 "django.contrib.messages.context_processors.messages",
                 "pyobs_robotic_backend.frontend.context_processors.pyobs_logo",
+                "pyobs_robotic_backend.frontend.context_processors.keycloak",
             ],
         },
     },
@@ -156,13 +157,16 @@ REST_FRAMEWORK = {
 }
 
 # Keycloak is optional: leaving SERVER_URL unset means pyobs_auth.settings.get_settings() raises
-# on first use, which only matters if something actually presents a Keycloak Bearer token -
-# existing Token/SessionAuthentication keeps working regardless.
+# on first use, which only matters if something actually presents a Keycloak Bearer token or
+# hits the /accounts/keycloak/ login views - local Django username/password keeps working
+# regardless.
 PYOBS_AUTH = {
     "SERVER_URL": os.environ.get("KEYCLOAK_SERVER_URL", ""),
     "REALM": os.environ.get("KEYCLOAK_REALM", "pyobs"),
     "CLIENT_ID": os.environ.get("KEYCLOAK_CLIENT_ID", "robotic-backend"),
     "CLIENT_SECRET": os.environ.get("KEYCLOAK_CLIENT_SECRET", ""),
+    "REDIRECT_URI": os.environ.get("KEYCLOAK_REDIRECT_URI", ""),
+    "POST_LOGOUT_REDIRECT_URI": os.environ.get("KEYCLOAK_POST_LOGOUT_REDIRECT_URI", ""),
     "USER_RESOLVER": "pyobs_robotic_backend.authentication.keycloak.resolve_user",
 }
 
