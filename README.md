@@ -54,6 +54,9 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `SITE_ELEVATION` | — | Observatory elevation in metres |
 | `DEFAULT_CONSTRAINTS` | `[]` | JSON array of constraint objects pre-filled on new tasks |
 | `DEFAULT_MERITS` | `[]` | JSON array of merit objects pre-filled on new tasks |
+| `KEYCLOAK_SERVER_URL` | (empty) | Keycloak Bearer-token auth (optional addon on top of Token/SessionAuthentication; unset disables it) |
+| `KEYCLOAK_REALM` | `pyobs` | Keycloak realm |
+| `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `robotic-backend` / (empty) | This service's Keycloak client credentials |
 
 ## Running
 
@@ -87,7 +90,7 @@ docker compose run --rm web uv run python manage.py createsuperuser
 
 ## API Overview
 
-Authentication is via token (`Authorization: Token <token>`) or Django session cookie. Obtain a token at `/api-token-auth/`.
+Authentication is via token (`Authorization: Token <token>`), Django session cookie, or a Keycloak Bearer token (if configured). Obtain a static token at `/api-token-auth/`.
 
 | Method | Endpoint | Description |
 |---|---|---|
