@@ -16,7 +16,7 @@ dependencies = [
     "djangorestframework>=3.17.1",
     "gunicorn>=26.0.0",
     "psycopg2-binary>=2.9.12",
-    "pyobs-auth>=2.0.0.dev5",
+    "pyobs-auth>=2.0.0.dev6",
     "pyobs-core>=2.0.0.dev71",
     "unicorn>=2.1.4",
 ]
