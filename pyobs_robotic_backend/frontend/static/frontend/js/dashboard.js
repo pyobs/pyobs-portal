@@ -118,6 +118,9 @@ function observationItem(obs, projectIdx, taskProject, taskName) {
   const start = new Date(obs.start);
   const end   = new Date(obs.end);
   const isCompleted = obs.state === "completed";
+  const stateClass = obs.state === "in_progress" ? "obs-running"
+                   : isCompleted                 ? "obs-completed"
+                   : "";
   return {
     id: `obs-${obs.id}`,
     group: proj,
@@ -125,12 +128,11 @@ function observationItem(obs, projectIdx, taskProject, taskName) {
     start,
     end,
     title: `<b>${name}</b><br>${start.toUTCString()}<br>→ ${end.toUTCString()}`,
+    taskId: obs.task,
     style: isCompleted
       ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
       : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
-    className: obs.state === "in_progress" ? "obs-running"
-             : isCompleted                 ? "obs-completed"
-             : "",
+    className: ["obs-item", stateClass].filter(Boolean).join(" "),
   };
 }
 
@@ -200,6 +202,13 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
       );
       timelineWindow = { start: windowStart, end: windowEnd };
       timelineGroupCount = desiredGroups.length;
+      timeline.on("click", (props) => {
+        if (props.what !== "item") return;
+        const id = props.item && typeof props.item === "object" ? props.item.id : props.item;
+        const item = timelineItems.get(id);
+        if (!item || !item.taskId) return;
+        window.location.href = `/tasks/${encodeURIComponent(item.taskId)}/`;
+      });
     } else {
       const desiredIds = new Set(desiredItems.map((it) => it.id));
       desiredItems.forEach((it) => timelineItems.update(it));
