@@ -12,7 +12,7 @@ Backend service for the [pyobs](https://www.pyobs.org) robotic telescope system.
 
 ## Requirements
 
-- Python ≥ 3.13
+- Python ≥ 3.12
 - [pyobs-core](https://github.com/pyobs/pyobs-core) ≥ 1.46.0
 - PostgreSQL (production) or SQLite (development)
 - A Celery-compatible message broker (e.g. RabbitMQ)
