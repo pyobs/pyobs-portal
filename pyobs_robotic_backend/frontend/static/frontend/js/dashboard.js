@@ -9,6 +9,18 @@ const PROJECT_COLORS = [
   { bg: "#ff9da7", border: "#d97c88" },
 ];
 
+const POLL_INTERVAL_MS = 30000;
+
+// Module-scope timeline state so re-polls can update items in place
+// instead of destroying and recreating the vis.Timeline component.
+let timeline = null;
+let timelineItems = null;
+let timelineGroups = null;
+let timelineWindow = null;
+let timelineGroupCount = 0;
+let lastProjectsKey = null;
+let pollInFlight = false;
+
 function setTimelineStatus(text, isError) {
   const el = document.getElementById("timeline-status");
   if (!el) return;
@@ -20,6 +32,11 @@ function setTimelineStatus(text, isError) {
 function showTimeline() {
   const el = document.getElementById("schedule-timeline");
   if (el) el.style.display = "";
+}
+
+function hideTimeline() {
+  const el = document.getElementById("schedule-timeline");
+  if (el) el.style.display = "none";
 }
 
 /** Local noon-to-noon window at the observatory location. Falls back to UTC noon-to-noon if no location. */
@@ -90,12 +107,42 @@ function sunBackgrounds(lat, lon, windowStart, windowEnd) {
     }));
 }
 
+function projectGroupContent(p) {
+  return `<span title="${p.name}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${p.name}</span>`;
+}
+
+function observationItem(obs, projectIdx, taskProject, taskName) {
+  const proj = taskProject[obs.task] ?? "__other__";
+  const color = PROJECT_COLORS[(projectIdx[proj] ?? 0) % PROJECT_COLORS.length];
+  const name = taskName[obs.task] || obs.task;
+  const start = new Date(obs.start);
+  const end   = new Date(obs.end);
+  const isCompleted = obs.state === "completed";
+  const stateClass = obs.state === "in_progress" ? "obs-running"
+                   : isCompleted                 ? "obs-completed"
+                   : "";
+  return {
+    id: `obs-${obs.id}`,
+    group: proj,
+    content: name,
+    start,
+    end,
+    title: `<b>${name}</b><br>${start.toUTCString()}<br>→ ${end.toUTCString()}`,
+    taskId: obs.task,
+    style: isCompleted
+      ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
+      : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
+    className: ["obs-item", stateClass].filter(Boolean).join(" "),
+  };
+}
+
 function renderTimeline(projects, tasks, siteInfo, observations) {
   try {
     const hasSite = siteInfo.latitude != null && siteInfo.longitude != null;
 
     if (!hasSite && !observations.length) {
       setTimelineStatus("No pending observations. Set SITE_LATITUDE and SITE_LONGITUDE to enable day/night display.");
+      hideTimeline();
       return;
     }
 
@@ -111,75 +158,112 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
     );
     const activeProjects = projects.filter((p) => activeProjectCodes.has(p.code));
 
-    const groups = new vis.DataSet(
-      activeProjects.map((p) => ({
-        id: p.code,
-        content: `<span title="${p.name}" style="max-width:120px;overflow:hidden;text-overflow:ellipsis;display:inline-block">${p.name}</span>`,
-      }))
-    );
-    groups.add({ id: "__other__", content: "Other" });
+    const desiredGroups = activeProjects.map((p) => ({
+      id: p.code,
+      content: projectGroupContent(p),
+    }));
 
-    const items = new vis.DataSet();
-
+    const desiredItems = [];
     if (hasSite) {
       sunBackgrounds(siteInfo.latitude, siteInfo.longitude, windowStart, windowEnd)
-        .forEach((bg) => items.add(bg));
+        .forEach((bg) => desiredItems.push(bg));
+    }
+    observations.forEach((obs) =>
+      desiredItems.push(observationItem(obs, projectIdx, taskProject, taskName))
+    );
+
+    if (desiredItems.some((it) => it.group === "__other__")) {
+      desiredGroups.push({ id: "__other__", content: "Other" });
     }
 
-    observations.forEach((obs) => {
-      const proj = taskProject[obs.task] ?? "__other__";
-      const color = PROJECT_COLORS[(projectIdx[proj] ?? 0) % PROJECT_COLORS.length];
-      const name = taskName[obs.task] || obs.task;
-      const start = new Date(obs.start);
-      const end   = new Date(obs.end);
-      const isCompleted = obs.state === "completed";
-      items.add({
-        id: `obs-${obs.id}`,
-        group: proj,
-        content: name,
-        start,
-        end,
-        title: `<b>${name}</b><br>${start.toUTCString()}<br>→ ${end.toUTCString()}`,
-        style: isCompleted
-          ? "background-color:#4a4e55;border-color:#6c757d;color:#adb5bd;"
-          : `background-color:${color.bg};border-color:${color.border};color:#fff;`,
-        className: obs.state === "in_progress" ? "obs-running"
-                 : isCompleted                 ? "obs-completed"
-                 : "",
+    const height = Math.max(80, Math.min(320, desiredGroups.length * 38 + 44));
+
+    if (!timeline) {
+      timelineItems = new vis.DataSet(desiredItems);
+      timelineGroups = new vis.DataSet(desiredGroups);
+      timeline = new vis.Timeline(
+        document.getElementById("schedule-timeline"),
+        timelineItems,
+        timelineGroups,
+        {
+          start: windowStart,
+          end: windowEnd,
+          min: new Date(windowStart.getTime() - 24 * 3600e3),
+          max: new Date(windowEnd.getTime()   + 24 * 3600e3),
+          stack: false,
+          showCurrentTime: true,
+          moveable: true,
+          zoomable: true,
+          selectable: false,
+          height: `${height}px`,
+          margin: { item: { horizontal: 0, vertical: 2 } },
+          tooltip: { followMouse: true, overflowMethod: "cap" },
+        }
+      );
+      timelineWindow = { start: windowStart, end: windowEnd };
+      timelineGroupCount = desiredGroups.length;
+      timeline.on("click", (props) => {
+        if (props.what !== "item") return;
+        const id = props.item && typeof props.item === "object" ? props.item.id : props.item;
+        const item = timelineItems.get(id);
+        if (!item || !item.taskId) return;
+        window.location.href = `/tasks/${encodeURIComponent(item.taskId)}/`;
       });
-    });
+    } else {
+      const desiredIds = new Set(desiredItems.map((it) => it.id));
+      desiredItems.forEach((it) => timelineItems.update(it));
+      timelineItems.getIds()
+        .filter((id) => !desiredIds.has(id))
+        .forEach((id) => timelineItems.remove(id));
 
-    if (!items.get().some((it) => it.group === "__other__")) {
-      groups.remove("__other__");
+      const desiredGroupIds = new Set(desiredGroups.map((g) => g.id));
+      desiredGroups.forEach((g) => timelineGroups.update(g));
+      timelineGroups.getIds()
+        .filter((id) => !desiredGroupIds.has(id))
+        .forEach((id) => timelineGroups.remove(id));
+
+      const windowChanged =
+        timelineWindow.start.getTime() !== windowStart.getTime() ||
+        timelineWindow.end.getTime() !== windowEnd.getTime();
+      if (windowChanged) {
+        timeline.setOptions({
+          start: windowStart,
+          end: windowEnd,
+          min: new Date(windowStart.getTime() - 24 * 3600e3),
+          max: new Date(windowEnd.getTime()   + 24 * 3600e3),
+        });
+        timelineWindow = { start: windowStart, end: windowEnd };
+      }
+
+      if (desiredGroups.length !== timelineGroupCount) {
+        timeline.setOptions({ height: `${height}px` });
+        timelineGroupCount = desiredGroups.length;
+      }
     }
-
-    const height = Math.max(80, Math.min(320, groups.length * 38 + 44));
 
     setTimelineStatus("", false);
     showTimeline();
-
-    new vis.Timeline(
-      document.getElementById("schedule-timeline"),
-      items,
-      groups,
-      {
-        start: windowStart,
-        end: windowEnd,
-        min: new Date(windowStart.getTime() - 24 * 3600e3),
-        max: new Date(windowEnd.getTime()   + 24 * 3600e3),
-        stack: false,
-        showCurrentTime: true,
-        moveable: true,
-        zoomable: true,
-        selectable: false,
-        height: `${height}px`,
-        margin: { item: { horizontal: 0, vertical: 2 } },
-        tooltip: { followMouse: true, overflowMethod: "cap" },
-      }
-    );
   } catch (e) {
     console.error("Timeline render error:", e);
     setTimelineStatus(`Failed to render timeline: ${e.message}`, true);
+  }
+}
+
+function renderProjects(projects) {
+  const key = JSON.stringify(projects.map((p) => [p.code, p.name, p.priority]));
+  if (key === lastProjectsKey) return;
+  lastProjectsKey = key;
+
+  const tbody = document.getElementById("projects-table");
+  tbody.innerHTML = "";
+  if (!projects.length) {
+    tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No projects.</td></tr>';
+  } else {
+    projects.forEach((p) => {
+      const tr = document.createElement("tr");
+      tr.innerHTML = `<td>${p.code}</td><td>${p.name}</td><td>${p.priority}</td>`;
+      tbody.appendChild(tr);
+    });
   }
 }
 
@@ -200,27 +284,29 @@ async function loadDashboard() {
     document.getElementById("stat-completed").textContent = completed.length;
 
     // Projects table
-    const tbody = document.getElementById("projects-table");
-    tbody.innerHTML = "";
-    if (!projects.length) {
-      tbody.innerHTML = '<tr><td colspan="3" class="text-muted">No projects.</td></tr>';
-    } else {
-      projects.forEach((p) => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `<td>${p.code}</td><td>${p.name}</td><td>${p.priority}</td>`;
-        tbody.appendChild(tr);
-      });
-    }
+    renderProjects(projects);
 
     // Timeline
     renderTimeline(projects, tasks, siteInfo, [...running, ...pending, ...completed]);
 
   } catch (e) {
     console.error("Dashboard load error:", e);
+    lastProjectsKey = null;
     const tbody = document.getElementById("projects-table");
     if (tbody) tbody.innerHTML = `<tr><td colspan="3" class="text-danger">${e.message}</td></tr>`;
     setTimelineStatus(`Failed to load: ${e.message}`, true);
   }
 }
 
+async function pollDashboard() {
+  if (pollInFlight) return;
+  pollInFlight = true;
+  try {
+    await loadDashboard();
+  } finally {
+    pollInFlight = false;
+  }
+}
+
 loadDashboard();
+setInterval(pollDashboard, POLL_INTERVAL_MS);
