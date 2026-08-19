@@ -12,6 +12,11 @@ class Project(models.Model):
     name = models.CharField(max_length=30)
     priority = models.FloatField(default=1.0)
     users = models.ManyToManyField(User, related_name="projects", blank=True)
+    public = models.BooleanField(
+        default=False,
+        help_text="Public projects are accessible to every authenticated user; "
+        "private projects only to their members.",
+    )
 
     class Meta:
         ordering = ["code"]
