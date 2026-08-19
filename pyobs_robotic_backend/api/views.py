@@ -3,7 +3,9 @@ from typing import Any
 from rest_framework.pagination import PageNumberPagination
 from astropy.time import Time
 from django.contrib.auth.models import User
+from django.db.models import Q
 from django.http import Http404
+from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.decorators import permission_classes, api_view
@@ -36,6 +38,11 @@ class UserDetail(generics.RetrieveUpdateAPIView):
     serializer_class = UserSerializer
 
 
+def accessible_projects_q(user: User) -> Q:
+    """Query for the projects a user may access: public projects plus their memberships."""
+    return Q(public=True) | Q(users__in=[user])
+
+
 @permission_classes([IsAuthenticated])
 class ProjectList(generics.ListCreateAPIView):
     serializer_class = ProjectSerializer
@@ -49,8 +56,8 @@ class ProjectList(generics.ListCreateAPIView):
     def get_queryset(self):
         queryset = Project.objects.all()
         if not self.request.user.is_superuser:
-            queryset = queryset.filter(users__in=[self.request.user])
-        return queryset
+            queryset = queryset.filter(accessible_projects_q(self.request.user))
+        return queryset.distinct()
 
 
 @permission_classes([IsAdminUser])
@@ -64,16 +71,14 @@ class TaskListForProject(generics.ListCreateAPIView):
     serializer_class = TaskSerializer
 
     def get_queryset(self):
-        project = Project.objects.get(pk=self.kwargs["pk"])
-        if project is None or (
-            self.request.user not in project.users.all()
-            and not self.request.user.is_superuser
+        project = get_object_or_404(Project, pk=self.kwargs["pk"])
+        if not (
+            self.request.user.is_superuser
+            or project.public
+            or self.request.user in project.users.all()
         ):
             raise Http404
-        queryset = project.tasks.all()
-        if not self.request.user.is_superuser:
-            queryset = queryset.filter(project__users__in=[self.request.user.id])
-        return queryset
+        return project.tasks.all()
 
 
 @permission_classes([IsAuthenticated])
@@ -84,10 +89,12 @@ class TaskList(generics.ListAPIView):
     def get_queryset(self):
         queryset = Task.objects.all()
         if not self.request.user.is_superuser:
-            queryset = queryset.filter(project__users__in=[self.request.user])
+            queryset = queryset.filter(
+                Q(project__public=True) | Q(project__users__in=[self.request.user])
+            )
         if self.request.query_params.get("all") != "true":
             queryset = queryset.filter(active=True)
-        return queryset
+        return queryset.distinct()
 
 
 @permission_classes([IsAuthenticated])
@@ -96,10 +103,11 @@ class TaskDetail(generics.RetrieveUpdateAPIView):
     serializer_class = TaskSerializer
 
     def get_queryset(self):
-        task = Task.objects.get(pk=self.kwargs["pk"])
-        if task is None or (
-            self.request.user not in task.project.users.all()
-            and not self.request.user.is_superuser
+        task = get_object_or_404(Task, pk=self.kwargs["pk"])
+        if not (
+            self.request.user.is_superuser
+            or task.project.public
+            or self.request.user in task.project.users.all()
         ):
             raise Http404
         return Task.objects.all()
@@ -117,6 +125,15 @@ class ObservationList(generics.ListCreateAPIView):
     filter_backends = [DjangoFilterBackend]
     filterset_class = ObservationFilter
 
+    def get_queryset(self):
+        queryset = Observation.objects.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(
+                Q(task__project__public=True)
+                | Q(task__project__users__in=[self.request.user])
+            )
+        return queryset.distinct()
+
     def get_serializer(self, *args, **kwargs):
         if isinstance(self.request.data, list):
             kwargs["many"] = True
@@ -128,6 +145,15 @@ class ObservationDetail(generics.RetrieveUpdateAPIView):
     queryset = Observation.objects.all()
     serializer_class = ObservationSerializer
 
+    def get_queryset(self):
+        queryset = Observation.objects.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(
+                Q(task__project__public=True)
+                | Q(task__project__users__in=[self.request.user])
+            )
+        return queryset.distinct()
+
 
 class ObservationListForTask(generics.ListAPIView):
     serializer_class = ObservationSerializer
@@ -136,8 +162,12 @@ class ObservationListForTask(generics.ListAPIView):
     filterset_class = ObservationFilter
 
     def get_queryset(self):
-        task = Task.objects.get(pk=self.kwargs["pk"])
-        if task is None:
+        task = get_object_or_404(Task, pk=self.kwargs["pk"])
+        if not (
+            self.request.user.is_superuser
+            or task.project.public
+            or self.request.user in task.project.users.all()
+        ):
             raise Http404
         return task.observations.all()
 

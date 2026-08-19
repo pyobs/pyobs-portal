@@ -1,6 +1,6 @@
 async function loadProjects() {
   const tbody = document.getElementById("projects-table");
-  tbody.innerHTML = '<tr><td colspan="5" class="text-muted">Loading…</td></tr>';
+  tbody.innerHTML = '<tr><td colspan="6" class="text-muted">Loading…</td></tr>';
   try {
     const projects = await apiList("projects/");
     tbody.innerHTML = "";
@@ -37,6 +37,14 @@ async function loadProjects() {
       usersTd.appendChild(usersInput);
       tr.appendChild(usersTd);
 
+      const publicTd = document.createElement("td");
+      const publicInput = document.createElement("input");
+      publicInput.type = "checkbox";
+      publicInput.className = "form-check-input";
+      publicInput.checked = Boolean(project.public);
+      publicTd.appendChild(publicInput);
+      tr.appendChild(publicTd);
+
       const actionsTd = document.createElement("td");
       const saveBtn = document.createElement("button");
       saveBtn.className = "btn btn-sm btn-outline-secondary";
@@ -49,6 +57,7 @@ async function loadProjects() {
           code: project.code,
           name: nameInput.value,
           priority: Number(priorityInput.value),
+          public: publicInput.checked,
           users: usersInput.value
             .split(",")
             .map((u) => u.trim())
@@ -73,7 +82,7 @@ async function loadProjects() {
       tbody.appendChild(tr);
     });
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="5" class="text-danger">${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="6" class="text-danger">${e.message}</td></tr>`;
   }
 }
 
@@ -83,6 +92,7 @@ document.getElementById("btn-add-project").addEventListener("click", async () =>
     code: document.getElementById("new-code").value,
     name: document.getElementById("new-name").value,
     priority: Number(document.getElementById("new-priority").value || 1),
+    public: document.getElementById("new-public").checked,
     users: document
       .getElementById("new-users")
       .value.split(",")
@@ -101,6 +111,7 @@ document.getElementById("btn-add-project").addEventListener("click", async () =>
     document.getElementById("new-code").value = "";
     document.getElementById("new-name").value = "";
     document.getElementById("new-priority").value = "1";
+    document.getElementById("new-public").checked = false;
     document.getElementById("new-users").value = "";
     status.textContent = "✓ Added";
     status.className = "small mt-2 text-success";
