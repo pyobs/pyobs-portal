@@ -1,7 +1,11 @@
 # specs/
 
-This repo has no `specs/` structure of its own. Design docs, plans, and ADRs that concern (or are
-partly implemented in) `pyobs-robotic-backend` live in `pyobs-core`'s `specs/` — see
+- [plans/2026-08-20-connect-pyobs-archive.md](plans/2026-08-20-connect-pyobs-archive.md) — plan for
+  pyobs/pyobs-robotic-backend#82: connect to pyobs-archive so each observation links directly to
+  its archived frames (preview, headers, FITS download), in the API and the Observations tab.
+
+Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
+`pyobs-core`'s `specs/` — see
 `../../pyobs-core/specs/design/obsnum_fits_header.md` (#738, `Observation.obsnum`: Django model +
 migration + serializer changes needed here).
 
