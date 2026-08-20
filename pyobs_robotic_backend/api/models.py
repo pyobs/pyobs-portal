@@ -33,6 +33,7 @@ class Task(models.Model):
     priority = models.FloatField()
     script = models.JSONField()
     active = models.BooleanField(default=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["code"]
@@ -86,6 +87,7 @@ class Observation(models.Model):
     )
     target = models.JSONField(null=True, blank=True)
     obsnum = models.CharField(max_length=32, null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["start"]

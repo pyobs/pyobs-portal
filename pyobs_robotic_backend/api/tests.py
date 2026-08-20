@@ -1,3 +1,6 @@
+from datetime import timedelta
+
+from astropy.time import Time
 from django.contrib.auth.models import User
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
@@ -7,6 +10,7 @@ from pyobs.robotic.observation import ObservationState
 
 from .models import Observation, Project, Target, Task
 from .serializers import ProjectSerializer, TargetSerializer
+from .tasks import mark_window_expired
 
 
 def _results(data):
@@ -175,3 +179,115 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
             "pyobs.robotic.scheduler.targets.HelioprojectiveTarget",
             {"tx": 100.0, "ty": -50.0},
         )
+
+
+class UpdateMarkerApiTests(TestCase):
+    """last_task_update / last_observation_update derive from the DB (issue #83).
+
+    Markers must reflect every write path — including bulk `QuerySet.update()`,
+    which bypasses post_save signals — and be identical across all processes, so
+    they are computed from the `updated_at` columns instead of the cache.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("marker", "marker@example.com", "pw")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _marker(self, endpoint):
+        res = self.client.get(endpoint)
+        self.assertEqual(res.status_code, 200)
+        return res.data
+
+    def _project_and_task(self):
+        project = Project.objects.create(code="MKR", name="Marker")
+        task = Task.objects.create(
+            code="T", name="t", project=project, duration=60, priority=1.0, script={}
+        )
+        return project, task
+
+    def test_epoch_when_empty(self):
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            "1970-01-01T00:00:00.000",
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            "1970-01-01T00:00:00.000",
+        )
+
+    def test_task_marker_tracks_save(self):
+        _, task = self._project_and_task()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(task.updated_at).isot,
+        )
+        task.name = "renamed"
+        task.save()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(task.updated_at).isot,
+        )
+
+    def test_observation_marker_tracks_save(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            Time(observation.updated_at).isot,
+        )
+
+    def test_markers_are_independent(self):
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        # Creating an observation must not move the task marker, and vice versa.
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            Time(observation.updated_at).isot,
+        )
+
+    def test_window_expired_bulk_update_stamps_marker(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task,
+            start=now - timedelta(hours=2),
+            end=now - timedelta(hours=1),
+            state=ObservationState.PENDING,
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        mark_window_expired()
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.WINDOW_EXPIRED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)
+
+    def test_cancel_bulk_update_stamps_marker(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        self.assertEqual(res.status_code, 200)
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.CANCELED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)

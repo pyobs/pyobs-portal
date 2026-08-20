@@ -12,7 +12,9 @@ logger = logging.getLogger(__name__)
 def mark_window_expired():
     now = timezone.now()
     expired = Observation.objects.filter(state="pending", end__lt=now)
-    count = expired.update(state="window_expired")
+    # QuerySet.update() bypasses auto_now, so stamp updated_at explicitly to
+    # keep the last_observation_update marker accurate (issue #83).
+    count = expired.update(state="window_expired", updated_at=now)
     logger.info(f"Marked {count} pending observations as window_expired")
 
 

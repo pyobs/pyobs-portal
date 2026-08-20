@@ -12,7 +12,7 @@ from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.core.cache import cache
+from django.db.models import Max
 from django_filters.rest_framework import DjangoFilterBackend
 
 from . import schema
@@ -179,9 +179,11 @@ class CancelObservations(APIView):
         if after is None:
             raise Http404("Please provide a value for after.")
         tz = timezone.get_current_timezone()
+        # QuerySet.update() bypasses auto_now, so stamp updated_at explicitly
+        # to keep the last_observation_update marker accurate (issue #83).
         Observation.objects.filter(
             end__gte=Time(after).to_datetime(tz), state=ObservationState.PENDING
-        ).update(state=ObservationState.CANCELED)
+        ).update(state=ObservationState.CANCELED, updated_at=timezone.now())
         return Response({})
 
 
@@ -198,18 +200,26 @@ def me(request):
     )
 
 
+def _last_update(queryset):
+    """Latest `updated_at` across the given queryset, as an astropy Time.
+
+    Falls back to the epoch when there are no rows, matching the historical
+    marker semantics (issue #83).
+    """
+    time = queryset.aggregate(Max("updated_at"))["updated_at__max"]
+    return Time(time) if time is not None else Time("1970-01-01T00:00:00")
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def last_task_update(request):
-    time = cache.get("last_task_update", Time("1970-01-01T00:00:00"), None)
-    return Response({"last_task_update": time.isot})
+    return Response({"last_task_update": _last_update(Task.objects.all()).isot})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def last_observation_update(request):
-    time = cache.get("last_observation_update", Time("1970-01-01T00:00:00"), None)
-    return Response({"last_observation_update": time.isot})
+    return Response({"last_observation_update": _last_update(Observation.objects.all()).isot})
 
 
 # ── Schema introspection for the dynamic frontend forms ─────────────────────
