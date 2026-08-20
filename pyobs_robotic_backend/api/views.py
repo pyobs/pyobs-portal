@@ -181,9 +181,17 @@ class CancelObservations(APIView):
         tz = timezone.get_current_timezone()
         # QuerySet.update() bypasses auto_now, so stamp updated_at explicitly
         # to keep the last_observation_update marker accurate (issue #83).
-        Observation.objects.filter(
+        queryset = Observation.objects.filter(
             end__gte=Time(after).to_datetime(tz), state=ObservationState.PENDING
-        ).update(state=ObservationState.CANCELED, updated_at=timezone.now())
+        )
+        # Non-superusers may only cancel observations of projects they can access.
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(
+                task__project__in=Project.objects.filter(
+                    accessible_projects_q(self.request.user)
+                )
+            )
+        queryset.update(state=ObservationState.CANCELED, updated_at=timezone.now())
         return Response({})
 
 
@@ -210,16 +218,27 @@ def _last_update(queryset):
     return Time(time) if time is not None else Time("1970-01-01T00:00:00")
 
 
+def _accessible_projects(user: User):
+    """Projects the user may access; all of them for superusers."""
+    if user.is_superuser:
+        return Project.objects.all()
+    return Project.objects.filter(accessible_projects_q(user))
+
+
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def last_task_update(request):
-    return Response({"last_task_update": _last_update(Task.objects.all()).isot})
+    queryset = Task.objects.filter(project__in=_accessible_projects(request.user))
+    return Response({"last_task_update": _last_update(queryset).isot})
 
 
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def last_observation_update(request):
-    return Response({"last_observation_update": _last_update(Observation.objects.all()).isot})
+    queryset = Observation.objects.filter(
+        task__project__in=_accessible_projects(request.user)
+    )
+    return Response({"last_observation_update": _last_update(queryset).isot})
 
 
 # ── Schema introspection for the dynamic frontend forms ─────────────────────

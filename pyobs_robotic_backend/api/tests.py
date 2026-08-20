@@ -2,6 +2,7 @@ from datetime import timedelta
 
 from astropy.time import Time
 from django.contrib.auth.models import User
+from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase
 from django.utils import timezone
 from rest_framework.test import APIClient
@@ -199,10 +200,17 @@ class UpdateMarkerApiTests(TestCase):
         self.assertEqual(res.status_code, 200)
         return res.data
 
-    def _project_and_task(self):
-        project = Project.objects.create(code="MKR", name="Marker")
+    def _project_and_task(self, code="MKR", member=True):
+        project = Project.objects.create(code=code, name=f"Project {code}")
+        if member:
+            project.users.add(self.user)
         task = Task.objects.create(
-            code="T", name="t", project=project, duration=60, priority=1.0, script={}
+            code=f"T-{code}",
+            name="t",
+            project=project,
+            duration=60,
+            priority=1.0,
+            script={},
         )
         return project, task
 
@@ -275,6 +283,27 @@ class UpdateMarkerApiTests(TestCase):
         self.assertGreaterEqual(after, before)
         self.assertEqual(after, Time(observation.updated_at).isot)
 
+    def test_mark_window_expired_command_stamps_marker(self):
+        # The management command is a second bulk-update path that must also
+        # move the marker (mirrors the Celery task).
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task,
+            start=now - timedelta(hours=2),
+            end=now - timedelta(hours=1),
+            state=ObservationState.PENDING,
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        call_command("mark_window_expired")
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.WINDOW_EXPIRED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)
+
     def test_cancel_bulk_update_stamps_marker(self):
         _, task = self._project_and_task()
         now = timezone.now()
@@ -291,3 +320,70 @@ class UpdateMarkerApiTests(TestCase):
         after = self._marker("/api/last_observation_update/")["last_observation_update"]
         self.assertGreaterEqual(after, before)
         self.assertEqual(after, Time(observation.updated_at).isot)
+
+    def test_cancel_observations_respects_project_access(self):
+        # Non-members must not be able to cancel another project's pending
+        # observations, and the marker must not move for them.
+        _, task = self._project_and_task(code="OTH", member=False)
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+        )
+
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        self.assertEqual(res.status_code, 200)
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.PENDING)
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            "1970-01-01T00:00:00.000",
+        )
+
+    def test_markers_exclude_inaccessible_projects(self):
+        # Activity in private projects the user is not a member of must not
+        # leak into the update markers.
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        observation_marker = self._marker("/api/last_observation_update/")[
+            "last_observation_update"
+        ]
+
+        _, hidden_task = self._project_and_task(code="OTH", member=False)
+        hidden_task.name = "changed invisibly"
+        hidden_task.save()
+        Observation.objects.create(
+            task=hidden_task,
+            start=now + timedelta(minutes=1),
+            end=now + timedelta(minutes=2),
+            state=ObservationState.PENDING,
+        )
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            observation_marker,
+        )
+
+    def test_markers_include_public_projects(self):
+        # Public projects are visible to every authenticated user without
+        # membership, so their activity must move the markers.
+        public_project = Project.objects.create(code="PUB", name="Public", public=True)
+        public_task = Task.objects.create(
+            code="T-PUB",
+            name="t",
+            project=public_project,
+            duration=60,
+            priority=1.0,
+            script={},
+        )
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(public_task.updated_at).isot,
+        )

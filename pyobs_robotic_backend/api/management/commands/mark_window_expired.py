@@ -12,8 +12,10 @@ class Command(BaseCommand):
             state="pending",
             end__lt=now,
         )
-        count = expired.count()
-        expired.update(state="window_expired")
+        # QuerySet.update() bypasses auto_now, so stamp updated_at explicitly to
+        # keep the last_observation_update marker accurate (issue #83) — mirrors
+        # the Celery task in api/tasks.py.
+        count = expired.update(state="window_expired", updated_at=now)
         self.stdout.write(
             self.style.SUCCESS(f"Marked {count} pending observations as window_expired")
         )
