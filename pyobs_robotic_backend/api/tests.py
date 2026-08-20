@@ -1,7 +1,137 @@
-from django.test import SimpleTestCase
+from datetime import timedelta
 
-from .models import Target
-from .serializers import TargetSerializer
+from astropy.time import Time
+from django.contrib.auth.models import User
+from django.core.management import call_command
+from django.test import SimpleTestCase, TestCase
+from django.utils import timezone
+from rest_framework.test import APIClient
+
+from pyobs.robotic.observation import ObservationState
+
+from .models import Observation, Project, Target, Task
+from .serializers import ProjectSerializer, TargetSerializer
+from .tasks import mark_window_expired
+
+
+def _results(data):
+    """Unwrap DRF pagination if present."""
+    return data["results"] if isinstance(data, dict) and "results" in data else data
+
+
+class ProjectPublicApiTests(TestCase):
+    """Access control for the Project `public` flag (issue #79)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.alice = User.objects.create_user("alice", "alice@example.com", "pw")
+        self.bob = User.objects.create_user("bob", "bob@example.com", "pw")
+
+        self.public_project = Project.objects.create(
+            code="PUB", name="Public", public=True
+        )
+        self.private_project = Project.objects.create(code="PRIV", name="Private")
+        self.private_project.users.add(self.alice)
+
+        self.public_task = Task.objects.create(
+            code="T1", name="t1", project=self.public_project, duration=60, priority=1.0, script={}
+        )
+        self.private_task = Task.objects.create(
+            code="T2", name="t2", project=self.private_project, duration=60, priority=1.0, script={}
+        )
+
+    def login(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def test_serializer_includes_public(self):
+        data = ProjectSerializer(self.public_project).data
+        self.assertTrue(data["public"])
+        data = ProjectSerializer(self.private_project).data
+        self.assertFalse(data["public"])
+
+    def test_project_list_resolves_access(self):
+        # Non-member sees public projects only.
+        res = self.login(self.bob).get("/api/projects/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual({p["code"] for p in _results(res.data)}, {"PUB"})
+
+        # Member sees private project, plus public ones.
+        res = self.login(self.alice).get("/api/projects/")
+        self.assertEqual({p["code"] for p in _results(res.data)}, {"PUB", "PRIV"})
+
+        # Superuser sees everything.
+        res = self.login(self.admin).get("/api/projects/")
+        self.assertEqual({p["code"] for p in _results(res.data)}, {"PUB", "PRIV"})
+
+    def test_anonymous_gets_401(self):
+        self.assertEqual(APIClient().get("/api/projects/").status_code, 401)
+
+    def test_project_create_and_update_public_flag(self):
+        # Only admins may create/update projects.
+        res = self.login(self.bob).post(
+            "/api/projects/", {"code": "X", "name": "X", "public": True}, format="json"
+        )
+        self.assertEqual(res.status_code, 403)
+
+        res = self.login(self.admin).post(
+            "/api/projects/",
+            {"code": "X", "name": "X", "priority": 1.0, "public": True, "users": []},
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertTrue(Project.objects.get(code="X").public)
+
+        res = self.login(self.admin).patch(
+            "/api/projects/X/", {"public": False}, format="json"
+        )
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(Project.objects.get(code="X").public)
+
+    def test_task_list_resolves_access(self):
+        res = self.login(self.bob).get("/api/tasks/")
+        self.assertEqual({t["id"] for t in _results(res.data)}, {"T1"})
+
+        res = self.login(self.alice).get("/api/tasks/")
+        self.assertEqual({t["id"] for t in _results(res.data)}, {"T1", "T2"})
+
+    def test_task_detail_resolves_access(self):
+        self.assertEqual(self.login(self.bob).get("/api/tasks/T1/").status_code, 200)
+        self.assertEqual(self.login(self.bob).get("/api/tasks/T2/").status_code, 404)
+        self.assertEqual(self.login(self.alice).get("/api/tasks/T2/").status_code, 200)
+
+    def test_task_list_for_project_resolves_access(self):
+        res = self.login(self.bob).get("/api/projects/PUB/tasks/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual({t["id"] for t in _results(res.data)}, {"T1"})
+        self.assertEqual(self.login(self.bob).get("/api/projects/PRIV/tasks/").status_code, 404)
+        self.assertEqual(self.login(self.alice).get("/api/projects/PRIV/tasks/").status_code, 200)
+
+    def test_observations_resolve_access(self):
+        now = timezone.now()
+        Observation.objects.create(
+            task=self.public_task, start=now, end=now, state=ObservationState.PENDING
+        )
+        Observation.objects.create(
+            task=self.private_task, start=now, end=now, state=ObservationState.PENDING
+        )
+
+        res = self.login(self.bob).get("/api/observations/")
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(len(_results(res.data)), 1)
+        self.assertEqual(_results(res.data)[0]["task"], "T1")
+
+        res = self.login(self.alice).get("/api/observations/")
+        self.assertEqual({o["task"] for o in _results(res.data)}, {"T1", "T2"})
+
+        # Per-task observation list also respects project access.
+        self.assertEqual(
+            self.login(self.bob).get("/api/tasks/T1/observations/").status_code, 200
+        )
+        self.assertEqual(
+            self.login(self.bob).get("/api/tasks/T2/observations/").status_code, 404
+        )
 
 
 class TargetSerializerRoundTripTests(SimpleTestCase):
@@ -49,4 +179,211 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
         self._round_trip(
             "pyobs.robotic.scheduler.targets.HelioprojectiveTarget",
             {"tx": 100.0, "ty": -50.0},
+        )
+
+
+class UpdateMarkerApiTests(TestCase):
+    """last_task_update / last_observation_update derive from the DB (issue #83).
+
+    Markers must reflect every write path — including bulk `QuerySet.update()`,
+    which bypasses post_save signals — and be identical across all processes, so
+    they are computed from the `updated_at` columns instead of the cache.
+    """
+
+    def setUp(self):
+        self.user = User.objects.create_user("marker", "marker@example.com", "pw")
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.user)
+
+    def _marker(self, endpoint):
+        res = self.client.get(endpoint)
+        self.assertEqual(res.status_code, 200)
+        return res.data
+
+    def _project_and_task(self, code="MKR", member=True):
+        project = Project.objects.create(code=code, name=f"Project {code}")
+        if member:
+            project.users.add(self.user)
+        task = Task.objects.create(
+            code=f"T-{code}",
+            name="t",
+            project=project,
+            duration=60,
+            priority=1.0,
+            script={},
+        )
+        return project, task
+
+    def test_epoch_when_empty(self):
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            "1970-01-01T00:00:00.000",
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            "1970-01-01T00:00:00.000",
+        )
+
+    def test_task_marker_tracks_save(self):
+        _, task = self._project_and_task()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(task.updated_at).isot,
+        )
+        task.name = "renamed"
+        task.save()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(task.updated_at).isot,
+        )
+
+    def test_observation_marker_tracks_save(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            Time(observation.updated_at).isot,
+        )
+
+    def test_markers_are_independent(self):
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        # Creating an observation must not move the task marker, and vice versa.
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            Time(observation.updated_at).isot,
+        )
+
+    def test_window_expired_bulk_update_stamps_marker(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task,
+            start=now - timedelta(hours=2),
+            end=now - timedelta(hours=1),
+            state=ObservationState.PENDING,
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        mark_window_expired()
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.WINDOW_EXPIRED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)
+
+    def test_mark_window_expired_command_stamps_marker(self):
+        # The management command is a second bulk-update path that must also
+        # move the marker (mirrors the Celery task).
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task,
+            start=now - timedelta(hours=2),
+            end=now - timedelta(hours=1),
+            state=ObservationState.PENDING,
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        call_command("mark_window_expired")
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.WINDOW_EXPIRED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)
+
+    def test_cancel_bulk_update_stamps_marker(self):
+        _, task = self._project_and_task()
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+        )
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        self.assertEqual(res.status_code, 200)
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.CANCELED)
+        after = self._marker("/api/last_observation_update/")["last_observation_update"]
+        self.assertGreaterEqual(after, before)
+        self.assertEqual(after, Time(observation.updated_at).isot)
+
+    def test_cancel_observations_respects_project_access(self):
+        # Non-members must not be able to cancel another project's pending
+        # observations, and the marker must not move for them.
+        _, task = self._project_and_task(code="OTH", member=False)
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+        )
+
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        self.assertEqual(res.status_code, 200)
+
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, ObservationState.PENDING)
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            "1970-01-01T00:00:00.000",
+        )
+
+    def test_markers_exclude_inaccessible_projects(self):
+        # Activity in private projects the user is not a member of must not
+        # leak into the update markers.
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=task, start=now, end=now, state=ObservationState.PENDING
+        )
+        observation_marker = self._marker("/api/last_observation_update/")[
+            "last_observation_update"
+        ]
+
+        _, hidden_task = self._project_and_task(code="OTH", member=False)
+        hidden_task.name = "changed invisibly"
+        hidden_task.save()
+        Observation.objects.create(
+            task=hidden_task,
+            start=now + timedelta(minutes=1),
+            end=now + timedelta(minutes=2),
+            state=ObservationState.PENDING,
+        )
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+        self.assertEqual(
+            self._marker("/api/last_observation_update/")["last_observation_update"],
+            observation_marker,
+        )
+
+    def test_markers_include_public_projects(self):
+        # Public projects are visible to every authenticated user without
+        # membership, so their activity must move the markers.
+        public_project = Project.objects.create(code="PUB", name="Public", public=True)
+        public_task = Task.objects.create(
+            code="T-PUB",
+            name="t",
+            project=public_project,
+            duration=60,
+            priority=1.0,
+            script={},
+        )
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(public_task.updated_at).isot,
         )

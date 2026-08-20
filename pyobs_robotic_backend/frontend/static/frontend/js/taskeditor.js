@@ -959,6 +959,11 @@ async function initTaskEditor(taskId) {
   });
 }
 
+/** Format an ISO-8601 timestamp as "YYYY-MM-DD HH:MM:SS UTC" (always UTC). */
+function formatUTCDateTime(iso) {
+  return new Date(iso).toISOString().replace("T", " ").slice(0, 19) + " UTC";
+}
+
 const OBS_STATE_BADGE = {
   pending: "text-bg-secondary",
   in_progress: "text-bg-primary",
@@ -991,8 +996,8 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
         const tr = document.createElement("tr");
         const badge = OBS_STATE_BADGE[obs.state] || "text-bg-secondary";
         tr.innerHTML = `
-          <td class="ps-3">${new Date(obs.start).toLocaleString()}</td>
-          <td>${new Date(obs.end).toLocaleString()}</td>
+          <td class="ps-3">${formatUTCDateTime(obs.start)}</td>
+          <td>${formatUTCDateTime(obs.end)}</td>
           <td><span class="badge ${badge}">${obs.state}</span></td>
           <td>${obs.target ? (obs.target.name || "") : ""}</td>
         `;

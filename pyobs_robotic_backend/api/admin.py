@@ -5,7 +5,7 @@ from .models import *
 
 @admin.register(Project)
 class ProjectAdmin(admin.ModelAdmin):
-    list_display = ["code", "name", "priority"]
+    list_display = ["code", "name", "priority", "public"]
 
 
 @admin.register(Task)

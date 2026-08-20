@@ -107,13 +107,13 @@ Authentication is via token (`Authorization: Token <token>`), Django session coo
 |---|---|---|
 | GET/POST | `/api/users/` | List / create users (admin only) |
 | GET/PATCH | `/api/users/<id>/` | Retrieve / update user (admin only) |
-| GET/POST | `/api/projects/` | List / create projects |
-| GET/PATCH | `/api/projects/<code>/` | Retrieve / update project |
-| GET/POST | `/api/projects/<code>/tasks/` | List / create tasks for a project |
-| GET | `/api/tasks/` | List tasks (filtered to current user's projects) |
+| GET/POST | `/api/projects/` | List projects (resolved per user: public + memberships) / create (admin only); projects carry a `public` flag |
+| GET/PATCH | `/api/projects/<code>/` | Retrieve / update project (admin only) |
+| GET/POST | `/api/projects/<code>/tasks/` | List / create tasks for an accessible project |
+| GET | `/api/tasks/` | List tasks (filtered to accessible projects: public + memberships) |
 | GET/PUT/PATCH | `/api/tasks/<code>/` | Retrieve / update task (PATCH for partial updates) |
-| GET/POST | `/api/observations/` | List / create observations |
-| GET/PATCH | `/api/observations/<id>/` | Retrieve / update observation |
+| GET/POST | `/api/observations/` | List / create observations (list filtered to accessible projects) |
+| GET/PATCH | `/api/observations/<id>/` | Retrieve / update observation (filtered to accessible projects) |
 | GET | `/api/me/` | Current user info |
 | GET | `/api/last_task_update/` | Timestamp of last task change |
 | GET | `/api/last_observation_update/` | Timestamp of last observation change |
