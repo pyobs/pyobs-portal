@@ -59,6 +59,7 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `robotic-backend` / (empty) | This service's Keycloak client credentials |
 | `KEYCLOAK_REDIRECT_URI` | (empty) | Must match the redirect URI registered for this client in Keycloak |
 | `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
+| `KEYCLOAK_IDP_HINT` / `KEYCLOAK_IDP_LABEL` | (empty) | Optional one-click IdP login: hint passed to Keycloak as `kc_idp_hint` (skips its login/IdP-selection page) and the label for the login page's IdP button, e.g. `gwdg` / `GWDG` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | (empty) | Settings-configured superuser, synced after every `migrate`; leave unset to use `createsuperuser` instead |
 
 ## Running
