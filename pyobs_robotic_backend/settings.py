@@ -167,6 +167,11 @@ PYOBS_AUTH = {
     "CLIENT_SECRET": os.environ.get("KEYCLOAK_CLIENT_SECRET", ""),
     "REDIRECT_URI": os.environ.get("KEYCLOAK_REDIRECT_URI", ""),
     "POST_LOGOUT_REDIRECT_URI": os.environ.get("KEYCLOAK_POST_LOGOUT_REDIRECT_URI", ""),
+    # Optional one-click IdP login: IDP_HINT is passed to Keycloak as kc_idp_hint (skips its
+    # login/IdP-selection page, going straight to that identity provider, e.g. GWDG SSO);
+    # IDP_LABEL is the button label on the login page. Both are deployment-specific.
+    "IDP_HINT": os.environ.get("KEYCLOAK_IDP_HINT", ""),
+    "IDP_LABEL": os.environ.get("KEYCLOAK_IDP_LABEL", ""),
     "USER_RESOLVER": "pyobs_robotic_backend.authentication.keycloak.resolve_user",
 }
 
