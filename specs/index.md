@@ -3,6 +3,10 @@
 - [plans/2026-08-20-connect-pyobs-archive.md](plans/2026-08-20-connect-pyobs-archive.md) — plan for
   pyobs/pyobs-robotic-backend#82: connect to pyobs-archive so each observation links directly to
   its archived frames (preview, headers, FITS download), in the API and the Observations tab.
+- [plans/2026-08-20-script-builder.md](plans/2026-08-20-script-builder.md) — plan for
+  pyobs/pyobs-robotic-backend#81: replace the raw-YAML `ScriptEditor` on the task page with a
+  visual, schema-driven script builder (polymorphic/nested script fields, dynamic maps, live
+  validation).
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
