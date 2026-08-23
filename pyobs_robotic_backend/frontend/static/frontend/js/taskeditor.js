@@ -875,9 +875,11 @@ async function initTaskEditor(taskId) {
     }
   });
 
+  document.getElementById("observations-data-th").classList.toggle("d-none", !siteConfig.archive_enabled);
+
   if (taskId) {
     loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true, 1, { end_after: new Date().toISOString() });
-    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false, 1, {}, true);
+    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false, 1, {}, siteConfig.archive_enabled);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
     document.getElementById("tab-observations-nav").classList.add("d-none");
@@ -1046,11 +1048,23 @@ async function checkDataStatus(obsId, btn) {
   btn.textContent = "checking…";
   try {
     const data = await apiRequest(`observations/${obsId}/frames/`);
-    btn.outerHTML =
+    btn.replaceWith(
       data.status === "unavailable"
-        ? '<span class="text-muted ms-2">unavailable</span>'
-        : `<span class="ms-2">${data.count} frame${data.count === 1 ? "" : "s"}, ${data.reduced ? "reduced" : "raw only"}</span>`;
+        ? unavailableDataStatusEl()
+        : dataStatusEl(`${data.count} frame${data.count === 1 ? "" : "s"}, ${data.reduced ? "reduced" : "raw only"}`)
+    );
   } catch (e) {
-    btn.outerHTML = '<span class="text-muted ms-2">unavailable</span>';
+    btn.replaceWith(unavailableDataStatusEl());
   }
+}
+
+function dataStatusEl(text, muted = false) {
+  const span = document.createElement("span");
+  span.className = `ms-2${muted ? " text-muted" : ""}`;
+  span.textContent = text; // archive-controlled value: never through innerHTML
+  return span;
+}
+
+function unavailableDataStatusEl() {
+  return dataStatusEl("unavailable", true);
 }
