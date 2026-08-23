@@ -9,6 +9,9 @@ Status: planned
 - **Minimal vitest setup is added** for frontend unit tests (polymorphic + map controls).
 - **Backend-first PR**, annotating `schema/scripts/` only (constraints/merits/targets/pickers untouched).
 - **CasesRunner map control is in scope.**
+- **Must work on mobile.** The two-pane tree/editor layout (§4.7–8) needs a responsive
+  fallback (e.g. stacked panes / tree-as-drawer below a breakpoint) — not just a
+  desktop-only feature. Verify by hand in a narrow viewport, not just visually reviewed.
 
 ## 1. Goal
 
@@ -192,7 +195,9 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
 **`task_detail.html`**
 14. Extend the `#tab-script` card with the two-pane layout containers and a status bar;
     add `scriptbuilder.js` to the script block (after `schemaform.js`); add small CSS
-    for the tree pane (scrollable, collapsible groups).
+    for the tree pane (scrollable, collapsible groups), including a responsive
+    breakpoint (Bootstrap `md`) that collapses the tree pane into a toggleable
+    drawer/offcanvas above the editor pane on narrow viewports.
 
 ## 5. Acceptance criteria (from the issue)
 
@@ -209,6 +214,8 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
 - [ ] Saving produces the `script` JSON `TaskRunner` executes (verified by re-opening the
       task and by saving → executing a smoke task if the dev environment allows).
 - [ ] Raw YAML editor available as a source view toggle; YAML preview tab still works.
+- [ ] Usable on mobile: tree pane and editor pane both reachable and operable on a phone
+      viewport (stacked/drawer layout, no fixed-width panes that force horizontal scroll).
 
 ## 6. Out of scope / notes / risks
 
@@ -271,6 +278,9 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
    clear "no script class selected" error rather than "✓ Valid".
 7. Regression: constraints/merits/targets forms, save, export YAML, clone task, and
    schedule/observations tabs all unaffected.
+8. Mobile: narrow browser to phone width (or real device) → tree pane collapses to a
+   drawer/toggle, editor pane usable without horizontal scroll, validation bar and
+   estimate button remain reachable.
 
 ## 8. Implementation order
 
