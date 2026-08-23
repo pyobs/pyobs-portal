@@ -1,16 +1,18 @@
 from datetime import timedelta
+from unittest.mock import Mock, patch
 
+import requests
 from astropy.time import Time
 from django.contrib.auth.models import User
 from django.core.management import call_command
-from django.test import SimpleTestCase, TestCase
+from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
 from pyobs.robotic.observation import ObservationState
 
 from .models import Observation, Project, Target, Task
-from .serializers import ProjectSerializer, TargetSerializer
+from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
 from .tasks import mark_window_expired
 
 
@@ -34,10 +36,20 @@ class ProjectPublicApiTests(TestCase):
         self.private_project.users.add(self.alice)
 
         self.public_task = Task.objects.create(
-            code="T1", name="t1", project=self.public_project, duration=60, priority=1.0, script={}
+            code="T1",
+            name="t1",
+            project=self.public_project,
+            duration=60,
+            priority=1.0,
+            script={},
         )
         self.private_task = Task.objects.create(
-            code="T2", name="t2", project=self.private_project, duration=60, priority=1.0, script={}
+            code="T2",
+            name="t2",
+            project=self.private_project,
+            duration=60,
+            priority=1.0,
+            script={},
         )
 
     def login(self, user):
@@ -105,8 +117,12 @@ class ProjectPublicApiTests(TestCase):
         res = self.login(self.bob).get("/api/projects/PUB/tasks/")
         self.assertEqual(res.status_code, 200)
         self.assertEqual({t["id"] for t in _results(res.data)}, {"T1"})
-        self.assertEqual(self.login(self.bob).get("/api/projects/PRIV/tasks/").status_code, 404)
-        self.assertEqual(self.login(self.alice).get("/api/projects/PRIV/tasks/").status_code, 200)
+        self.assertEqual(
+            self.login(self.bob).get("/api/projects/PRIV/tasks/").status_code, 404
+        )
+        self.assertEqual(
+            self.login(self.alice).get("/api/projects/PRIV/tasks/").status_code, 200
+        )
 
     def test_observations_resolve_access(self):
         now = timezone.now()
@@ -145,7 +161,9 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
     def _round_trip(self, klass, fields):
         payload = {"class": klass, "name": "test", **fields}
         internal = TargetSerializer().to_internal_value(payload)
-        instance = Target(name=internal["name"], type=internal["type"], coords=internal["coords"])
+        instance = Target(
+            name=internal["name"], type=internal["type"], coords=internal["coords"]
+        )
         representation = TargetSerializer().to_representation(instance)
         self.assertEqual(representation["class"], klass)
         for key, value in fields.items():
@@ -161,10 +179,15 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
         payload = {
             "class": "pyobs.robotic.scheduler.targets.DynamicTarget",
             "name": "test",
-            "picker": {"class": "pyobs.robotic.scheduler.targets.picker.CsvPicker", "path": "x.csv"},
+            "picker": {
+                "class": "pyobs.robotic.scheduler.targets.picker.CsvPicker",
+                "path": "x.csv",
+            },
         }
         internal = TargetSerializer().to_internal_value(payload)
-        instance = Target(name=internal["name"], type=internal["type"], coords=internal["coords"])
+        instance = Target(
+            name=internal["name"], type=internal["type"], coords=internal["coords"]
+        )
         representation = TargetSerializer().to_representation(instance)
         self.assertEqual(representation["class"], payload["class"])
         self.assertEqual(representation["picker"], payload["picker"])
@@ -273,7 +296,9 @@ class UpdateMarkerApiTests(TestCase):
             end=now - timedelta(hours=1),
             state=ObservationState.PENDING,
         )
-        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+        before = self._marker("/api/last_observation_update/")[
+            "last_observation_update"
+        ]
 
         mark_window_expired()
 
@@ -294,7 +319,9 @@ class UpdateMarkerApiTests(TestCase):
             end=now - timedelta(hours=1),
             state=ObservationState.PENDING,
         )
-        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+        before = self._marker("/api/last_observation_update/")[
+            "last_observation_update"
+        ]
 
         call_command("mark_window_expired")
 
@@ -308,11 +335,18 @@ class UpdateMarkerApiTests(TestCase):
         _, task = self._project_and_task()
         now = timezone.now()
         observation = Observation.objects.create(
-            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+            task=task,
+            start=now,
+            end=now + timedelta(hours=1),
+            state=ObservationState.PENDING,
         )
-        before = self._marker("/api/last_observation_update/")["last_observation_update"]
+        before = self._marker("/api/last_observation_update/")[
+            "last_observation_update"
+        ]
 
-        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        res = self.client.get(
+            f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}"
+        )
         self.assertEqual(res.status_code, 200)
 
         observation.refresh_from_db()
@@ -327,10 +361,15 @@ class UpdateMarkerApiTests(TestCase):
         _, task = self._project_and_task(code="OTH", member=False)
         now = timezone.now()
         observation = Observation.objects.create(
-            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
+            task=task,
+            start=now,
+            end=now + timedelta(hours=1),
+            state=ObservationState.PENDING,
         )
 
-        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
+        res = self.client.get(
+            f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}"
+        )
         self.assertEqual(res.status_code, 200)
 
         observation.refresh_from_db()
@@ -387,3 +426,164 @@ class UpdateMarkerApiTests(TestCase):
             self._marker("/api/last_task_update/")["last_task_update"],
             Time(public_task.updated_at).isot,
         )
+
+
+@override_settings(ARCHIVE_URL="https://archive.example.org")
+class ArchiveUrlSerializerTests(TestCase):
+    """`archive_url` on ObservationSerializer (issue #82)."""
+
+    def setUp(self):
+        project = Project.objects.create(code="ARC", name="Archive")
+        self.task = Task.objects.create(
+            code="T-ARC",
+            name="t",
+            project=project,
+            duration=60,
+            priority=1.0,
+            script={},
+        )
+
+    def _observation(self, **kwargs):
+        now = timezone.now()
+        defaults = dict(task=self.task, start=now, end=now + timedelta(minutes=10))
+        defaults.update(kwargs)
+        return Observation.objects.create(**defaults)
+
+    def test_present_for_terminal_states(self):
+        for state in (
+            ObservationState.COMPLETED,
+            ObservationState.ABORTED,
+            ObservationState.FAILED,
+        ):
+            obs = self._observation(state=state, obsnum="12345")
+            url = ObservationSerializer(obs).data["archive_url"]
+            self.assertIsNotNone(url)
+            self.assertTrue(url.startswith("https://archive.example.org/?"))
+            self.assertIn("OBSNUM=12345", url)
+
+    def test_absent_for_non_terminal_states(self):
+        for state in (
+            ObservationState.PENDING,
+            ObservationState.IN_PROGRESS,
+            ObservationState.CANCELED,
+            ObservationState.WINDOW_EXPIRED,
+        ):
+            obs = self._observation(state=state, obsnum="12345")
+            self.assertIsNone(ObservationSerializer(obs).data["archive_url"])
+
+    @override_settings(ARCHIVE_URL="")
+    def test_absent_when_archive_url_unset(self):
+        obs = self._observation(state=ObservationState.COMPLETED, obsnum="12345")
+        self.assertIsNone(ObservationSerializer(obs).data["archive_url"])
+
+    def test_obsnum_omitted_when_unset(self):
+        obs = self._observation(state=ObservationState.COMPLETED, obsnum=None)
+        url = ObservationSerializer(obs).data["archive_url"]
+        self.assertIsNotNone(url)
+        self.assertNotIn("OBSNUM", url)
+
+    def test_values_url_encoded(self):
+        obs = self._observation(state=ObservationState.COMPLETED, obsnum="12 345")
+        url = ObservationSerializer(obs).data["archive_url"]
+        self.assertIn("OBSNUM=12+345", url)
+
+
+class ObservationDataStatusApiTests(TestCase):
+    """GET /api/observations/<id>/frames/ - on-demand archive check (issue #82)."""
+
+    def setUp(self):
+        self.alice = User.objects.create_user("ds-alice", "ds-alice@example.com", "pw")
+        self.bob = User.objects.create_user("ds-bob", "ds-bob@example.com", "pw")
+
+        self.private_project = Project.objects.create(code="DSPRIV", name="Private")
+        self.private_project.users.add(self.alice)
+        self.task = Task.objects.create(
+            code="T-DS",
+            name="t",
+            project=self.private_project,
+            duration=60,
+            priority=1.0,
+            script={},
+        )
+        now = timezone.now()
+        self.observation = Observation.objects.create(
+            task=self.task,
+            start=now,
+            end=now + timedelta(minutes=10),
+            state=ObservationState.COMPLETED,
+            obsnum="777",
+        )
+
+    def _client(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def _url(self):
+        return f"/api/observations/{self.observation.id}/frames/"
+
+    def test_access_scoping_matches_observation_detail(self):
+        self.assertEqual(self._client(self.bob).get(self._url()).status_code, 404)
+        self.assertEqual(self._client(self.alice).get(self._url()).status_code, 200)
+
+    @staticmethod
+    def _count_response(count):
+        resp = Mock(status_code=200)
+        resp.json.return_value = {"count": count}
+        resp.raise_for_status = Mock()
+        return resp
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.views.requests.get")
+    def test_normal_case_returns_count_and_reduced(self, mock_get):
+        mock_get.side_effect = [self._count_response(5), self._count_response(2)]
+
+        res = self._client(self.alice).get(self._url())
+        self.assertEqual(res.status_code, 200)
+        self.assertEqual(res.data["count"], 5)
+        self.assertTrue(res.data["reduced"])
+        self.assertEqual(
+            res.data["archive_url"],
+            ObservationSerializer(self.observation).data["archive_url"],
+        )
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.views.requests.get")
+    def test_raw_only_reports_not_reduced(self, mock_get):
+        mock_get.side_effect = [self._count_response(3), self._count_response(3)]
+
+        res = self._client(self.alice).get(self._url())
+        self.assertEqual(res.status_code, 200)
+        self.assertFalse(res.data["reduced"])
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    def test_archive_failures_report_unavailable_not_5xx(self):
+        for exc in (
+            requests.exceptions.Timeout("timeout"),
+            requests.exceptions.ConnectionError("connection refused"),
+            requests.exceptions.HTTPError("500 server error"),
+        ):
+            with self.subTest(exc=type(exc).__name__):
+                with patch(
+                    "pyobs_robotic_backend.api.views.requests.get", side_effect=exc
+                ):
+                    res = self._client(self.alice).get(self._url())
+                    self.assertEqual(res.status_code, 200)
+                    self.assertEqual(res.data["status"], "unavailable")
+
+    def test_unset_archive_config_reports_unavailable_without_request(self):
+        with patch("pyobs_robotic_backend.api.views.requests.get") as mock_get:
+            res = self._client(self.alice).get(self._url())
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.data["status"], "unavailable")
+            mock_get.assert_not_called()
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    def test_non_terminal_state_reports_unavailable_without_request(self):
+        self.observation.state = ObservationState.PENDING
+        self.observation.save()
+        with patch("pyobs_robotic_backend.api.views.requests.get") as mock_get:
+            res = self._client(self.alice).get(self._url())
+            self.assertEqual(res.status_code, 200)
+            self.assertEqual(res.data["status"], "unavailable")
+            mock_get.assert_not_called()

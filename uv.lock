@@ -1896,6 +1896,7 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pyobs-auth" },
     { name = "pyobs-core" },
+    { name = "requests" },
     { name = "unicorn" },
 ]
 
@@ -1921,6 +1922,7 @@ requires-dist = [
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.0.0.dev9" },
     { name = "pyobs-core", specifier = ">=2.0.0.dev71" },
+    { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
 

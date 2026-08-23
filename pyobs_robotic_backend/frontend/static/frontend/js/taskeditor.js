@@ -877,7 +877,7 @@ async function initTaskEditor(taskId) {
 
   if (taskId) {
     loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true, 1, { end_after: new Date().toISOString() });
-    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false);
+    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false, 1, {}, true);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
     document.getElementById("tab-observations-nav").classList.add("d-none");
@@ -974,9 +974,10 @@ const OBS_STATE_BADGE = {
   window_expired: "text-bg-secondary",
 };
 
-async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}) {
+async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}, showData = false) {
+  const colspan = showData ? 5 : 4;
   const tbody = tableEl.querySelector("tbody");
-  tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>';
+  tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-muted ps-3">Loading…</td></tr>`;
 
   const card = tableEl.closest(".card");
   card.querySelector(".card-footer")?.remove();
@@ -990,7 +991,7 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
 
     tbody.innerHTML = "";
     if (!observations.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="text-muted ps-3">None.</td></tr>';
+      tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-muted ps-3">None.</td></tr>`;
     } else {
       observations.forEach((obs) => {
         const tr = document.createElement("tr");
@@ -1000,8 +1001,14 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
           <td>${formatUTCDateTime(obs.end)}</td>
           <td><span class="badge ${badge}">${obs.state}</span></td>
           <td>${obs.target ? (obs.target.name || "") : ""}</td>
+          ${showData ? `<td>${renderDataCell(obs)}</td>` : ""}
         `;
         tbody.appendChild(tr);
+        if (showData && obs.archive_url) {
+          tr.querySelector(".data-status-btn")?.addEventListener("click", (e) =>
+            checkDataStatus(obs.id, e.target)
+          );
+        }
       });
     }
 
@@ -1014,11 +1021,36 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
         <button class="btn btn-sm btn-outline-secondary" ${!data.next ? "disabled" : ""}>Next →</button>
       `;
       const [prevBtn, nextBtn] = footer.querySelectorAll("button");
-      prevBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page - 1, extraParams));
-      nextBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page + 1, extraParams));
+      prevBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page - 1, extraParams, showData));
+      nextBtn.addEventListener("click", () => loadObservationTable(taskId, tableEl, states, ascending, page + 1, extraParams, showData));
       card.appendChild(footer);
     }
   } catch (e) {
-    tbody.innerHTML = `<tr><td colspan="4" class="text-danger ps-3">${e.message}</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-danger ps-3">${e.message}</td></tr>`;
+  }
+}
+
+/** "Open in archive" link plus a lazy "check" affordance for the frame count/reduction status. */
+function renderDataCell(obs) {
+  if (!obs.archive_url) return "";
+  return `
+    <a href="${obs.archive_url}" target="_blank" rel="noopener">Open in archive ↗</a>
+    <button type="button" class="btn btn-sm btn-link p-0 ms-2 data-status-btn">check</button>
+  `;
+}
+
+/** Fetches the on-demand frame count/reduction status for one observation (issue #82) and
+ * replaces the triggering "check" button with the result, in place. */
+async function checkDataStatus(obsId, btn) {
+  btn.disabled = true;
+  btn.textContent = "checking…";
+  try {
+    const data = await apiRequest(`observations/${obsId}/frames/`);
+    btn.outerHTML =
+      data.status === "unavailable"
+        ? '<span class="text-muted ms-2">unavailable</span>'
+        : `<span class="ms-2">${data.count} frame${data.count === 1 ? "" : "s"}, ${data.reduced ? "reduced" : "raw only"}</span>`;
+  } catch (e) {
+    btn.outerHTML = '<span class="text-muted ms-2">unavailable</span>';
   }
 }

@@ -32,6 +32,7 @@ urlpatterns = [
     path("tasks/<str:pk>/observations/", views.ObservationListForTask.as_view()),
     path("observations/", views.ObservationList.as_view()),
     path("observations/<int:pk>/", views.ObservationDetail.as_view()),
+    path("observations/<int:pk>/frames/", views.ObservationDataStatus.as_view()),
     path("cancel_observations/", views.CancelObservations.as_view()),
     path("me/", views.me),
     path("last_task_update/", views.last_task_update),
