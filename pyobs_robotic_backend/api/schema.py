@@ -326,57 +326,92 @@ def script_tree() -> dict[str, Any]:
     return tree
 
 
-def _check_no_classless_script_nodes(data: Any) -> str | None:
-    """Recursively require `class` on every embedded script node.
+def _container_kind(annotation: Any) -> str:
+    """Structural container shape of a field annotation, independent of what's
+    inside: "single" | "optional" | "array" | "map"."""
+    origin = typing.get_origin(annotation)
+    if origin is list:
+        return "array"
+    if origin is dict:
+        return "map"
+    if origin is types.UnionType or origin is typing.Union:
+        return "optional" if type(None) in typing.get_args(annotation) else "single"
+    return "single"
 
-    Walks the raw payload guided by the *concrete* script class' own field
-    annotations, so it only descends into dicts that are actually supposed to
-    be nested `Script` instances (e.g. `SequentialRunner.scripts`,
-    `CasesRunner.cases`) rather than arbitrary parameter dicts.
+
+def _unwrap_container(value: Any, container: str) -> list[Any]:
+    if container in ("single", "optional"):
+        return [] if value is None else [value]
+    if container == "array":
+        return value if isinstance(value, list) else []
+    if container == "map":
+        return list(value.values()) if isinstance(value, dict) else []
+    return []
+
+
+def _check_fields_for_classless_nodes(cls: type[BaseModel], data: dict[str, Any]) -> str | None:
+    """Walk `cls`'s fields against `data`, recursing into plain nested models
+    (e.g. `Configuration` -> `InstrumentConfig`) to reach polymorphic fields at
+    any depth, and validating every polymorphic node found along the way."""
+    for field_name, field_info in cls.model_fields.items():
+        if field_name not in data:
+            continue
+        value = data[field_name]
+        container = _container_kind(field_info.annotation)
+        classified = _polymorphic_field_base(field_info.annotation)
+        if classified is not None:
+            _, base = classified
+            for item in _unwrap_container(value, container):
+                error = _check_no_classless_nodes(item, base)
+                if error is not None:
+                    return error
+            continue
+        nested_cls = _nested_model_for(field_info.annotation)
+        if nested_cls is None:
+            continue
+        for item in _unwrap_container(value, container):
+            if isinstance(item, dict):
+                error = _check_fields_for_classless_nodes(nested_cls, item)
+                if error is not None:
+                    return error
+    return None
+
+
+def _check_no_classless_nodes(data: Any, expected_base: type[PolymorphicBaseModel] = Script) -> str | None:
+    """Recursively require a resolvable, concrete `class` on every embedded
+    polymorphic node (script nodes, and any nested provider node reachable
+    through one -- `exposure_time`, `pointing`, `priorities` -- possibly
+    through plain nested models like `Configuration`/`InstrumentConfig`).
+
+    Errors are attributed to the innermost node that's actually wrong, not
+    the outermost script.
 
     `Script.model_validate({})`/`{"scripts": [{}]}` succeed today by silently
     falling back to the abstract `Script` base (whose `run()` raises
-    `NotImplementedError`), so without this check `validate_script/` would
-    report "valid" for a script that can never actually execute.
+    `NotImplementedError`) -- `Script` isn't itself abstract, unlike the
+    provider bases (pydantic already rejects a class-less/abstract provider
+    node on its own) -- so without this check `validate_script/` would report
+    "valid" for a script that can never actually execute.
     """
+    unknown_label = "unknown script class" if expected_base is Script else "unknown class"
     if not isinstance(data, dict):
         return None
     cls_name = data.get("class")
     if cls_name is None:
-        return "no script class selected"
+        return "no script class selected" if expected_base is Script else f"no class selected for '{expected_base.__name__}'"
     try:
         cls = get_class_from_string(cls_name)
     except (ImportError, AttributeError):
-        return f"unknown script class '{cls_name}'"
-    if not (inspect.isclass(cls) and issubclass(cls, Script)):
-        return f"unknown script class '{cls_name}'"
-    for field_name, field_info in cls.model_fields.items():
-        if field_name not in data:
-            continue
-        classified = _polymorphic_field_base(field_info.annotation)
-        if classified is None or not issubclass(classified[1], Script):
-            continue
-        container, _base = classified
-        value = data[field_name]
-        if container in ("single", "optional"):
-            values = [] if value is None else [value]
-        elif container == "array":
-            values = value if isinstance(value, list) else []
-        elif container == "map":
-            values = value.values() if isinstance(value, dict) else []
-        else:
-            values = []
-        for item in values:
-            error = _check_no_classless_script_nodes(item)
-            if error is not None:
-                return error
-    return None
+        return f"{unknown_label} '{cls_name}'"
+    if not (inspect.isclass(cls) and issubclass(cls, expected_base) and cls is not expected_base):
+        return f"{unknown_label} '{cls_name}'"
+    return _check_fields_for_classless_nodes(cls, data)
 
 
 def validate_script(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         return {"valid": False, "error": "Script must be a YAML/JSON object."}
-    error = _check_no_classless_script_nodes(data)
+    error = _check_no_classless_nodes(data)
     if error is not None:
         return {"valid": False, "error": error}
     try:

@@ -722,7 +722,10 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
                 sample = samples.get(cls.__name__)
                 self.assertIsNotNone(sample, f"no sample registered for {cls.__name__}")
                 cls.model_validate(sample)
-        self.assertEqual(seen, set(samples))
+        # >= rather than ==: a new pyobs-core release adding another provider
+        # subclass should fail loudly above (assertIsNotNone) with an
+        # actionable message, not via a silent set-mismatch here.
+        self.assertGreaterEqual(seen, set(samples))
 
 
 class ValidateScriptClasslessTests(SimpleTestCase):
@@ -791,3 +794,34 @@ class ValidateScriptClasslessTests(SimpleTestCase):
             }
         )
         self.assertFalse(result["valid"])
+
+    def test_base_script_class_itself_is_rejected(self):
+        # The abstract `Script` base validates fine on its own (it isn't
+        # abstract in the Python sense -- pydantic doesn't stop it), but its
+        # run() raises NotImplementedError. Selecting it directly must be
+        # rejected the same as a class-less node, both at top level and nested.
+        top_level = schema_module.validate_script({"class": "pyobs.robotic.scripts.script.Script"})
+        self.assertFalse(top_level["valid"])
+
+        nested = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.sequential.SequentialRunner",
+                "scripts": [{"class": "pyobs.robotic.scripts.script.Script"}],
+            }
+        )
+        self.assertFalse(nested["valid"])
+
+    def test_unknown_nested_provider_class_is_attributed_correctly(self):
+        # A bogus class nested under a *provider*-typed field (exposure_time)
+        # must be reported as itself unknown, not blamed on the outer script.
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "configuration": {
+                    "instrument_configs": [{"exposure_time": {"class": "totally.bogus.Provider"}}]
+                },
+            }
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "unknown class 'totally.bogus.Provider'")
