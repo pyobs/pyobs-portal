@@ -1,7 +1,8 @@
 # Plan: Connect pyobs-robotic-backend to pyobs-archive (observations → data links)
 
 Tracks pyobs/pyobs-robotic-backend#82.
-Repos: pyobs-robotic-backend, pyobs-archive, pyobs-core.
+Repos: pyobs-robotic-backend only — the archive's existing frontend and API need no changes
+(verified below), and there is no pyobs-core dependency.
 Status: planned
 
 ## Problem
@@ -10,218 +11,199 @@ The backend stores observation history (`Observation` records with `start`, `end
 `obsnum`) but has no connection to pyobs-archive, the service that stores and serves the actual
 FITS data. Users cannot jump from a completed observation in the backend to its data — they have
 to open the archive separately and search for the frames manually. Every observation should link
-**directly** to its archived data (frame detail, FITS download, preview, headers), both in the
-API and in the frontend Observations tab.
+**directly** to its archived data, both in the API and in the frontend Observations tab.
 
 ## What exists today
 
 - `Observation.obsnum` (`CharField(32)`, nullable) plus `start`/`end` — the join key needs no
   schema change (`pyobs_robotic_backend/api/models.py`).
-- pyobs-archive `Frame.OBSNUM` (`CharField(30)`, nullable, "per-night") + `DATE_OBS`; `frames_view`
-  filters on `OBSNUM` and `start`/`end`, and paginates via `offset`/`limit`
-  (`pyobs_archive/api/views.py::filter_frames`), returning `{count, results}`; per-frame
-  `get_info()` returns `id`, `basename`, `DATE_OBS`, `FILTER`, `EXPTIME`, `OBSNUM`, `url`
-  (`frames/<id>/download/`), … (`pyobs_archive/api/models.py`).
-- Per-frame endpoints (all DRF `IsAuthenticated`, token auth works):
-  `/frames/<id>/`, `/frames/<id>/download/`, `/frames/<id>/preview/`, `/frames/<id>/headers/`.
-- pyobs-core `PyobsArchive` (`pyobs/robotic/utils/archive/pyobs_archive.py`) — async (aiohttp,
-  30 s timeout), token header, `list_frames()` already pages through the archive's
-  `offset`/`limit` until `count` is reached (a large frame set per observation is fetched fully,
-  not truncated). The `obsnum` filter this plan needs (pyobs/pyobs-core#791) **has since landed
-  and released** (PR #792, `pyobs-core` `2.0.0.dev87`+, current `dev92`): `list_frames()` /
-  `list_options()` take `obsnum: str | None = None` and `_build_query()` emits
-  `params["OBSNUM"] = obsnum`. This repo's own `pyproject.toml` still pins
-  `pyobs-core>=2.0.0.dev71` and `uv.lock` resolves to `dev72` — pre-fix — so §1 below is just a
-  pin bump + `uv lock`, not new upstream work.
+- **The archive's own frontend already deep-links from URL query params — verified in code.**
+  `pyobs_archive/frontend/static/js/app.js:329-343`: on page load it reads
+  `URLSearchParams(window.location.search)`, pre-fills the search form from `OBSNUM`, `REQNUM`,
+  `start`, `end` (among others), and calls `refreshTable()`. So
+  `{ARCHIVE_URL}/?OBSNUM={obsnum}&start={start}&end={end}` already shows exactly the right frames
+  through the archive's existing, authenticated (Keycloak SSO) UI — **no archive-side change
+  needed** to link straight to an observation's data. This supersedes an earlier draft of this
+  plan that resolved frame metadata server-side via a `PyobsArchive` client, a DB-backed cache,
+  and a periodic refresh task; see "Rejected: server-side resolution" below for why that's more
+  than this problem needs.
+- pyobs-archive `frames_view` (`pyobs_archive/api/views.py:169-191`, the JSON API backing that
+  frontend) filters on `OBSNUM`, `RLEVEL` (exact match only, no `__gt`), and `start`/`end`
+  (`DATE_OBS` range), and **always computes `data.count()` regardless of `limit`** — with
+  `limit=0` the response is `{"count": N, "results": []}`: a single indexed COUNT query
+  (`OBSNUM`/`RLEVEL` are `db_index=True`, `api/models.py:27`), no frame rows serialized. `RLEVEL`
+  defaults to `0` for raw frames and is set from the FITS header otherwise
+  (`api/models.py:106`), so "any reduced data yet" = `count(no RLEVEL filter) >
+  count(RLEVEL=0)`. `IsAuthenticated`, token auth works.
 - Backend API: `GET /api/observations/`, `GET /api/observations/<id>/`,
   `GET /api/tasks/<code>/observations/` — all access-scoped to public/member projects
   (`api/views.py`); `ObservationSerializer` fields `id, task, start, end, state, target, obsnum`.
 - Frontend Observations tab: `#tab-observations`
   (`frontend/templates/frontend/task_detail.html`), rendered by `loadObservationTable()`
   (`frontend/static/frontend/js/taskeditor.js`, ~L977) — Start/End/State/Target columns only.
-- Scheduling exists: Celery tasks (`api/tasks.py`: `mark_window_expired`,
-  `delete_old_observations`) plus a periodic APScheduler process (`task_scheduler.py`) that
-  dispatches them on cron triggers — the natural place for a periodic frame-refresh job.
+
+## Rejected: server-side resolution, DB cache, periodic refresh
+
+An earlier draft resolved frame *metadata* server-side (via pyobs-core's `PyobsArchive` async
+client + a service token), cached the result on `Observation.frames` (JSONField), and kept it
+fresh with a `post_save` signal plus an hourly Celery sweep (to pick up reduction products the
+pipeline attaches the following morning). Reconsidered because:
+
+- The actual ask (#82: "link observations to their data") is satisfied by a **link**, not by the
+  backend re-serving frame metadata it doesn't need to own.
+- The motivating concern for the cache — "the observations list returns up to 500 rows per page;
+  resolving per row means up to 500 archive calls per page load" — only applies if the backend
+  calls the archive *at all* on the list endpoint. A link built from `ARCHIVE_URL` + `obsnum` +
+  `start`/`end` is pure string formatting: zero archive calls, so there's nothing to cache and
+  nothing that goes stale.
+- That also removes the entire cross-repo footprint this plan had: no pyobs-core dependency (no
+  `PyobsArchive`/`asgiref.sync.async_to_sync` wrapper needed — nothing here calls that client),
+  no `ARCHIVE_TOKEN` service-account provisioning for bulk resolution, no DB migration, no Celery
+  task, no periodic sweep, no TTL/staleness reasoning. What's left (below) is a single-repo,
+  same-day change.
+- A small, deliberate on-demand exception remains for a "does this have data yet" indicator (§3)
+  — see "Design decisions" below for why that one case still needs a live archive call, and why
+  it's safe against the same N-calls concern the rejected design was built to avoid.
 
 ## Design decisions
 
-1. **Server-side resolution of metadata; data links point straight to the archive.** Frame
-   *metadata* is resolved server-side via `PyobsArchive` (service token, no CORS concerns) and
-   served by the backend. The actual data (frame page, FITS download, preview, headers) is
-   **always linked directly to the archive** — no backend data endpoints, no redirects, no bytes
-   through the backend. The user's browser authenticates against the archive itself (shared
-   Keycloak SSO; both services run `pyobs-auth`).
+1. **Link-based access — no backend data endpoints, no redirects, no bytes through the
+   backend.** `archive_url` is computed from `ARCHIVE_URL` + `obsnum` + `start`/`end`, exposed on
+   `ObservationSerializer`, and rendered as a link in the Observations tab for any observation in
+   a terminal-with-data state (`completed`, `aborted`, `failed`). The browser opens it directly;
+   the user authenticates against the archive itself through the shared Keycloak SSO (both
+   services run `pyobs-auth`) — no per-user token handling on the backend, and computing the URL
+   requires no archive call at all, so it's safe to include for every row in a 500-row list page.
 2. **Join key: `obsnum` + time window.** `OBSNUM` is a per-night counter in both services, so
    `obsnum` alone can collide across nights — always combine `OBSNUM` with a `DATE_OBS` window
    (observation `start`..`end`, ± 5 minutes). 5 min covers clock skew and any slack between the
    backend's recorded `start`/`end` and the camera's actual exposure timestamps, while staying
-   well inside a single night — the thing `OBSNUM` needs the window for in the first place. Fall
-   back to time-window-only matching when `obsnum` is missing.
-3. **Refresh-based resolution with a DB-backed cache (no N+1, no LocMemCache).** The
-   observations list returns up to 500 rows per page; resolving per row on the list means up to
-   500 archive calls per page load. Instead: store resolved frame info on the `Observation` row
-   (JSONField + `frames_updated_at`); the list serializer reads the cache with no archive calls;
-   a dedicated `GET /api/observations/<id>/frames/` endpoint resolves on demand and refreshes on
-   a TTL. **The cache is a refresh, not a final answer:** an observation's frame list keeps
-   growing — the reduction pipeline attaches new files (higher `RLEVEL` products, related
-   frames) to the archive the following morning, after the observation completed — so the
-   completion-time resolve is only the first fill; later files appear via TTL-based
-   re-resolution on read plus a periodic sweep (section 6). Use the DB, not the per-process
-   `LocMemCache` whose staleness pitfall was the root cause of #83.
-4. **Reuse `PyobsArchive`** behind an `asgiref.sync.async_to_sync` wrapper; the only pyobs-core
-   change is adding the `obsnum` filter parameter (upstream, small). Fallback if a pyobs-core
-   release is blocked: build the query URL directly in the backend client behind the same
-   wrapper interface.
-5. **Auth: static service token; users cross-auth via Keycloak.** Server-to-server calls
-   (metadata resolution) use a static `ARCHIVE_TOKEN` — `ARCHIVE_URL` + `ARCHIVE_TOKEN` env
-   vars, mirroring the archive's `ROBOTIC_BACKEND_URL`/`ROBOTIC_BACKEND_TOKEN` pattern. Unset →
-   feature off, no links, no archive calls. When the user opens the archive links (decision 1),
-   the browser authenticates against the archive through the shared Keycloak SSO — no per-user
-   token handling on the backend.
-6. **Resilience.** Archive timeouts/unavailability/5xx are non-fatal: log a warning, return the
-   stale cache or an empty `frames` list — the observations list/detail endpoints never fail
-   because the archive is down.
+   well inside a single night. Fall back to a `start`/`end`-only URL (omit `OBSNUM`) when
+   `obsnum` is missing — the archive frontend handles a partial query string fine (unset params
+   are simply not applied as filters, per `app.js`'s `params.has(...)` checks).
+3. **On-demand data-status check (count + reduced flag), computed live, never cached.** The
+   Observations tab additionally wants to show *whether* an observation actually has data (and
+   whether it's been reduced yet) without waiting for a click-through. This needs a real archive
+   call — a link alone can't answer it — but the two count queries `frames_view` needs
+   (`limit=0`, once unfiltered and once with `RLEVEL=0`) are cheap, indexed COUNT queries with no
+   row serialization. The N-calls-per-page-load problem that killed the old cached-resolution
+   design was about **doing this on the list endpoint**, not about the calls being expensive in
+   isolation — so the fix is to scope it to where at most one call happens per user action: a
+   dedicated `GET /api/observations/<id>/frames/` endpoint, fetched by the frontend lazily, only
+   for the single observation the user is actually looking at (e.g. on row expand), never for an
+   entire page of rows at once. Computed synchronously on every request — no DB field, no
+   `post_save` signal, no Celery task, no periodic sweep, no TTL. Staleness stops being a
+   question because every open re-asks the archive directly; the "reduction pipeline attaches
+   files the following morning" concern from the rejected design is a non-issue here too, since
+   there's no cache to go stale in the first place.
+4. **Auth: static service token, scoped to the narrow on-demand check only.** `frames_view`
+   requires `IsAuthenticated`, so §3's two COUNT queries need a token — `ARCHIVE_URL` +
+   `ARCHIVE_TOKEN` env vars, mirroring the archive's `ROBOTIC_BACKEND_URL`/
+   `ROBOTIC_BACKEND_TOKEN` pattern. Unlike the rejected design, this token now backs only a
+   cheap, user-triggered, uncached call — not bulk/scheduled resolution — so its blast radius and
+   rate are both small by construction. Plain synchronous `requests.get()` against `frames_view`
+   is enough; no `PyobsArchive` client, no `asgiref` wrapper, no pyobs-core version dependency.
+   Unset `ARCHIVE_TOKEN` → the data-status endpoint reports `"status": "unavailable"`; `archive_url`
+   (decision 1) still renders regardless, since it never needed the token.
+5. **Resilience.** Archive timeout/unreachable/5xx on the on-demand check → log a warning, return
+   `{"archive_url": …, "status": "unavailable"}` (never a 5xx to the frontend) — the link itself,
+   built without any archive call, always renders even when the archive is down.
 
 ## Implementation
 
-### 1. pyobs-core: `PyobsArchive` `OBSNUM` filter — done upstream (pyobs/pyobs-core#791, closed)
-
-- [x] `pyobs/robotic/utils/archive/pyobs_archive.py`: `obsnum: str | None = None` on
-      `list_frames()` and `list_options()`, threaded into `_build_query()`, which emits
-      `params["OBSNUM"] = obsnum`.
-- [x] Abstract signatures in `pyobs/robotic/utils/archive/archive.py`
-      (`Archive.list_frames`/`list_options`) consistent.
-- [x] pyobs-core test: `test_list_options_passes_obsnum_to_query` /
-      `test_list_frames_passes_obsnum_to_query`
-      (`tests/robotic/utils/archive/test_pyobs_archive.py`).
-- [ ] **Remaining:** bump `pyobs-core>=2.0.0.dev87` (or later — `dev92` is current) in
-      `pyproject.toml` + `uv lock` here.
-
-### 2. Backend configuration
+### 1. Backend configuration
 
 - [ ] `settings.py`: `ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")`,
-      `ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")`,
-      `FRAMES_CACHE_TTL = int(os.environ.get("FRAMES_CACHE_TTL", 3600))` (seconds; default 1 h).
-- [ ] README env table + `.env.example`: `ARCHIVE_URL`, `ARCHIVE_TOKEN`, `FRAMES_CACHE_TTL`
-      (all optional; unset `ARCHIVE_URL`/`ARCHIVE_TOKEN` disables the feature).
+      `ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")`.
+- [ ] README env table + `.env.example`: `ARCHIVE_URL` (optional; unset → no `archive_url` field
+      / no links), `ARCHIVE_TOKEN` (optional; unset → `archive_url` still works, data-status
+      always reports `"unavailable"`).
 
-### 3. Archive client wrapper — `pyobs_robotic_backend/api/archive.py`
+### 2. `archive_url` — `pyobs_robotic_backend/api/serializers.py`
 
-- [ ] `resolve_frames(observation) -> list[dict] | None`: `None` when the archive is
-      disabled/unreachable, `[]` when enabled but no frames match, else a list of frame dicts.
-- [ ] Instantiate `PyobsArchive(url=settings.ARCHIVE_URL, token=settings.ARCHIVE_TOKEN)`, run
-      via `asgiref.sync.async_to_sync`.
-- [ ] Query: `obsnum` present → `list_frames(obsnum=…, start=…, end=…)`; else →
-      `list_frames(start=…, end=…)` (astropy `Time` from `start`/`end`, UTC).
-- [ ] Map `PyobsArchiveFrameInfo` → `{id, basename, dateobs, filter, binning, url}` where `url`
-      is the absolute archive frame-page URL (`urljoin(ARCHIVE_URL, f"frames/{id}/")`); the
-      frontend links straight to the archive (download/preview/headers live on the archive's
-      own frame page).
-- [ ] Wrap everything in try/except (aiohttp errors, timeouts, JSON errors): log a warning,
-      return the cached value or `None` — never raise into the request.
+- [ ] `ObservationSerializer`: add a computed `archive_url` field (`SerializerMethodField`),
+      `None` when `settings.ARCHIVE_URL` is unset or the observation isn't in a
+      terminal-with-data state; else
+      `f"{settings.ARCHIVE_URL}/?start={start}&end={end}"` plus `&OBSNUM={obsnum}` when
+      `obsnum` is set (decision 2) — pure string formatting, no I/O, safe on every list row.
+- [ ] Unit test: field present/absent per state and per `ARCHIVE_URL` config; `OBSNUM` included
+      only when set; values URL-encoded.
 
-### 4. Model: frames cache — `pyobs_robotic_backend/api/models.py`
+### 3. Data-status endpoint — `pyobs_robotic_backend/api/{views,urls}.py`
 
-- [ ] `Observation.frames = models.JSONField(null=True, blank=True)` and
-      `Observation.frames_updated_at = models.DateTimeField(null=True, blank=True)`; migration
-      `api/migrations/0009_observation_frames.py` (current head is `0008_task_observation_updated_at.py`).
-- [ ] Only terminal-with-data states (`completed`, `aborted`, `failed`) are resolved;
-      `pending`/`in_progress`/`canceled`/`window_expired` keep `frames` `null` without archive
-      calls.
-
-### 5. API — `pyobs_robotic_backend/api/{serializers,views,urls}.py`
-
-- [ ] `ObservationSerializer`: add read-only `frames` field (serializes the cached list; `null`
-      → not resolved yet).
-- [ ] `GET /api/observations/<id>/frames/` (`ObservationFrames`, `IsAuthenticated`, same
-      access-scoped queryset as `ObservationDetail`): resolve lazily via the wrapper (the client
-      pages through the archive's `offset`/`limit` automatically), store + stamp
-      `frames_updated_at`, return `{"frames": […], "archive_enabled": bool}`; **paginate the
-      cached list via `offset`/`limit`** (default page 25, plus `count`); refresh when the cache
-      is older than `FRAMES_CACHE_TTL` (settings, default 1 h — matches the periodic sweep
-      cadence in §6, so a read-triggered refresh and the sweep never fight over freshness). No
-      data endpoints — download/preview/
-      headers are served by the archive and linked directly.
-- [ ] `urls.py`: register the frames route.
+- [ ] `GET /api/observations/<id>/frames/` (`ObservationDataStatus`, `IsAuthenticated`, same
+      access-scoped queryset as `ObservationDetail`): builds the archive query params from
+      `obsnum`/`start`/`end` as in decision 2, issues two synchronous `requests.get()` calls to
+      `{ARCHIVE_URL}/frames/` (`limit=0`, `Authorization: Token {ARCHIVE_TOKEN}`) — one
+      unfiltered, one with `RLEVEL=0` — and returns
+      `{"archive_url": …, "count": total, "reduced": total > raw_only}`. Non-terminal state,
+      unset `ARCHIVE_URL`/`ARCHIVE_TOKEN`, or any request exception/non-2xx/timeout →
+      `{"archive_url": archive_url_or_null, "status": "unavailable"}` (decision 5), never a
+      backend-side 5xx.
+- [ ] `urls.py`: register the route.
 - [ ] README API overview: row for the new endpoint.
 
-### 6. Frame refresh tasks — `pyobs_robotic_backend/api/tasks.py`, `task_scheduler.py`
-
-- [ ] `@shared_task refresh_observation_frames(obs_id)`: resolve + store via the wrapper
-      (idempotent; archive errors → leave `frames` unchanged, log; skips non-terminal states).
-- [ ] `post_save` receiver on `Observation` (e.g. `api/signals.py`, wired in `api/apps.py`):
-      on transition into terminal-with-data, `refresh_observation_frames.delay(pk)` — **first
-      fill only**; this alone is not enough, because the pipeline attaches new files to the
-      archive the following morning (see decision 3).
-- [ ] `@shared_task sweep_stale_observation_frames()`: query terminal-with-data observations
-      from the last 7 days where `frames_updated_at` is `null` or older than
-      `settings.FRAMES_CACHE_TTL`, and `.delay()` `refresh_observation_frames` for each —
-      matches the existing pattern of thin periodic tasks fanning out to the per-row task
-      (`mark_window_expired`, `delete_old_observations`).
-- [ ] Periodic sweep in `task_scheduler.py`: `scheduler.add_job(sweep_stale_observation_frames.delay,
-      CronTrigger.from_crontab("0 * * * *"))` — hourly, matching `FRAMES_CACHE_TTL`'s default (a
-      tighter cadence than the TTL would just re-do work the TTL check already prevents; looser
-      would leave next-morning reduction products unlinked longer than the cache claims to be
-      fresh). Re-resolves terminal observations from the last 7 days (covers the
-      "attached the following morning" case with margin for a delayed reduction run) whose
-      `frames_updated_at` is older than `FRAMES_CACHE_TTL` or still `null`.
-
-### 7. Frontend — `frontend/templates/frontend/task_detail.html`,
+### 4. Frontend — `frontend/templates/frontend/task_detail.html`,
    `frontend/static/frontend/js/taskeditor.js`
 
-- [ ] `#tab-observations`: add a "Data" column to thead/tbody; adjust the "Loading…"/"None."
-      row colspan from 4 to 5.
-- [ ] `loadObservationTable()`: per row — `obs.frames` non-empty → "open in archive" links
-      (frame page in the archive, opened in a new tab so the Keycloak SSO login chain completes;
-      download/preview/headers live on the archive's own frame page); empty list → muted "—";
-      `null` + terminal-with-data state → lazily fetch `observations/${obs.id}/frames/` via the
-      existing `apiRequest` (small "loading" indicator, concurrency-capped), then render; on
-      failure → muted "unavailable". Archive disabled → nothing rendered.
+- [ ] `#tab-observations`: add a "Data" column to thead/tbody; adjust the "Loading…"/"None." row
+      colspan from 4 to 5.
+- [ ] `loadObservationTable()`: per row — `obs.archive_url` present → render an "open in archive"
+      link immediately (opened in a new tab so the Keycloak SSO login chain completes), using
+      only data already on the list response (no extra call); `archive_url` absent (non-terminal
+      state or `ARCHIVE_URL` unset) → nothing rendered.
+- [ ] Data-status is **not** fetched for the whole list. Fetch it lazily only when a row is
+      expanded/opened (existing row-detail interaction, or a small "check" affordance next to the
+      link) via the existing `apiRequest` helper against `observations/${obs.id}/frames/`; render
+      "N frames (reduced)" / "N frames (raw only)" / muted "unavailable" next to the link. This
+      is the one place a per-row archive call happens, and it's bounded to whichever single row
+      the user actually opened — never a bulk fetch across the page.
 
-### 8. Docs
+### 5. Docs
 
-- [ ] README: env table, API overview rows, frontend feature bullet ("Observations tab links
-      each completed observation to its archived frames: preview, headers, FITS download").
+- [ ] README: env table, API overview row, frontend feature bullet ("Observations tab links each
+      completed observation straight to its archived data in the archive's own UI, with an
+      on-demand frame count/reduction-status check").
 - [ ] `.env.example`: commented `ARCHIVE_URL` / `ARCHIVE_TOKEN`.
 
 ## Tests
 
-pyobs-core's `_build_query`/`list_frames(obsnum=…)` coverage is already in on `develop`
-(`test_list_options_passes_obsnum_to_query`, `test_list_frames_passes_obsnum_to_query`) — no new
-pyobs-core tests needed here. Following this repo's convention
-(`pyobs_robotic_backend/api/tests.py`: one flat file, one `TestCase` per unit — see
-`ProjectPublicApiTests`, `UpdateMarkerApiTests`):
+Following this repo's convention (`pyobs_robotic_backend/api/tests.py`: one flat file, one
+`TestCase` per unit — see `ProjectPublicApiTests`, `UpdateMarkerApiTests`):
 
-- `ArchiveClientWrapperTests` (`api/archive.py`, mocked `PyobsArchive`): obsnum + window query;
-  time-window fallback; archive down → `None`/`[]` without raising; pagination/`count` handling.
-- `ObservationFramesApiTests`: `/frames/` endpoint access scoping (non-member → 404),
-  offset/limit pagination, `FRAMES_CACHE_TTL` refresh, cache persistence, disabled (no
-  `ARCHIVE_URL`) → `archive_enabled: false`; frame dicts carry the correct absolute archive
-  URLs; `ObservationSerializer` includes `frames`.
-- `ObservationFramesRefreshTaskTests`: `refresh_observation_frames` resolves and stores; the
-  `post_save` signal fires only on transitions into terminal-with-data; TTL re-resolution picks
-  up newly attached frames (mock a second archive result after the TTL);
-  `sweep_stale_observation_frames` only touches rows both within the 7-day window and past the
-  TTL (or `null`), and fans out one `refresh_observation_frames.delay()` per matched row.
-- Frontend: manual (Observations tab renders links; archive down → muted, list still loads).
+- `ArchiveUrlSerializerTests`: `archive_url` present/absent per state, per `ARCHIVE_URL` config,
+  `OBSNUM` included only when set, values URL-encoded correctly.
+- `ObservationDataStatusApiTests` (mocked `requests.get`): access scoping (non-member → 404,
+  matching `ObservationDetail`); normal case returns `{count, reduced}` from the two mocked COUNT
+  responses; `RLEVEL=0`-only responses → `reduced: false`; archive timeout/connection error/non-2xx
+  → `{"status": "unavailable"}`, no 5xx; unset `ARCHIVE_URL`/`ARCHIVE_TOKEN` → `"unavailable"`
+  without attempting a request; non-terminal-state observation → `"unavailable"` without a
+  request either (mirrors the old design's "only terminal-with-data states are resolved" rule,
+  minus the caching).
+- Frontend: manual (Observations tab renders links from the list response alone, no archive
+  calls on load; expanding a row fetches and renders the count/reduced status; archive down →
+  link still shown, status shows "unavailable").
 
 ## Consequences
 
-- **Good:** one click from a completed observation to its data (preview/headers/FITS) in both
-  API and UI.
-- **Good:** single auth point (service token); archive unavailability never breaks the
-  observations list.
-- **Good:** list endpoints stay cheap (DB cache, no N+1, no LocMemCache).
-- **Neutral:** cached frame info can be stale up to the TTL; the archive stays the source of
-  truth and is re-queried on TTL/refresh — which also picks up pipeline products attached the
-  following morning.
+- **Good:** one click from a completed observation to its data, in both API and UI, with zero
+  cross-repo changes — the archive's existing frontend and API already do the work.
+- **Good:** no DB migration, no Celery task, no periodic sweep, no TTL/staleness reasoning, no
+  pyobs-core version dependency — the whole feature is additive within this repo.
+- **Good:** the list endpoint never calls the archive; archive unavailability can only ever
+  affect the on-demand data-status check for one open row, never the list.
+- **Trade-off:** no inline "N frames" indicator across the whole list without a click/expand per
+  row — a deliberate trade against re-introducing per-row archive calls at list-load time
+  (decision 3). The link itself is always available without this trade-off.
 - **Trade-off:** the data links require the archive to be reachable from the user's browser and
-  to accept the user's identity (shared Keycloak SSO); with token-only archive auth the links
-  would 401 in the browser — the backend only ever resolves metadata with the service token.
-- **Interplay with pyobs-archive#42 (project access control):** the service token bypasses any
-  future per-user filtering for metadata resolution, but the linked data is fetched by the
-  user's own browser, so #42's per-user filtering applies directly to it. Keep the backend's
-  access scoping on the metadata endpoints; revisit when #42 lands.
+  to accept the user's identity (shared Keycloak SSO) — unchanged from the rejected design.
+- **Interplay with pyobs-archive#42 (project access control):** if/when `PROJECT_ACCESS_CONTROL`
+  lands, the service token used for the on-demand count check bypasses any future per-user
+  project filtering (superuser-equivalent for that one query) — same caveat as the rejected
+  design had, just now scoped to a count instead of full metadata. The link itself carries no
+  token, so once the user's own browser session hits the archive, `#42`'s filtering (if enabled)
+  applies to what they can actually open. Revisit the count-check scoping if `#42` lands and this
+  bypass becomes a concern.
 
 ## Open questions / deferred
 
