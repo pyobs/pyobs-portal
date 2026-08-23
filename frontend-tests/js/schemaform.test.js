@@ -10,7 +10,7 @@ beforeAll(() => {
   };
 });
 
-await import("../schemaform.js");
+await import("../../pyobs_robotic_backend/frontend/static/frontend/js/schemaform.js");
 const { SchemaForm, buildControl, resolvePolymorphicCandidates } = window;
 
 // Trimmed fixture mirroring the real script_tree() response shape (see
@@ -183,6 +183,30 @@ describe("buildControl: polymorphic with no registered candidates", () => {
   });
 });
 
+describe("buildControl: polymorphic with an unmappable existing value", () => {
+  it("falls back to raw YAML instead of silently discarding the value", () => {
+    // A stale class (uninstalled script package, legacy YAML, ...) --
+    // resetting to the first candidate would silently drop the real data.
+    const resolved = scriptFieldSchema("single");
+    const value = { class: "pkg.uninstalled.GoneScript", some_field: 42 };
+    const { control, getValue } = buildControl(resolved, SCRIPT_DEFS, value, new Set(), POLYMORPHIC);
+
+    expect(control.tagName).toBe("TEXTAREA");
+    expect(getValue()).toEqual(value);
+  });
+
+  it("does NOT trigger for a classless placeholder from a fresh 'Add'", () => {
+    // defaultValueFor() returns {} for a polymorphic field with no default --
+    // that's "no value yet", not an unmappable value, and must still default
+    // to the first candidate rather than falling back to YAML.
+    const resolved = scriptFieldSchema("single");
+    const { control, getValue } = buildControl(resolved, SCRIPT_DEFS, {}, new Set(), POLYMORPHIC);
+
+    expect(control.querySelector("select")).not.toBeNull();
+    expect(getValue()).toEqual({ class: "pkg.utils.log.LogScript", expression: "" });
+  });
+});
+
 describe("array of polymorphic scripts (SequentialRunner.scripts-like)", () => {
   const SCHEMA = {
     type: "object",
@@ -240,5 +264,60 @@ describe("dynamic map of polymorphic scripts (CasesRunner.cases-like)", () => {
     form.element.querySelector("button.btn-outline-secondary").click();
     // Name left blank.
     expect(form.getData().cases).toEqual({});
+  });
+
+  it("flags rows with a duplicate name (still last-row-wins in getValue)", () => {
+    const data = {
+      cases: {
+        a: { class: "pkg.utils.log.LogScript", expression: "1" },
+        b: { class: "pkg.utils.log.LogScript", expression: "2" },
+      },
+    };
+    const form = new SchemaForm(SCHEMA, SCRIPT_DEFS, data, { polymorphic: POLYMORPHIC });
+    const [firstInput, secondInput] = form.element.querySelectorAll('input[placeholder="name"]');
+    expect(firstInput.classList.contains("is-invalid")).toBe(false);
+
+    secondInput.value = "a";
+    secondInput.dispatchEvent(new Event("input"));
+
+    expect(firstInput.classList.contains("is-invalid")).toBe(true);
+    expect(secondInput.classList.contains("is-invalid")).toBe(true);
+    expect(Object.keys(form.getData().cases)).toEqual(["a"]);
+  });
+});
+
+describe("buildArrayControl: unaffected by the polymorphic-dispatch rewrite", () => {
+  it("round-trips an array of plain objects (instrument_configs-like)", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: {
+            type: "object",
+            properties: { count: { type: "integer", title: "Count", default: 1 } },
+          },
+          title: "Items",
+        },
+      },
+    };
+    const data = { items: [{ count: 3 }, { count: 5 }] };
+    const form = new SchemaForm(schema, {}, data, { polymorphic: POLYMORPHIC });
+    expect(form.getData()).toEqual(data);
+  });
+
+  it("round-trips an array of primitives", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        names: { type: "array", items: { type: "string" }, title: "Names" },
+      },
+    };
+    const data = { names: ["a", "b"] };
+    const form = new SchemaForm(schema, {}, data, { polymorphic: POLYMORPHIC });
+    expect(form.getData()).toEqual(data);
+
+    form.element.querySelector("button.btn-outline-secondary").click();
+    expect(form.getData().names).toEqual(["a", "b", ""]);
   });
 });

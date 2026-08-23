@@ -8,10 +8,15 @@
  * `model_json_schema()`) and builds Bootstrap form controls.
  *
  * Usage:
- *   const form = new SchemaForm(schema, defs, data);
+ *   const form = new SchemaForm(schema, defs, data, { ignoredFields, polymorphic });
  *   container.appendChild(form.element);
  *   ...
  *   const data = form.getData();
+ *
+ * `polymorphic` is the `{base: [{class, title, schema}]}` map produced by
+ * resolvePolymorphicCandidates() from script_tree()'s `$polymorphic`
+ * registry; omit it for schemas with no `x-pyobs-polymorphic` fields
+ * (constraints/merits/targets today).
  */
 
 /** Resolve a `$ref` (and merge any sibling keys, e.g. an overriding title). */
@@ -362,7 +367,23 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
   list.className = "d-flex flex-column gap-2 mb-2";
   wrap.appendChild(list);
 
-  const rows = []; // { row, getKey, getValue }
+  const rows = []; // { row, keyInput, getValue }
+
+  // A duplicate name would silently overwrite an earlier row in getValue()'s
+  // last-wins map build -- flag it visibly rather than leaving it silent.
+  function updateDuplicateWarnings() {
+    const counts = new Map();
+    for (const r of rows) {
+      const key = r.keyInput.value;
+      if (key) counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    for (const r of rows) {
+      const key = r.keyInput.value;
+      const isDup = !!key && counts.get(key) > 1;
+      r.keyInput.classList.toggle("is-invalid", isDup);
+      r.keyInput.title = isDup ? `Duplicate name "${key}" -- only the last one is kept` : "";
+    }
+  }
 
   function addRow(key, itemValue) {
     const row = document.createElement("div");
@@ -374,6 +395,7 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
     keyInput.style.maxWidth = "10rem";
     keyInput.placeholder = "name";
     keyInput.value = key || "";
+    keyInput.addEventListener("input", updateDuplicateWarnings);
     row.appendChild(keyInput);
 
     const { control, getValue } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic);
@@ -388,11 +410,13 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
       const idx = rows.findIndex((r) => r.row === row);
       if (idx >= 0) rows.splice(idx, 1);
       row.remove();
+      updateDuplicateWarnings();
     });
     row.appendChild(removeBtn);
 
-    rows.push({ row, getKey: () => keyInput.value, getValue });
+    rows.push({ row, keyInput, getValue });
     list.appendChild(row);
+    updateDuplicateWarnings();
   }
 
   Object.entries(value || {}).forEach(([k, v]) => addRow(k, v));
@@ -407,11 +431,12 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
   return {
     control: wrap,
     // Rows with an empty key are dropped rather than serialized under "" --
-    // the caller fills in a name before it's meaningful.
+    // the caller fills in a name before it's meaningful. A duplicate name is
+    // last-row-wins (flagged visibly above via updateDuplicateWarnings).
     getValue: () => {
       const result = {};
       for (const r of rows) {
-        const key = r.getKey();
+        const key = r.keyInput.value;
         if (key) result[key] = r.getValue();
       }
       return result;
@@ -429,10 +454,19 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
 function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
   const candidates = (polymorphic && polymorphic[marker.base]) || [];
   const isOptional = marker.container === "optional";
+  // `value.class` presence, not just "value is an object", is what
+  // distinguishes a genuine (possibly unmappable) existing value from the
+  // classless `{}` placeholder that "Add" buttons create via
+  // defaultValueFor() for a brand-new item -- that one should default to the
+  // first candidate below, not trip the unmappable-value fallback.
+  const hasClass = value !== undefined && value !== null && typeof value === "object" && value.class !== undefined;
+  const hasExisting = hasClass && candidates.some((c) => c.class === value.class);
 
-  if (!candidates.length) {
-    // Registry has nothing for this base (e.g. stale/mismatched data) --
-    // fall back to raw YAML rather than rendering a dead-end empty control.
+  if (!candidates.length || (hasClass && !hasExisting)) {
+    // No candidates for this base, or an existing value whose class isn't
+    // among them (stale class, uninstalled script package, legacy YAML --
+    // the §4.12 "unmappable" scenarios) -- fall back to raw YAML rather than
+    // silently discarding the data by resetting to the first candidate.
     return buildYamlControl(value);
   }
 
@@ -490,7 +524,6 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
     nestedWrap.appendChild(card);
   }
 
-  const hasExisting = value && typeof value === "object" && candidates.some((c) => c.class === value.class);
   const initialClass = hasExisting ? value.class : isOptional ? "" : candidates[0].class;
   select.value = initialClass;
   renderNested(initialClass, hasExisting ? value : undefined);
