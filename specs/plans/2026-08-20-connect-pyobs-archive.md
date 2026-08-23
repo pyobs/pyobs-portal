@@ -3,7 +3,7 @@
 Tracks pyobs/pyobs-robotic-backend#82.
 Repos: pyobs-robotic-backend only — the archive's existing frontend and API need no changes
 (verified below), and there is no pyobs-core dependency.
-Status: planned
+Status: implemented (pyobs/pyobs-robotic-backend#89)
 
 ## Problem
 
@@ -113,25 +113,25 @@ pipeline attaches the following morning). Reconsidered because:
 
 ### 1. Backend configuration
 
-- [ ] `settings.py`: `ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")`,
+- [x] `settings.py`: `ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")`,
       `ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")`.
-- [ ] README env table + `.env.example`: `ARCHIVE_URL` (optional; unset → no `archive_url` field
+- [x] README env table + `.env.example`: `ARCHIVE_URL` (optional; unset → no `archive_url` field
       / no links), `ARCHIVE_TOKEN` (optional; unset → `archive_url` still works, data-status
       always reports `"unavailable"`).
 
 ### 2. `archive_url` — `pyobs_robotic_backend/api/serializers.py`
 
-- [ ] `ObservationSerializer`: add a computed `archive_url` field (`SerializerMethodField`),
+- [x] `ObservationSerializer`: add a computed `archive_url` field (`SerializerMethodField`),
       `None` when `settings.ARCHIVE_URL` is unset or the observation isn't in a
       terminal-with-data state; else
       `f"{settings.ARCHIVE_URL}/?start={start}&end={end}"` plus `&OBSNUM={obsnum}` when
       `obsnum` is set (decision 2) — pure string formatting, no I/O, safe on every list row.
-- [ ] Unit test: field present/absent per state and per `ARCHIVE_URL` config; `OBSNUM` included
+- [x] Unit test: field present/absent per state and per `ARCHIVE_URL` config; `OBSNUM` included
       only when set; values URL-encoded.
 
 ### 3. Data-status endpoint — `pyobs_robotic_backend/api/{views,urls}.py`
 
-- [ ] `GET /api/observations/<id>/frames/` (`ObservationDataStatus`, `IsAuthenticated`, same
+- [x] `GET /api/observations/<id>/frames/` (`ObservationDataStatus`, `IsAuthenticated`, same
       access-scoped queryset as `ObservationDetail`): builds the archive query params from
       `obsnum`/`start`/`end` as in decision 2, issues two synchronous `requests.get()` calls to
       `{ARCHIVE_URL}/frames/` (`limit=0`, `Authorization: Token {ARCHIVE_TOKEN}`) — one
@@ -140,19 +140,19 @@ pipeline attaches the following morning). Reconsidered because:
       unset `ARCHIVE_URL`/`ARCHIVE_TOKEN`, or any request exception/non-2xx/timeout →
       `{"archive_url": archive_url_or_null, "status": "unavailable"}` (decision 5), never a
       backend-side 5xx.
-- [ ] `urls.py`: register the route.
-- [ ] README API overview: row for the new endpoint.
+- [x] `urls.py`: register the route.
+- [x] README API overview: row for the new endpoint.
 
 ### 4. Frontend — `frontend/templates/frontend/task_detail.html`,
    `frontend/static/frontend/js/taskeditor.js`
 
-- [ ] `#tab-observations`: add a "Data" column to thead/tbody; adjust the "Loading…"/"None." row
+- [x] `#tab-observations`: add a "Data" column to thead/tbody; adjust the "Loading…"/"None." row
       colspan from 4 to 5.
-- [ ] `loadObservationTable()`: per row — `obs.archive_url` present → render an "open in archive"
+- [x] `loadObservationTable()`: per row — `obs.archive_url` present → render an "open in archive"
       link immediately (opened in a new tab so the Keycloak SSO login chain completes), using
       only data already on the list response (no extra call); `archive_url` absent (non-terminal
       state or `ARCHIVE_URL` unset) → nothing rendered.
-- [ ] Data-status is **not** fetched for the whole list. Fetch it lazily only when a row is
+- [x] Data-status is **not** fetched for the whole list. Fetch it lazily only when a row is
       expanded/opened (existing row-detail interaction, or a small "check" affordance next to the
       link) via the existing `apiRequest` helper against `observations/${obs.id}/frames/`; render
       "N frames (reduced)" / "N frames (raw only)" / muted "unavailable" next to the link. This
@@ -161,10 +161,10 @@ pipeline attaches the following morning). Reconsidered because:
 
 ### 5. Docs
 
-- [ ] README: env table, API overview row, frontend feature bullet ("Observations tab links each
+- [x] README: env table, API overview row, frontend feature bullet ("Observations tab links each
       completed observation straight to its archived data in the archive's own UI, with an
       on-demand frame count/reduction-status check").
-- [ ] `.env.example`: commented `ARCHIVE_URL` / `ARCHIVE_TOKEN`.
+- [x] `.env.example`: commented `ARCHIVE_URL` / `ARCHIVE_TOKEN`.
 
 ## Tests
 
