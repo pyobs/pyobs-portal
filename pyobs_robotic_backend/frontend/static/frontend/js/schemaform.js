@@ -182,7 +182,7 @@ function buildControl(resolved, defs, value, ignored, polymorphic) {
 
   switch (resolved.type) {
     case "boolean":
-      return buildBoolControl(value);
+      return buildBoolControl(resolved, value);
     case "integer":
       return buildNumberControl(resolved, value, true);
     case "number":
@@ -203,13 +203,13 @@ function buildControl(resolved, defs, value, ignored, polymorphic) {
   }
 }
 
-function buildBoolControl(value) {
+function buildBoolControl(resolved, value) {
   const wrap = document.createElement("div");
   wrap.className = "form-check";
   const input = document.createElement("input");
   input.type = "checkbox";
   input.className = "form-check-input";
-  input.checked = !!value;
+  input.checked = value !== undefined && value !== null ? !!value : !!resolved.default;
   wrap.appendChild(input);
   return { control: wrap, getValue: () => input.checked };
 }
