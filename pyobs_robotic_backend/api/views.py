@@ -201,7 +201,7 @@ class ObservationDataStatus(APIView):
         url = archive.archive_url(obs)
 
         if url is None or not settings.ARCHIVE_TOKEN:
-            return Response({"archive_url": url, "status": "unavailable"})
+            return self._response({"archive_url": url, "status": "unavailable"})
 
         params = archive.archive_query_params(obs.obsnum, obs.start, obs.end)
         headers = {"Authorization": f"Token {settings.ARCHIVE_TOKEN}"}
@@ -219,20 +219,28 @@ class ObservationDataStatus(APIView):
                 timeout=5,
             )
             raw_only.raise_for_status()
-        except requests.RequestException as exc:
+            # Parsed inside the try: a 2xx response with a non-JSON body or an unexpected shape
+            # (misconfigured ARCHIVE_URL, a proxy error page, ...) must degrade the same way a
+            # network failure does, never surface as a 500.
+            count = int(total.json()["count"])
+            raw_count = int(raw_only.json()["count"])
+        except (requests.RequestException, KeyError, ValueError, TypeError) as exc:
             log.warning(
                 "Archive data-status check failed for observation %s: %s", pk, exc
             )
-            return Response({"archive_url": url, "status": "unavailable"})
+            return self._response({"archive_url": url, "status": "unavailable"})
 
-        count = total.json()["count"]
-        return Response(
-            {
-                "archive_url": url,
-                "count": count,
-                "reduced": count > raw_only.json()["count"],
-            }
+        return self._response(
+            {"archive_url": url, "count": count, "reduced": count > raw_count}
         )
+
+    @staticmethod
+    def _response(data):
+        # Never cached: this is a live, user-triggered check - a stale count would stick around
+        # exactly when the reduction pipeline finishes.
+        response = Response(data)
+        response["Cache-Control"] = "no-store"
+        return response
 
 
 @permission_classes([IsAuthenticated])
@@ -361,6 +369,7 @@ def site(request):
             "elevation": getattr(settings, "SITE_ELEVATION", None),
             "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
             "default_merits": getattr(settings, "DEFAULT_MERITS", []),
+            "archive_enabled": bool(getattr(settings, "ARCHIVE_URL", "")),
         }
     )
 
@@ -383,9 +392,7 @@ def observability(request):
 
     if lat is None or lon is None:
         return Response(
-            {
-                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
-            },
+            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
             status=400,
         )
 
@@ -393,9 +400,7 @@ def observability(request):
         ra = float(request.query_params["ra"])
         dec = float(request.query_params["dec"])
     except (KeyError, ValueError):
-        return Response(
-            {"error": "ra and dec query parameters are required (degrees)."}, status=400
-        )
+        return Response({"error": "ra and dec query parameters are required (degrees)."}, status=400)
 
     try:
         night = night_data(ra, dec, lat, lon, elev)
@@ -426,9 +431,7 @@ def merit_plot(request):
 
     if lat is None or lon is None:
         return Response(
-            {
-                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
-            },
+            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
             status=400,
         )
 

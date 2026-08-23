@@ -36,20 +36,10 @@ class ProjectPublicApiTests(TestCase):
         self.private_project.users.add(self.alice)
 
         self.public_task = Task.objects.create(
-            code="T1",
-            name="t1",
-            project=self.public_project,
-            duration=60,
-            priority=1.0,
-            script={},
+            code="T1", name="t1", project=self.public_project, duration=60, priority=1.0, script={}
         )
         self.private_task = Task.objects.create(
-            code="T2",
-            name="t2",
-            project=self.private_project,
-            duration=60,
-            priority=1.0,
-            script={},
+            code="T2", name="t2", project=self.private_project, duration=60, priority=1.0, script={}
         )
 
     def login(self, user):
@@ -117,12 +107,8 @@ class ProjectPublicApiTests(TestCase):
         res = self.login(self.bob).get("/api/projects/PUB/tasks/")
         self.assertEqual(res.status_code, 200)
         self.assertEqual({t["id"] for t in _results(res.data)}, {"T1"})
-        self.assertEqual(
-            self.login(self.bob).get("/api/projects/PRIV/tasks/").status_code, 404
-        )
-        self.assertEqual(
-            self.login(self.alice).get("/api/projects/PRIV/tasks/").status_code, 200
-        )
+        self.assertEqual(self.login(self.bob).get("/api/projects/PRIV/tasks/").status_code, 404)
+        self.assertEqual(self.login(self.alice).get("/api/projects/PRIV/tasks/").status_code, 200)
 
     def test_observations_resolve_access(self):
         now = timezone.now()
@@ -161,9 +147,7 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
     def _round_trip(self, klass, fields):
         payload = {"class": klass, "name": "test", **fields}
         internal = TargetSerializer().to_internal_value(payload)
-        instance = Target(
-            name=internal["name"], type=internal["type"], coords=internal["coords"]
-        )
+        instance = Target(name=internal["name"], type=internal["type"], coords=internal["coords"])
         representation = TargetSerializer().to_representation(instance)
         self.assertEqual(representation["class"], klass)
         for key, value in fields.items():
@@ -179,15 +163,10 @@ class TargetSerializerRoundTripTests(SimpleTestCase):
         payload = {
             "class": "pyobs.robotic.scheduler.targets.DynamicTarget",
             "name": "test",
-            "picker": {
-                "class": "pyobs.robotic.scheduler.targets.picker.CsvPicker",
-                "path": "x.csv",
-            },
+            "picker": {"class": "pyobs.robotic.scheduler.targets.picker.CsvPicker", "path": "x.csv"},
         }
         internal = TargetSerializer().to_internal_value(payload)
-        instance = Target(
-            name=internal["name"], type=internal["type"], coords=internal["coords"]
-        )
+        instance = Target(name=internal["name"], type=internal["type"], coords=internal["coords"])
         representation = TargetSerializer().to_representation(instance)
         self.assertEqual(representation["class"], payload["class"])
         self.assertEqual(representation["picker"], payload["picker"])
@@ -296,9 +275,7 @@ class UpdateMarkerApiTests(TestCase):
             end=now - timedelta(hours=1),
             state=ObservationState.PENDING,
         )
-        before = self._marker("/api/last_observation_update/")[
-            "last_observation_update"
-        ]
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
 
         mark_window_expired()
 
@@ -319,9 +296,7 @@ class UpdateMarkerApiTests(TestCase):
             end=now - timedelta(hours=1),
             state=ObservationState.PENDING,
         )
-        before = self._marker("/api/last_observation_update/")[
-            "last_observation_update"
-        ]
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
 
         call_command("mark_window_expired")
 
@@ -335,18 +310,11 @@ class UpdateMarkerApiTests(TestCase):
         _, task = self._project_and_task()
         now = timezone.now()
         observation = Observation.objects.create(
-            task=task,
-            start=now,
-            end=now + timedelta(hours=1),
-            state=ObservationState.PENDING,
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
         )
-        before = self._marker("/api/last_observation_update/")[
-            "last_observation_update"
-        ]
+        before = self._marker("/api/last_observation_update/")["last_observation_update"]
 
-        res = self.client.get(
-            f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}"
-        )
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
         self.assertEqual(res.status_code, 200)
 
         observation.refresh_from_db()
@@ -361,15 +329,10 @@ class UpdateMarkerApiTests(TestCase):
         _, task = self._project_and_task(code="OTH", member=False)
         now = timezone.now()
         observation = Observation.objects.create(
-            task=task,
-            start=now,
-            end=now + timedelta(hours=1),
-            state=ObservationState.PENDING,
+            task=task, start=now, end=now + timedelta(hours=1), state=ObservationState.PENDING
         )
 
-        res = self.client.get(
-            f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}"
-        )
+        res = self.client.get(f"/api/cancel_observations/?after={Time(now - timedelta(minutes=1)).isot}")
         self.assertEqual(res.status_code, 200)
 
         observation.refresh_from_db()
@@ -555,6 +518,37 @@ class ObservationDataStatusApiTests(TestCase):
         res = self._client(self.alice).get(self._url())
         self.assertEqual(res.status_code, 200)
         self.assertFalse(res.data["reduced"])
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.views.requests.get")
+    def test_malformed_2xx_response_reports_unavailable_not_5xx(self, mock_get):
+        # A 2xx response whose body isn't the expected {"count": N} shape (misconfigured
+        # ARCHIVE_URL, a proxy error page, ...) must degrade the same way a network failure
+        # does, not escape as a 500.
+        bad_json = Mock(status_code=200)
+        bad_json.raise_for_status = Mock()
+        bad_json.json.side_effect = ValueError("not JSON")
+
+        missing_count = Mock(status_code=200)
+        missing_count.raise_for_status = Mock()
+        missing_count.json.return_value = {}
+
+        for responses in (
+            [bad_json, self._count_response(1)],
+            [self._count_response(1), missing_count],
+        ):
+            with self.subTest():
+                mock_get.side_effect = responses
+                res = self._client(self.alice).get(self._url())
+                self.assertEqual(res.status_code, 200)
+                self.assertEqual(res.data["status"], "unavailable")
+
+    @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.views.requests.get")
+    def test_response_never_cached(self, mock_get):
+        mock_get.side_effect = [self._count_response(5), self._count_response(2)]
+        res = self._client(self.alice).get(self._url())
+        self.assertEqual(res["Cache-Control"], "no-store")
 
     @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
     def test_archive_failures_report_unavailable_not_5xx(self):
