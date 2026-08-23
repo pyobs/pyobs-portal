@@ -61,6 +61,8 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
 | `KEYCLOAK_IDP_HINT` / `KEYCLOAK_IDP_LABEL` | (empty) | Optional one-click IdP login: hint passed to Keycloak as `kc_idp_hint` (skips its login/IdP-selection page) and the label for the login page's IdP button, e.g. `gwdg` / `GWDG` |
 | `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | (empty) | Settings-configured superuser, synced after every `migrate`; leave unset to use `createsuperuser` instead |
+| `ARCHIVE_URL` | (empty) | Base URL of a [pyobs-archive](https://github.com/pyobs/pyobs-archive) instance; unset disables `archive_url` links entirely |
+| `ARCHIVE_TOKEN` | (empty) | Service token for the archive's `frames_view` API; unset makes the on-demand frame-count/reduction check always report `"unavailable"` (links still work) |
 
 ## Running
 
@@ -113,8 +115,9 @@ Authentication is via token (`Authorization: Token <token>`), Django session coo
 | GET/POST | `/api/projects/<code>/tasks/` | List / create tasks for an accessible project |
 | GET | `/api/tasks/` | List tasks (filtered to accessible projects: public + memberships) |
 | GET/PUT/PATCH | `/api/tasks/<code>/` | Retrieve / update task (PATCH for partial updates) |
-| GET/POST | `/api/observations/` | List / create observations (list filtered to accessible projects) |
+| GET/POST | `/api/observations/` | List / create observations (list filtered to accessible projects); includes `archive_url` when `ARCHIVE_URL` is set |
 | GET/PATCH | `/api/observations/<id>/` | Retrieve / update observation (filtered to accessible projects) |
+| GET | `/api/observations/<id>/frames/` | On-demand frame count / reduction status from pyobs-archive (`{"archive_url", "count", "reduced"}`, or `{"archive_url", "status": "unavailable"}`) |
 | GET | `/api/me/` | Current user info |
 | GET | `/api/last_task_update/` | Timestamp of last task change |
 | GET | `/api/last_observation_update/` | Timestamp of last observation change |
@@ -131,7 +134,7 @@ The browser UI is mounted at `/` and requires a login. Features:
 
 - **Sidebar** — task list grouped by project; click a task to open it. Upload icon imports a task from YAML; `+` creates a new task.
 - **Task overview** — tabular view of all tasks grouped by project with bulk activate/deactivate via checkboxes.
-- **Task editor** — tabbed view with **Task** (general fields, target, constraints, merits), **Script** (YAML editor with live validation and template insertion), **Schedule** (upcoming observations), and **Observations** (completed/cancelled history).
+- **Task editor** — tabbed view with **Task** (general fields, target, constraints, merits), **Script** (YAML editor with live validation and template insertion), **Schedule** (upcoming observations), and **Observations** (completed/cancelled history). Each completed/aborted/failed observation links straight to its archived data in the archive’s own UI, with an on-demand frame count/reduction-status check.
   - **Sidereal target** — RA/Dec fields accept decimal degrees or hms/dms (e.g. `15:52:56.12` / `+12:54:44`). A Simbad name-search button resolves object names and populates the coordinates. An [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) DSS sky view is shown below the target form and pans live as coordinates change.
   - **Duration estimation** — stopwatch button calls `/api/estimate_duration/` on the current script.
   - **Clone** — copies the current task to a new code, opening a pre-filled editor without saving.
