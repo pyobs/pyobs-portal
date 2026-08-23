@@ -18,9 +18,7 @@ def _target_type_to_class() -> dict[str, str]:
     return {
         name.replace("Target", "").lower(): name
         for name, obj in inspect.getmembers(_targets_module)
-        if inspect.isclass(obj)
-        and issubclass(obj, _TargetModel)
-        and obj is not _TargetModel
+        if inspect.isclass(obj) and issubclass(obj, _TargetModel) and obj is not _TargetModel
     }
 
 
@@ -104,9 +102,7 @@ class ObservationSerializer(serializers.ModelSerializer):
 
 
 class ProjectSerializer(serializers.ModelSerializer):
-    users = serializers.SlugRelatedField(
-        many=True, slug_field="username", queryset=User.objects.all()
-    )
+    users = serializers.SlugRelatedField(many=True, slug_field="username", queryset=User.objects.all())
 
     class Meta:
         model = Project
@@ -137,16 +133,12 @@ class TargetSerializer(serializers.ModelSerializer):
             coords = {k: v for k, v in data.items() if k != "picker"}
             if "picker" in data:
                 coords["picker"] = data["picker"]
-            return super().to_internal_value(
-                {"name": name, "type": typ, "coords": coords}
-            )
+            return super().to_internal_value({"name": name, "type": typ, "coords": coords})
         # everything else goes into coords
         return super().to_internal_value({"name": name, "type": typ, "coords": data})
 
     def to_representation(self, instance):
-        class_name = TARGET_TYPE_TO_CLASS.get(
-            instance.type, f"{instance.type.capitalize()}Target"
-        )
+        class_name = TARGET_TYPE_TO_CLASS.get(instance.type, f"{instance.type.capitalize()}Target")
         data = {
             "class": f"pyobs.robotic.scheduler.targets.{class_name}",
             "name": instance.name,
@@ -165,9 +157,7 @@ class TaskSerializer(serializers.ModelSerializer):
     constraints = ConstraintSerializer(many=True)
     merits = MeritSerializer(many=True)
     target = TargetSerializer(allow_null=True)
-    project = serializers.SlugRelatedField(
-        slug_field="code", queryset=Project.objects.all()
-    )
+    project = serializers.SlugRelatedField(slug_field="code", queryset=Project.objects.all())
 
     class Meta:
         model = Task
