@@ -1,3 +1,4 @@
+import inspect
 from datetime import timedelta
 from unittest.mock import Mock, patch
 
@@ -9,8 +10,10 @@ from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
 from rest_framework.test import APIClient
 
+from pyobs.object import get_class_from_string
 from pyobs.robotic.observation import ObservationState
 
+from . import schema as schema_module
 from .models import Observation, Project, Target, Task
 from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
 from .tasks import mark_window_expired
@@ -581,3 +584,210 @@ class ObservationDataStatusApiTests(TestCase):
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.data["status"], "unavailable")
             mock_get.assert_not_called()
+
+
+class ScriptTreePolymorphicTests(SimpleTestCase):
+    """`x-pyobs-polymorphic` annotations for the visual script builder (issue #81).
+
+    Nested/polymorphic script fields (script-in-script, dynamic exposure_time
+    providers, flat-field pointing) carry no discriminator in their raw JSON
+    schema, so the frontend can't know they should render as a "choose a
+    class + nested form" control. `script_tree()` now annotates each such
+    field and adds a top-level `$polymorphic` registry of candidates.
+    """
+
+    @classmethod
+    def setUpClass(cls):
+        super().setUpClass()
+        cls.tree = schema_module.script_tree()
+
+    def _node(self, *path):
+        node = self.tree
+        for key in path:
+            node = node[key]
+        return node
+
+    def test_sequential_runner_scripts_marked_array_of_script(self):
+        marker = self._node(
+            "control", "sequential", "SequentialRunner", "schema", "properties", "scripts", "items"
+        )["x-pyobs-polymorphic"]
+        self.assertEqual(marker, {"base": "pyobs.robotic.scripts.script.Script", "container": "array"})
+
+    def test_parallel_runner_scripts_marked_array_of_script(self):
+        marker = self._node(
+            "control", "parallel", "ParallelRunner", "schema", "properties", "scripts", "items"
+        )["x-pyobs-polymorphic"]
+        self.assertEqual(marker, {"base": "pyobs.robotic.scripts.script.Script", "container": "array"})
+
+    def test_conditional_runner_true_required_false_optional(self):
+        props = self._node("control", "conditional", "ConditionalRunner", "schema", "properties")
+        self.assertEqual(props["true"]["x-pyobs-polymorphic"]["container"], "single")
+        self.assertEqual(props["false"]["x-pyobs-polymorphic"]["container"], "optional")
+
+    def test_cases_runner_cases_marked_map_of_script(self):
+        marker = self._node(
+            "control", "cases", "CasesRunner", "schema", "properties", "cases", "additionalProperties"
+        )["x-pyobs-polymorphic"]
+        self.assertEqual(marker, {"base": "pyobs.robotic.scripts.script.Script", "container": "map"})
+
+    def test_instrument_config_exposure_time_marked_single_provider(self):
+        for subgroup, script in (("imaging", "ImagingScript"), ("transitimaging", "TransitImagingScript")):
+            marker = self._node(
+                "imaging",
+                subgroup,
+                script,
+                "schema",
+                "$defs",
+                "InstrumentConfig",
+                "properties",
+                "exposure_time",
+            )["x-pyobs-polymorphic"]
+            self.assertEqual(marker["container"], "single")
+            self.assertTrue(marker["base"].endswith(".ExposureTimeProvider"), marker["base"])
+
+    def test_pointing_script_pointing_marked_single_provider(self):
+        marker = self._node(
+            "calibration", "pointing", "PointingScript", "schema", "properties", "pointing"
+        )["x-pyobs-polymorphic"]
+        self.assertEqual(marker["container"], "single")
+        self.assertTrue(marker["base"].endswith(".SkyFlatsBasePointing"), marker["base"])
+
+    def test_skyflats_priorities_marked_single_provider(self):
+        marker = self._node(
+            "calibration", "skyflats", "SkyFlatsScript", "schema", "properties", "priorities"
+        )["x-pyobs-polymorphic"]
+        self.assertEqual(marker["container"], "single")
+        self.assertTrue(marker["base"].endswith(".SkyflatPriorities"), marker["base"])
+
+    def test_tree_shape_backward_compatible(self):
+        # Existing consumers (YAML preview, "insert template" walk) key off
+        # {group: {subgroup: {ClassName: {"class": ..., "schema": ...}}}} --
+        # the new "$polymorphic" key must be additive only.
+        entry = self.tree["calibration"]["darkbias"]["DarkBiasScript"]
+        self.assertEqual(entry["class"], "pyobs.robotic.scripts.calibration.darkbias.DarkBiasScript")
+        self.assertIn("schema", entry)
+        self.assertIn("$polymorphic", self.tree)
+
+    def test_polymorphic_registry_has_no_abstract_candidates(self):
+        script_entry = self.tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]
+        self.assertGreater(len(script_entry["candidates"]), 0)
+        for candidate in script_entry["candidates"]:
+            cls = get_class_from_string(candidate["class"])
+            self.assertFalse(inspect.isabstract(cls), candidate["class"])
+
+        # Provider candidates aren't resolved via get_class_from_string here: two of
+        # the three provider bases (SkyFlatsBasePointing, SkyflatPriorities) override
+        # __module__ to a path that doesn't actually exist (a pre-existing pyobs-core
+        # bug, unrelated to this change -- see PR description), so their `class`
+        # strings don't round-trip through get_class_from_string either. Re-scan with
+        # the same mechanism _polymorphic_registry uses instead.
+        for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
+            candidates = schema_module._scan_concrete_subclasses(package, base)
+            self.assertGreater(len(candidates), 0, base)
+            for cls in candidates:
+                self.assertFalse(inspect.isabstract(cls), cls)
+
+    def test_script_candidates_reference_tree_by_path_not_duplicated_schema(self):
+        script_entry = self.tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]
+        classes = {c["class"] for c in script_entry["candidates"]}
+        self.assertIn("pyobs.robotic.scripts.control.sequential.SequentialRunner", classes)
+        for candidate in script_entry["candidates"]:
+            self.assertNotIn("schema", candidate)
+            self.assertIn("path", candidate)
+            resolved = self.tree
+            for part in candidate["path"].split("/"):
+                resolved = resolved[part]
+            self.assertEqual(resolved["class"], candidate["class"])
+
+    def test_provider_candidates_validate_against_their_base(self):
+        # Validated directly against each concrete candidate class rather than
+        # `base.model_validate({"class": ..., **sample})`: SkyFlatsBasePointing and
+        # SkyflatPriorities candidates override __module__ to a path that doesn't
+        # exist (see test_polymorphic_registry_has_no_abstract_candidates), so
+        # dispatch-by-class-string is broken for them independent of this change.
+        # ArchiveSkyflatPriorities.archive is itself an unannotated polymorphic
+        # field (onto `Archive`, out of this PR's scope) -- skipped here.
+        samples = {
+            "StellarExposureTimeProvider": {"camera": "cam1"},
+            "SkyFlatsStaticPointing": {},
+            "ConstSkyflatPriorities": {"priorities": {}},
+        }
+        skipped = {"ArchiveSkyflatPriorities"}
+        seen = set()
+        for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
+            for cls in schema_module._scan_concrete_subclasses(package, base):
+                if cls.__name__ in skipped:
+                    continue
+                seen.add(cls.__name__)
+                sample = samples.get(cls.__name__)
+                self.assertIsNotNone(sample, f"no sample registered for {cls.__name__}")
+                cls.model_validate(sample)
+        self.assertEqual(seen, set(samples))
+
+
+class ValidateScriptClasslessTests(SimpleTestCase):
+    """`validate_script/` must reject class-less/unknown-class payloads (issue #81).
+
+    `Script.model_validate({})` succeeds today by silently falling back to the
+    abstract `Script` base (whose `run()` raises `NotImplementedError`), so
+    without this tightening the editor status bar would show "valid" for a
+    script that can never actually execute.
+    """
+
+    def test_empty_dict_is_invalid(self):
+        result = schema_module.validate_script({})
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "no script class selected")
+
+    def test_unknown_class_is_invalid_with_clean_message(self):
+        result = schema_module.validate_script({"class": "totally.bogus.Class"})
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "unknown script class 'totally.bogus.Class'")
+        self.assertNotIn("No module named", result["error"])
+
+    def test_nested_classless_child_is_invalid(self):
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.sequential.SequentialRunner",
+                "scripts": [{"class": "pyobs.robotic.scripts.utils.log.LogScript", "expression": "1"}, {}],
+            }
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "no script class selected")
+
+    def test_valid_nested_script_is_still_valid(self):
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.sequential.SequentialRunner",
+                "scripts": [{"class": "pyobs.robotic.scripts.utils.log.LogScript", "expression": "1"}],
+            }
+        )
+        self.assertEqual(result, {"valid": True})
+
+    def test_cases_runner_map_entries_require_class(self):
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.cases.CasesRunner",
+                "expression": "1",
+                "cases": {"a": {"class": "pyobs.robotic.scripts.utils.log.LogScript", "expression": "1"}, "b": {}},
+            }
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "no script class selected")
+
+    def test_non_script_class_at_top_level_is_unknown(self):
+        result = schema_module.validate_script({"class": "pyobs.robotic.scheduler.targets.SiderealTarget"})
+        self.assertFalse(result["valid"])
+        self.assertIn("unknown script class", result["error"])
+
+    def test_malformed_scripts_field_does_not_crash_the_classless_check(self):
+        # `scripts` is supposed to be a list of script dicts; a hand-edited/
+        # malformed payload could send anything. The classless pre-check must
+        # not raise -- pydantic's own validation reports the real error.
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.sequential.SequentialRunner",
+                "scripts": "not-a-list",
+            }
+        )
+        self.assertFalse(result["valid"])

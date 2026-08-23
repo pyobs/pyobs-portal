@@ -3,6 +3,8 @@ from __future__ import annotations
 import importlib
 import inspect
 import pkgutil
+import types
+import typing
 from types import ModuleType
 from typing import Any
 
@@ -12,11 +14,19 @@ import pyobs.robotic.scheduler.constraints as constraints_module
 import pyobs.robotic.scheduler.merits as merits_module
 import pyobs.robotic.scheduler.targets as targets_module
 import pyobs.robotic.scripts as scripts_module
+import pyobs.robotic.utils.exptime as exptime_module
+import pyobs.robotic.utils.skyflats.pointing as skyflats_pointing_module
+import pyobs.robotic.utils.skyflats.priorities as skyflats_priorities_module
+from pyobs.object import get_class_from_string
 from pyobs.robotic.scheduler.constraints.constraint import Constraint
 from pyobs.robotic.scheduler.merits.merit import Merit
 from pyobs.robotic.scheduler.targets.target import Target
 from pyobs.robotic.scheduler.targets.picker.picker import Picker
 from pyobs.robotic.scripts.script import Script
+from pyobs.robotic.utils.exptime import ExposureTimeProvider
+from pyobs.robotic.utils.skyflats.pointing import SkyFlatsBasePointing
+from pyobs.robotic.utils.skyflats.priorities import SkyflatPriorities
+from pyobs.utils.serialization import PolymorphicBaseModel
 
 try:
     import pyobs.robotic.scheduler.targets.picker as picker_module
@@ -24,6 +34,14 @@ except ImportError:
     picker_module = None
 
 IGNORED_FIELDS = {"cost", "target_dependent", "exptime_done"}
+
+# Polymorphic script-tree bases and the package each is scanned in for concrete
+# subclasses. `Script` itself is handled separately by reusing `script_tree()`.
+_PROVIDER_SCAN_PACKAGES: dict[type[PolymorphicBaseModel], ModuleType] = {
+    ExposureTimeProvider: exptime_module,
+    SkyFlatsBasePointing: skyflats_pointing_module,
+    SkyflatPriorities: skyflats_priorities_module,
+}
 
 
 def _strip_ignored(schema: dict[str, Any]) -> dict[str, Any]:
@@ -88,6 +106,188 @@ def picker_schemas() -> dict[str, Any]:
     return result
 
 
+def _fqcn(cls: type) -> str:
+    return f"{cls.__module__}.{cls.__name__}"
+
+
+def _as_polymorphic_base(candidate: Any) -> type[PolymorphicBaseModel] | None:
+    """If `candidate` is a (non-abstract-base) PolymorphicBaseModel type, return it."""
+    if inspect.isclass(candidate) and issubclass(candidate, PolymorphicBaseModel) and candidate is not PolymorphicBaseModel:
+        return candidate
+    return None
+
+
+def _polymorphic_field_base(annotation: Any) -> tuple[str, type[PolymorphicBaseModel]] | None:
+    """Classify a pydantic field annotation as a polymorphic script/provider field.
+
+    Unwraps `list[X]`, `dict[K, X]`, `X | None` and plain unions to find a member
+    that is a `PolymorphicBaseModel` subclass. Returns `(container, base)` where
+    container is one of "single" | "optional" | "array" | "map", or `None` if the
+    field isn't polymorphic.
+    """
+    origin = typing.get_origin(annotation)
+    if origin is list:
+        args = typing.get_args(annotation)
+        base = _as_polymorphic_base(args[0]) if args else None
+        return ("array", base) if base is not None else None
+    if origin is dict:
+        args = typing.get_args(annotation)
+        base = _as_polymorphic_base(args[1]) if len(args) > 1 else None
+        return ("map", base) if base is not None else None
+    if origin is types.UnionType or origin is typing.Union:
+        args = typing.get_args(annotation)
+        is_optional = type(None) in args
+        base = None
+        for arg in args:
+            if arg is type(None):
+                continue
+            base = _as_polymorphic_base(arg)
+            if base is not None:
+                break
+        if base is None:
+            return None
+        return ("optional" if is_optional else "single", base)
+    base = _as_polymorphic_base(annotation)
+    return ("single", base) if base is not None else None
+
+
+def _nested_model_for(annotation: Any) -> type[BaseModel] | None:
+    """Find the (non-polymorphic) BaseModel nested inside a field annotation, if any."""
+    origin = typing.get_origin(annotation)
+    if origin is list:
+        args = typing.get_args(annotation)
+        return _nested_model_for(args[0]) if args else None
+    if origin is dict:
+        args = typing.get_args(annotation)
+        return _nested_model_for(args[1]) if len(args) > 1 else None
+    if origin is types.UnionType or origin is typing.Union:
+        for arg in typing.get_args(annotation):
+            if arg is type(None):
+                continue
+            nested = _nested_model_for(arg)
+            if nested is not None:
+                return nested
+        return None
+    if inspect.isclass(annotation) and issubclass(annotation, BaseModel):
+        return annotation
+    return None
+
+
+def _annotate_polymorphic(schema: dict[str, Any], cls: type[BaseModel]) -> dict[str, Any]:
+    """Mutate `schema` (as produced by `_schema_for(cls)`) in place, marking every
+    polymorphic field with an `x-pyobs-polymorphic` keyword so the frontend can
+    render a type-selector + nested form without any schema-shape heuristics."""
+    defs = schema.get("$defs", {})
+
+    def _ref_target(node: Any) -> tuple[str, dict[str, Any]] | None:
+        if not isinstance(node, dict):
+            return None
+        ref = node.get("$ref")
+        if not isinstance(ref, str) or not ref.startswith("#/$defs/"):
+            return None
+        name = ref[len("#/$defs/") :]
+        target = defs.get(name)
+        return (name, target) if isinstance(target, dict) else None
+
+    def _walk(model_cls: type[BaseModel], node: dict[str, Any], visited: set[str]) -> None:
+        properties = node.get("properties")
+        if not isinstance(properties, dict):
+            return
+        for field_name, field_info in model_cls.model_fields.items():
+            if field_name in IGNORED_FIELDS or field_name not in properties:
+                continue
+            prop = properties[field_name]
+            classified = _polymorphic_field_base(field_info.annotation)
+            if classified is not None:
+                container, base = classified
+                target = prop
+                if container == "array" and isinstance(prop.get("items"), dict):
+                    target = prop["items"]
+                elif container == "map" and isinstance(prop.get("additionalProperties"), dict):
+                    target = prop["additionalProperties"]
+                target["x-pyobs-polymorphic"] = {"base": _fqcn(base), "container": container}
+                continue
+            # Not polymorphic itself: recurse into a plain nested model, if any.
+            nested_cls = _nested_model_for(field_info.annotation)
+            if nested_cls is None:
+                continue
+            ref_hit = _ref_target(prop) or _ref_target(prop.get("items")) or _ref_target(prop.get("additionalProperties"))
+            if ref_hit is None:
+                continue
+            name, def_node = ref_hit
+            if name in visited:
+                continue
+            visited.add(name)
+            _walk(nested_cls, def_node, visited)
+
+    _walk(cls, schema, {cls.__name__})
+    return schema
+
+
+def _scan_concrete_subclasses(package: ModuleType, base: type[PolymorphicBaseModel]) -> list[type[PolymorphicBaseModel]]:
+    """Recursively scan `package` (and subpackages) for concrete subclasses of `base`.
+
+    Dedupes by class identity rather than `cls.__module__`, since some pyobs-core
+    polymorphic classes override `__module__` to a shorter (sometimes stale) path.
+    """
+    found: dict[int, type[PolymorphicBaseModel]] = {}
+
+    def _scan(pkg: ModuleType) -> None:
+        for _, name, ispkg in pkgutil.iter_modules(pkg.__path__):
+            full_name = f"{pkg.__name__}.{name}"
+            try:
+                mod = importlib.import_module(full_name)
+            except Exception:
+                continue
+            if ispkg:
+                _scan(mod)
+            for _, obj in inspect.getmembers(mod):
+                if (
+                    inspect.isclass(obj)
+                    and issubclass(obj, base)
+                    and obj is not base
+                    and not inspect.isabstract(obj)
+                ):
+                    found[id(obj)] = obj
+
+    _scan(package)
+    return list(found.values())
+
+
+def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
+    registry: dict[str, Any] = {}
+
+    script_candidates: list[dict[str, Any]] = []
+
+    def _collect(node: dict[str, Any], path: list[str]) -> None:
+        for key, value in node.items():
+            if isinstance(value, dict) and "class" in value and "schema" in value:
+                script_candidates.append(
+                    {"class": value["class"], "path": "/".join(path + [key]), "title": key}
+                )
+            elif isinstance(value, dict):
+                _collect(value, path + [key])
+
+    _collect(tree, [])
+    registry[_fqcn(Script)] = {"candidates": script_candidates}
+
+    for base, package in _PROVIDER_SCAN_PACKAGES.items():
+        candidates = []
+        for cls in _scan_concrete_subclasses(package, base):
+            s = _schema_for(cls)
+            if s is None:
+                continue
+            # Not annotated recursively: candidate schemas can nest their own
+            # polymorphic fields (e.g. ArchiveSkyflatPriorities.archive) whose
+            # base isn't itself registered here. Marking those would leave the
+            # frontend an x-pyobs-polymorphic reference it can't resolve, so
+            # such fields render as plain nested objects instead, same as today.
+            candidates.append({"class": _fqcn(cls), "title": cls.__name__, "schema": s})
+        registry[_fqcn(base)] = {"candidates": candidates}
+
+    return registry
+
+
 def script_tree() -> dict[str, Any]:
     def _scan(package: ModuleType) -> dict[str, Any]:
         results: dict[str, Any] = {}
@@ -112,6 +312,7 @@ def script_tree() -> dict[str, Any]:
                     ):
                         s = _schema_for(cls)
                         if s is not None:
+                            _annotate_polymorphic(s, cls)
                             classes[cls_name] = {
                                 "class": f"{cls.__module__}.{cls.__name__}",
                                 "schema": s,
@@ -120,15 +321,69 @@ def script_tree() -> dict[str, Any]:
                     results[name] = classes
         return results
 
-    return _scan(scripts_module)
+    tree = _scan(scripts_module)
+    tree["$polymorphic"] = _polymorphic_registry(tree)
+    return tree
+
+
+def _check_no_classless_script_nodes(data: Any) -> str | None:
+    """Recursively require `class` on every embedded script node.
+
+    Walks the raw payload guided by the *concrete* script class' own field
+    annotations, so it only descends into dicts that are actually supposed to
+    be nested `Script` instances (e.g. `SequentialRunner.scripts`,
+    `CasesRunner.cases`) rather than arbitrary parameter dicts.
+
+    `Script.model_validate({})`/`{"scripts": [{}]}` succeed today by silently
+    falling back to the abstract `Script` base (whose `run()` raises
+    `NotImplementedError`), so without this check `validate_script/` would
+    report "valid" for a script that can never actually execute.
+    """
+    if not isinstance(data, dict):
+        return None
+    cls_name = data.get("class")
+    if cls_name is None:
+        return "no script class selected"
+    try:
+        cls = get_class_from_string(cls_name)
+    except (ImportError, AttributeError):
+        return f"unknown script class '{cls_name}'"
+    if not (inspect.isclass(cls) and issubclass(cls, Script)):
+        return f"unknown script class '{cls_name}'"
+    for field_name, field_info in cls.model_fields.items():
+        if field_name not in data:
+            continue
+        classified = _polymorphic_field_base(field_info.annotation)
+        if classified is None or not issubclass(classified[1], Script):
+            continue
+        container, _base = classified
+        value = data[field_name]
+        if container in ("single", "optional"):
+            values = [] if value is None else [value]
+        elif container == "array":
+            values = value if isinstance(value, list) else []
+        elif container == "map":
+            values = value.values() if isinstance(value, dict) else []
+        else:
+            values = []
+        for item in values:
+            error = _check_no_classless_script_nodes(item)
+            if error is not None:
+                return error
+    return None
 
 
 def validate_script(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         return {"valid": False, "error": "Script must be a YAML/JSON object."}
+    error = _check_no_classless_script_nodes(data)
+    if error is not None:
+        return {"valid": False, "error": error}
     try:
         Script.model_validate(data)
         return {"valid": True}
+    except (ImportError, AttributeError):
+        return {"valid": False, "error": f"unknown script class '{data.get('class')}'"}
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
