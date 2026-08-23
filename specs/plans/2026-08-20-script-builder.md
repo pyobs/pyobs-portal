@@ -238,13 +238,10 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
     and `window.CodeMirror` as plain objects with the handful of methods each file actually
     calls (`load`/`dump` for `jsyaml`; the editor constructor + `getValue`/`setValue` for
     `CodeMirror`).
-  - CI: **no existing test workflow to hook into** — `.github/workflows/` has only
-    `docker.yml` (build + push the image on release), no `pytest` job today (verified;
-    `pytest`/Python tests currently run manually, not in CI, for this repo). Adding vitest
-    here doesn't create an inconsistency, but also means there's no free ride: either add a
-    new lightweight `test.yml` workflow (`npm ci && npm test`) or leave it manual like the
-    existing Python suite — pick one explicitly during implementation rather than assuming a
-    CI hook that doesn't exist.
+  - CI: **`.github/workflows/test.yml` now exists** (added 2026-08-23, follow-up to
+    pyobs/pyobs-robotic-backend#89) — runs `manage.py check` + `manage.py test` via `uv` on
+    push/PR to `main`/`develop`. Add an `npm ci && npm test` step (or a separate job) to that
+    same workflow for vitest, rather than deciding from scratch whether tests run in CI.
   - `.gitignore`: add `node_modules/`.
 - **Payload size:** inlining provider schemas adds little; if it grows, reference
   candidates by `path` into the tree instead of duplicating schemas.
