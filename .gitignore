@@ -18,5 +18,8 @@ deploy/
 # IDE
 .idea/
 
+# Node (frontend test tooling)
+node_modules/
+
 # Database
 db.sqlite3

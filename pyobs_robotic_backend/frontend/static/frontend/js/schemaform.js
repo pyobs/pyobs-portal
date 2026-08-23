@@ -82,12 +82,16 @@ class SchemaForm {
    * @param {object} schema - resolved or unresolved JSON Schema for an object
    * @param {object} defs - the `$defs` map from the root schema document
    * @param {object} data - current values, keyed by property name
-   * @param {object} opts - { ignoredFields: Set<string> }
+   * @param {object} opts - { ignoredFields: Set<string>, polymorphic: object }
+   *   `polymorphic` is the flattened `{ base: [{class, title, schema}] }` map
+   *   produced by `resolvePolymorphicCandidates()`, threaded down to every
+   *   nested control so a polymorphic field can be rendered at any depth.
    */
   constructor(schema, defs, data, opts = {}) {
     this.defs = defs || {};
     this.data = data || {};
     this.ignored = opts.ignoredFields || new Set();
+    this.polymorphic = opts.polymorphic || {};
     this.fields = {}; // name -> { getValue, schema }
     this.element = document.createElement("div");
     this._build(resolveSchema(schema, this.defs));
@@ -99,7 +103,7 @@ class SchemaForm {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
-      const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored);
+      const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
       const row = document.createElement("div");
       row.className = "mb-2";
       const label = document.createElement("label");
@@ -140,7 +144,15 @@ class SchemaForm {
  * Build a control (and a getValue() accessor) for a single resolved schema.
  * Returns { control: HTMLElement, getValue: () => any }.
  */
-function buildControl(resolved, defs, value, ignored) {
+function buildControl(resolved, defs, value, ignored, polymorphic) {
+  // Polymorphic script/provider field (backend-annotated) -- checked before
+  // the generic anyOf/object branches below, since a polymorphic field's own
+  // schema node is often itself an anyOf (e.g. `float | ExposureTimeProvider`)
+  // or a bare $ref (e.g. `Script`).
+  if (resolved["x-pyobs-polymorphic"]) {
+    return buildPolymorphicControl(resolved["x-pyobs-polymorphic"], defs, value, ignored, polymorphic);
+  }
+
   // anyOf: optional fields (X | None), Time fields, or other unions
   if (resolved.anyOf) {
     const nonNull = resolved.anyOf.filter((o) => o.type !== "null");
@@ -149,7 +161,7 @@ function buildControl(resolved, defs, value, ignored) {
       return buildDateTimeControl(value);
     }
     if (nonNull.length === 1) {
-      return buildControl(resolveSchema(nonNull[0], defs), defs, value, ignored);
+      return buildControl(resolveSchema(nonNull[0], defs), defs, value, ignored, polymorphic);
     }
     // Ambiguous union (e.g. float | SomeProvider) -> raw YAML fallback.
     return buildYamlControl(value);
@@ -173,9 +185,14 @@ function buildControl(resolved, defs, value, ignored) {
     case "string":
       return buildStringControl(resolved, value);
     case "array":
-      return buildArrayControl(resolved, defs, value, ignored);
+      return buildArrayControl(resolved, defs, value, ignored, polymorphic);
     case "object":
-      return buildObjectControl(resolved, defs, value, ignored);
+      // Dynamic map (additionalProperties-only, no fixed properties) --
+      // e.g. CasesRunner.cases: dict[str, Script].
+      if (resolved.additionalProperties && !resolved.properties) {
+        return buildMapControl(resolved, defs, value, ignored, polymorphic);
+      }
+      return buildObjectControl(resolved, defs, value, ignored, polymorphic);
     default:
       return buildYamlControl(value);
   }
@@ -271,18 +288,17 @@ function buildYamlControl(value) {
 }
 
 /** Nested object -> sub-form inside a bordered card. */
-function buildObjectControl(resolved, defs, value, ignored) {
+function buildObjectControl(resolved, defs, value, ignored, polymorphic) {
   const card = document.createElement("div");
   card.className = "border rounded p-2 border-secondary-subtle";
-  const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored });
+  const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored, polymorphic });
   card.appendChild(form.element);
   return { control: card, getValue: () => form.getData() };
 }
 
-/** Array of objects or primitives -> add/remove list. */
-function buildArrayControl(resolved, defs, value, ignored) {
+/** Array of objects, primitives, or polymorphic nodes -> add/remove list. */
+function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
   const itemSchema = resolveSchema(resolved.items || {}, defs);
-  const isObjectItems = itemSchema.type === "object" || itemSchema.properties;
 
   const wrap = document.createElement("div");
   const list = document.createElement("div");
@@ -295,20 +311,12 @@ function buildArrayControl(resolved, defs, value, ignored) {
     const row = document.createElement("div");
     row.className = "d-flex align-items-start gap-2";
 
-    let getValue;
-    if (isObjectItems) {
-      const card = document.createElement("div");
-      card.className = "border rounded p-2 border-secondary-subtle flex-grow-1";
-      const form = new SchemaForm(itemSchema, defs, itemValue || {}, { ignoredFields: ignored });
-      card.appendChild(form.element);
-      row.appendChild(card);
-      getValue = () => form.getData();
-    } else {
-      const { control, getValue: gv } = buildControl(itemSchema, defs, itemValue, ignored);
-      control.classList.add("flex-grow-1");
-      row.appendChild(control);
-      getValue = gv;
-    }
+    // Delegates to buildControl's own dispatch (object / polymorphic /
+    // primitive) so array items of any of those shapes render correctly,
+    // instead of re-implementing the object-vs-primitive branch here.
+    const { control, getValue } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic);
+    control.classList.add("flex-grow-1");
+    row.appendChild(control);
 
     const removeBtn = document.createElement("button");
     removeBtn.type = "button";
@@ -338,4 +346,199 @@ function buildArrayControl(resolved, defs, value, ignored) {
     control: wrap,
     getValue: () => items.map((it) => it.getValue()),
   };
+}
+
+/**
+ * Dynamic map (`additionalProperties`-only object, e.g. `CasesRunner.cases`)
+ * -> key/value list editor. Generic for any `additionalProperties` schema,
+ * not just polymorphic ones: the value control comes from buildControl's own
+ * dispatch, so a plain `dict[str, str]` gets a text input per row here too.
+ */
+function buildMapControl(resolved, defs, value, ignored, polymorphic) {
+  const valueSchema = resolveSchema(resolved.additionalProperties, defs);
+
+  const wrap = document.createElement("div");
+  const list = document.createElement("div");
+  list.className = "d-flex flex-column gap-2 mb-2";
+  wrap.appendChild(list);
+
+  const rows = []; // { row, getKey, getValue }
+
+  function addRow(key, itemValue) {
+    const row = document.createElement("div");
+    row.className = "d-flex align-items-start gap-2";
+
+    const keyInput = document.createElement("input");
+    keyInput.type = "text";
+    keyInput.className = "form-control form-control-sm";
+    keyInput.style.maxWidth = "10rem";
+    keyInput.placeholder = "name";
+    keyInput.value = key || "";
+    row.appendChild(keyInput);
+
+    const { control, getValue } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic);
+    control.classList.add("flex-grow-1");
+    row.appendChild(control);
+
+    const removeBtn = document.createElement("button");
+    removeBtn.type = "button";
+    removeBtn.className = "btn btn-sm btn-outline-danger";
+    removeBtn.innerHTML = '<i class="bi bi-dash"></i>';
+    removeBtn.addEventListener("click", () => {
+      const idx = rows.findIndex((r) => r.row === row);
+      if (idx >= 0) rows.splice(idx, 1);
+      row.remove();
+    });
+    row.appendChild(removeBtn);
+
+    rows.push({ row, getKey: () => keyInput.value, getValue });
+    list.appendChild(row);
+  }
+
+  Object.entries(value || {}).forEach(([k, v]) => addRow(k, v));
+
+  const addBtn = document.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "btn btn-sm btn-outline-secondary";
+  addBtn.innerHTML = '<i class="bi bi-plus"></i> Add';
+  addBtn.addEventListener("click", () => addRow("", defaultValueFor(valueSchema, defs)));
+  wrap.appendChild(addBtn);
+
+  return {
+    control: wrap,
+    // Rows with an empty key are dropped rather than serialized under "" --
+    // the caller fills in a name before it's meaningful.
+    getValue: () => {
+      const result = {};
+      for (const r of rows) {
+        const key = r.getKey();
+        if (key) result[key] = r.getValue();
+      }
+      return result;
+    },
+  };
+}
+
+/**
+ * Polymorphic field (`x-pyobs-polymorphic` marker): a class-selector dropdown
+ * (grouped by module path for Script candidates) plus a nested SchemaForm for
+ * whichever class is currently selected. `getValue()` always returns
+ * `{"class": "<fqcn>", ...fields}` (or `null` for an unset optional field) --
+ * never a class-less dict.
+ */
+function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
+  const candidates = (polymorphic && polymorphic[marker.base]) || [];
+  const isOptional = marker.container === "optional";
+
+  if (!candidates.length) {
+    // Registry has nothing for this base (e.g. stale/mismatched data) --
+    // fall back to raw YAML rather than rendering a dead-end empty control.
+    return buildYamlControl(value);
+  }
+
+  const wrap = document.createElement("div");
+  wrap.className = "d-flex flex-column gap-2";
+
+  const select = document.createElement("select");
+  select.className = "form-select form-select-sm";
+
+  if (isOptional) {
+    const none = document.createElement("option");
+    none.value = "";
+    none.textContent = "(none)";
+    select.appendChild(none);
+  }
+
+  const groups = new Map(); // groupLabel ("" = ungrouped) -> candidates
+  for (const c of candidates) {
+    const groupLabel = c.path ? c.path.split("/").slice(0, -1).join("/") : "";
+    if (!groups.has(groupLabel)) groups.set(groupLabel, []);
+    groups.get(groupLabel).push(c);
+  }
+  for (const [groupLabel, group] of groups) {
+    const target = groupLabel ? document.createElement("optgroup") : select;
+    if (groupLabel) {
+      target.label = groupLabel;
+      select.appendChild(target);
+    }
+    for (const c of group) {
+      const option = document.createElement("option");
+      option.value = c.class;
+      option.textContent = c.title;
+      target.appendChild(option);
+    }
+  }
+
+  wrap.appendChild(select);
+
+  const nestedWrap = document.createElement("div");
+  wrap.appendChild(nestedWrap);
+  let currentForm = null;
+
+  function renderNested(cls, data) {
+    nestedWrap.innerHTML = "";
+    currentForm = null;
+    const candidate = candidates.find((c) => c.class === cls);
+    if (!candidate) return;
+    const card = document.createElement("div");
+    card.className = "border rounded p-2 border-secondary-subtle";
+    currentForm = new SchemaForm(candidate.schema || {}, defs, data || {}, {
+      ignoredFields: ignored,
+      polymorphic,
+    });
+    card.appendChild(currentForm.element);
+    nestedWrap.appendChild(card);
+  }
+
+  const hasExisting = value && typeof value === "object" && candidates.some((c) => c.class === value.class);
+  const initialClass = hasExisting ? value.class : isOptional ? "" : candidates[0].class;
+  select.value = initialClass;
+  renderNested(initialClass, hasExisting ? value : undefined);
+
+  select.addEventListener("change", () => {
+    renderNested(select.value, undefined);
+  });
+
+  return {
+    control: wrap,
+    getValue: () => {
+      if (!select.value) return null;
+      return { class: select.value, ...(currentForm ? currentForm.getData() : {}) };
+    },
+  };
+}
+
+/**
+ * Flatten `script_tree()`'s `$polymorphic` registry into
+ * `{ base: [{class, title, schema}] }`, resolving `Script` candidates' `path`
+ * references against the tree itself (they reference tree entries instead of
+ * duplicating schemas -- see specs/plans/2026-08-20-script-builder.md §3.2).
+ */
+function resolvePolymorphicCandidates(tree) {
+  const registry = (tree && tree.$polymorphic) || {};
+  const result = {};
+  for (const [base, entry] of Object.entries(registry)) {
+    result[base] = (entry.candidates || []).map((c) => {
+      if (c.schema) return c;
+      let node = tree;
+      for (const part of c.path.split("/")) {
+        node = node && node[part];
+      }
+      return { class: c.class, title: c.title, schema: (node && node.schema) || {} };
+    });
+  }
+  return result;
+}
+
+// Classic scripts (loaded via <script src>, no build step) don't expose their
+// top-level `class`/`function` declarations as `window` properties on their
+// own -- only `var`/function declarations do that automatically. Exposing
+// them explicitly is harmless in the page (nothing currently reads these) and
+// lets vitest import this file and reach them via the shared jsdom `window`.
+if (typeof window !== "undefined") {
+  window.SchemaForm = SchemaForm;
+  window.buildControl = buildControl;
+  window.resolveSchema = resolveSchema;
+  window.defaultValueFor = defaultValueFor;
+  window.resolvePolymorphicCandidates = resolvePolymorphicCandidates;
 }
