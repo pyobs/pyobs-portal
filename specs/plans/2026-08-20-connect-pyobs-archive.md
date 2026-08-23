@@ -27,8 +27,12 @@ API and in the frontend Observations tab.
 - pyobs-core `PyobsArchive` (`pyobs/robotic/utils/archive/pyobs_archive.py`) — async (aiohttp,
   30 s timeout), token header, `list_frames()` already pages through the archive's
   `offset`/`limit` until `count` is reached (a large frame set per observation is fetched fully,
-  not truncated); **no `obsnum` filter yet** (`_build_query` does not emit `OBSNUM` — tracked in
-  pyobs/pyobs-core#791).
+  not truncated). The `obsnum` filter this plan needs (pyobs/pyobs-core#791) **has since landed
+  and released** (PR #792, `pyobs-core` `2.0.0.dev87`+, current `dev92`): `list_frames()` /
+  `list_options()` take `obsnum: str | None = None` and `_build_query()` emits
+  `params["OBSNUM"] = obsnum`. This repo's own `pyproject.toml` still pins
+  `pyobs-core>=2.0.0.dev71` and `uv.lock` resolves to `dev72` — pre-fix — so §1 below is just a
+  pin bump + `uv lock`, not new upstream work.
 - Backend API: `GET /api/observations/`, `GET /api/observations/<id>/`,
   `GET /api/tasks/<code>/observations/` — all access-scoped to public/member projects
   (`api/views.py`); `ObservationSerializer` fields `id, task, start, end, state, target, obsnum`.
@@ -49,8 +53,10 @@ API and in the frontend Observations tab.
    Keycloak SSO; both services run `pyobs-auth`).
 2. **Join key: `obsnum` + time window.** `OBSNUM` is a per-night counter in both services, so
    `obsnum` alone can collide across nights — always combine `OBSNUM` with a `DATE_OBS` window
-   (observation `start`..`end`, small margin). Fall back to time-window-only matching when
-   `obsnum` is missing.
+   (observation `start`..`end`, ± 5 minutes). 5 min covers clock skew and any slack between the
+   backend's recorded `start`/`end` and the camera's actual exposure timestamps, while staying
+   well inside a single night — the thing `OBSNUM` needs the window for in the first place. Fall
+   back to time-window-only matching when `obsnum` is missing.
 3. **Refresh-based resolution with a DB-backed cache (no N+1, no LocMemCache).** The
    observations list returns up to 500 rows per page; resolving per row on the list means up to
    500 archive calls per page load. Instead: store resolved frame info on the `Observation` row
@@ -78,23 +84,26 @@ API and in the frontend Observations tab.
 
 ## Implementation
 
-### 1. pyobs-core: `PyobsArchive` `OBSNUM` filter — tracked in pyobs/pyobs-core#791
+### 1. pyobs-core: `PyobsArchive` `OBSNUM` filter — done upstream (pyobs/pyobs-core#791, closed)
 
-- [ ] `pyobs/robotic/utils/archive/pyobs_archive.py`: add `obsnum: str | None = None` to
-      `list_frames()` and `list_options()`, thread it into `_build_query()`, which emits
-      `params["OBSNUM"] = obsnum` (the archive's filter key is uppercase `OBSNUM`).
-- [ ] Keep the abstract signatures in `pyobs/robotic/utils/archive/archive.py`
+- [x] `pyobs/robotic/utils/archive/pyobs_archive.py`: `obsnum: str | None = None` on
+      `list_frames()` and `list_options()`, threaded into `_build_query()`, which emits
+      `params["OBSNUM"] = obsnum`.
+- [x] Abstract signatures in `pyobs/robotic/utils/archive/archive.py`
       (`Archive.list_frames`/`list_options`) consistent.
-- [ ] pyobs-core test: `_build_query(obsnum=…)` emits `OBSNUM`; `list_frames(obsnum=…)` passes
-      it through (mocked session).
-- [ ] Release pyobs-core; bump `pyobs-core>=…` in the backend's `pyproject.toml` + `uv lock`.
+- [x] pyobs-core test: `test_list_options_passes_obsnum_to_query` /
+      `test_list_frames_passes_obsnum_to_query`
+      (`tests/robotic/utils/archive/test_pyobs_archive.py`).
+- [ ] **Remaining:** bump `pyobs-core>=2.0.0.dev87` (or later — `dev92` is current) in
+      `pyproject.toml` + `uv lock` here.
 
 ### 2. Backend configuration
 
 - [ ] `settings.py`: `ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")`,
-      `ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")`.
-- [ ] README env table + `.env.example`: `ARCHIVE_URL`, `ARCHIVE_TOKEN` (optional; unset
-      disables the feature).
+      `ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")`,
+      `FRAMES_CACHE_TTL = int(os.environ.get("FRAMES_CACHE_TTL", 3600))` (seconds; default 1 h).
+- [ ] README env table + `.env.example`: `ARCHIVE_URL`, `ARCHIVE_TOKEN`, `FRAMES_CACHE_TTL`
+      (all optional; unset `ARCHIVE_URL`/`ARCHIVE_TOKEN` disables the feature).
 
 ### 3. Archive client wrapper — `pyobs_robotic_backend/api/archive.py`
 
@@ -115,7 +124,7 @@ API and in the frontend Observations tab.
 
 - [ ] `Observation.frames = models.JSONField(null=True, blank=True)` and
       `Observation.frames_updated_at = models.DateTimeField(null=True, blank=True)`; migration
-      `api/migrations/000X_…`.
+      `api/migrations/0009_observation_frames.py` (current head is `0008_task_observation_updated_at.py`).
 - [ ] Only terminal-with-data states (`completed`, `aborted`, `failed`) are resolved;
       `pending`/`in_progress`/`canceled`/`window_expired` keep `frames` `null` without archive
       calls.
@@ -128,8 +137,10 @@ API and in the frontend Observations tab.
       access-scoped queryset as `ObservationDetail`): resolve lazily via the wrapper (the client
       pages through the archive's `offset`/`limit` automatically), store + stamp
       `frames_updated_at`, return `{"frames": […], "archive_enabled": bool}`; **paginate the
-      cached list via `offset`/`limit`** (small default page, e.g. 25, plus `count`); refresh
-      when the cache is older than the TTL (e.g. 1 h). No data endpoints — download/preview/
+      cached list via `offset`/`limit`** (default page 25, plus `count`); refresh when the cache
+      is older than `FRAMES_CACHE_TTL` (settings, default 1 h — matches the periodic sweep
+      cadence in §6, so a read-triggered refresh and the sweep never fight over freshness). No
+      data endpoints — download/preview/
       headers are served by the archive and linked directly.
 - [ ] `urls.py`: register the frames route.
 - [ ] README API overview: row for the new endpoint.
@@ -142,9 +153,18 @@ API and in the frontend Observations tab.
       on transition into terminal-with-data, `refresh_observation_frames.delay(pk)` — **first
       fill only**; this alone is not enough, because the pipeline attaches new files to the
       archive the following morning (see decision 3).
-- [ ] Periodic sweep in `task_scheduler.py` (APScheduler cron, e.g. a few times a day):
-      re-resolve recent terminal observations (last N days) whose `frames_updated_at` is older
-      than the TTL, so next-morning reduction products get linked even before anyone looks.
+- [ ] `@shared_task sweep_stale_observation_frames()`: query terminal-with-data observations
+      from the last 7 days where `frames_updated_at` is `null` or older than
+      `settings.FRAMES_CACHE_TTL`, and `.delay()` `refresh_observation_frames` for each —
+      matches the existing pattern of thin periodic tasks fanning out to the per-row task
+      (`mark_window_expired`, `delete_old_observations`).
+- [ ] Periodic sweep in `task_scheduler.py`: `scheduler.add_job(sweep_stale_observation_frames.delay,
+      CronTrigger.from_crontab("0 * * * *"))` — hourly, matching `FRAMES_CACHE_TTL`'s default (a
+      tighter cadence than the TTL would just re-do work the TTL check already prevents; looser
+      would leave next-morning reduction products unlinked longer than the cache claims to be
+      fresh). Re-resolves terminal observations from the last 7 days (covers the
+      "attached the following morning" case with margin for a delayed reduction run) whose
+      `frames_updated_at` is older than `FRAMES_CACHE_TTL` or still `null`.
 
 ### 7. Frontend — `frontend/templates/frontend/task_detail.html`,
    `frontend/static/frontend/js/taskeditor.js`
@@ -166,15 +186,23 @@ API and in the frontend Observations tab.
 
 ## Tests
 
-- pyobs-core: `_build_query` emits `OBSNUM`; `list_frames(obsnum=…)` passes the parameter.
-- Client wrapper (`api/archive.py`, mocked `PyobsArchive`): obsnum + window query; time-window
-  fallback; archive down → `None`/`[]` without raising; pagination/`count` handling.
-- API: `/frames/` endpoint access scoping (non-member → 404), offset/limit pagination, TTL
-  refresh, cache persistence, disabled (no `ARCHIVE_URL`) → `archive_enabled: false`; frame
-  dicts carry the correct absolute archive URLs; serializer includes `frames`.
-- Refresh: task resolves and stores; signal fires only on transitions into terminal-with-data;
-  TTL re-resolution picks up newly attached frames (mock a second archive result after the TTL);
-  the periodic sweep only touches stale recent rows.
+pyobs-core's `_build_query`/`list_frames(obsnum=…)` coverage is already in on `develop`
+(`test_list_options_passes_obsnum_to_query`, `test_list_frames_passes_obsnum_to_query`) — no new
+pyobs-core tests needed here. Following this repo's convention
+(`pyobs_robotic_backend/api/tests.py`: one flat file, one `TestCase` per unit — see
+`ProjectPublicApiTests`, `UpdateMarkerApiTests`):
+
+- `ArchiveClientWrapperTests` (`api/archive.py`, mocked `PyobsArchive`): obsnum + window query;
+  time-window fallback; archive down → `None`/`[]` without raising; pagination/`count` handling.
+- `ObservationFramesApiTests`: `/frames/` endpoint access scoping (non-member → 404),
+  offset/limit pagination, `FRAMES_CACHE_TTL` refresh, cache persistence, disabled (no
+  `ARCHIVE_URL`) → `archive_enabled: false`; frame dicts carry the correct absolute archive
+  URLs; `ObservationSerializer` includes `frames`.
+- `ObservationFramesRefreshTaskTests`: `refresh_observation_frames` resolves and stores; the
+  `post_save` signal fires only on transitions into terminal-with-data; TTL re-resolution picks
+  up newly attached frames (mock a second archive result after the TTL);
+  `sweep_stale_observation_frames` only touches rows both within the 7-day window and past the
+  TTL (or `null`), and fans out one `refresh_observation_frames.delay()` per matched row.
 - Frontend: manual (Observations tab renders links; archive down → muted, list still loads).
 
 ## Consequences
@@ -202,5 +230,3 @@ API and in the frontend Observations tab.
   project-level view would aggregate archived data across every task/observation of a project
   (all tasks, all nights) into one data browser — a separate feature/issue, as it needs its own
   API surface and UI beyond the task editor.
-- `OBSNUM` window margin: confirmed intended — combine `OBSNUM` with a small buffer around the
-  observation `start`..`end` window (exact margin, e.g. 5 min, to pick during implementation).

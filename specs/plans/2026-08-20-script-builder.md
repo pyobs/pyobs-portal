@@ -221,17 +221,40 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
   (top-level globals, no build step); expose the classes on `window` (harmless in the
   page) so tests can import them, stub `jsyaml`/`CodeMirror` as needed, and keep the page
   loading unchanged (`<script src>` classic includes). No framework, no bundler in prod.
+  Concretely (this repo has no `package.json`/JS tooling at all today — verified):
+  - New `package.json` at repo root: `{"devDependencies": {"vitest": "^2", "jsdom": "^25"}}`,
+    `"scripts": {"test": "vitest run"}`, `"type": "module"`.
+  - `vitest.config.js`: `test: { environment: "jsdom" }`.
+  - New `frontend/static/frontend/js/__tests__/` directory: `schemaform.test.js`,
+    `scriptbuilder.test.js` — each imports the target file for its `window`-exposed globals
+    (e.g. `import "../schemaform.js"; const { SchemaForm } = window;`), stubs `window.jsyaml`
+    and `window.CodeMirror` as plain objects with the handful of methods each file actually
+    calls (`load`/`dump` for `jsyaml`; the editor constructor + `getValue`/`setValue` for
+    `CodeMirror`).
+  - CI: **no existing test workflow to hook into** — `.github/workflows/` has only
+    `docker.yml` (build + push the image on release), no `pytest` job today (verified;
+    `pytest`/Python tests currently run manually, not in CI, for this repo). Adding vitest
+    here doesn't create an inconsistency, but also means there's no free ride: either add a
+    new lightweight `test.yml` workflow (`npm ci && npm test`) or leave it manual like the
+    existing Python suite — pick one explicitly during implementation rather than assuming a
+    CI hook that doesn't exist.
+  - `.gitignore`: add `node_modules/`.
 - **Payload size:** inlining provider schemas adds little; if it grows, reference
   candidates by `path` into the tree instead of duplicating schemas.
 - **`testing/` scripts package** isn't installed in the current pyobs-core; the dynamic
   tree handles its presence/absence automatically.
-- **`exptime_done`** stays ignored in generated defaults (`IGNORED_TASK_FIELDS`).
+- **`exptime_done`** stays ignored in generated defaults — `schema.py`'s existing
+  `IGNORED_FIELDS = {"cost", "target_dependent", "exptime_done"}`, stripped by `_strip_ignored()`
+  (corrected from an earlier draft's `IGNORED_TASK_FIELDS`, which doesn't exist in the code).
 - **Abstract bases** (`ExposureTimeProvider`, `SkyFlatsBasePointing` themselves) must be
   excluded from candidate lists.
-- **External consumer check before merging the backend PR:** `validate_script/` is used
-  only by this repo's task editor (verified), but the issue notes these endpoints are
-  shared with **pyobs-task-editor** — confirm it doesn't depend on the current lenient
-  `{}` → valid behavior.
+- **External consumer check — resolved, no blocker.** Checked `pyobs-task-editor`
+  (`src/pyobs_task_editor/backends.py`): it only calls `/api/me/`, `/api/users/`,
+  `/api/projects/`, `/api/tasks/`, `/api/observations/` — `grep` for `validate_script`,
+  `estimate_duration`, and `schema/scripts` across the whole repo returns nothing. It writes
+  tasks via `add_task`/`update_task` directly, never through `validate_script/`, so tightening
+  that endpoint's `{}`/unknown-class behavior (§3.4) has no effect on it. Safe to merge the
+  backend PR without coordinating a pyobs-task-editor change.
 
 ## 7. Manual QA checklist (no frontend test infra)
 
@@ -253,8 +276,8 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
 
 **PR 1 (backend, small & reviewable):**
 1. Polymorphic registry + `x-pyobs-polymorphic` annotation on `schema/scripts/` +
-   `validate_script` tightening + tests in `api/tests.py` (§3.1–3.5). Before merge,
-   confirm pyobs-task-editor doesn't rely on lenient `validate_script` (§6).
+   `validate_script` tightening + tests in `api/tests.py` (§3.1–3.5). The pyobs-task-editor
+   dependency check (§6) is already done — no coordination needed before merging.
 
 **PR 2 (frontend core, depends on PR 1's response shape):**
 2. Minimal vitest setup (jsdom, `window` exposure of classes) (§6).
