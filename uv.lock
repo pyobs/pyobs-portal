@@ -1843,7 +1843,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.0.0.dev72"
+version = "2.0.0.dev86"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1873,9 +1873,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/25/ac1a0571461eb87655374a38a4a21983db407f7239d60adce009e4ba8438/pyobs_core-2.0.0.dev72.tar.gz", hash = "sha256:b9ac8679bb9a72d1180ba60a97ad08b1878b1bc6b21158754d1f7fc7033231ee", size = 354347, upload-time = "2026-08-10T11:31:59.746Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/b5/c3/e9ead0f106ae8582b0d7bf1160e44a25623a87aa4b260fc755a3ce0ee4f7/pyobs_core-2.0.0.dev86.tar.gz", hash = "sha256:305aa3566e224e8fa95a4db783dd9a3ccca6e0099f02939451d5b95e3daed4af", size = 364657, upload-time = "2026-08-19T18:48:37.238Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/6a/570856f6149a611d7e4858e980faa1e23c5ddedda22327808f8e3eb5b413/pyobs_core-2.0.0.dev72-py3-none-any.whl", hash = "sha256:321f6b80f2fb8703e3cbf2f62cea2333cb475b1a50f58d8900176644fe6ca6b2", size = 576647, upload-time = "2026-08-10T11:31:57.813Z" },
+    { url = "https://files.pythonhosted.org/packages/61/62/855ed5a928cbe9cfac9c31425d67d0e8108851b0e0c77fbf24a81e850a79/pyobs_core-2.0.0.dev86-py3-none-any.whl", hash = "sha256:46d300c20beb591b74856778c4426e0e70c489510082688e92224339b2968c84", size = 587650, upload-time = "2026-08-19T18:48:35.589Z" },
 ]
 
 [[package]]
@@ -2134,8 +2134,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "jeepney", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "cryptography" },
+    { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
