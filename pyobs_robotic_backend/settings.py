@@ -236,6 +236,14 @@ SITE_ELEVATION = (
     float(os.environ["SITE_ELEVATION"]) if os.environ.get("SITE_ELEVATION") else None
 )
 
+# pyobs-archive integration (issue #82): ARCHIVE_URL is used to build a link from each
+# completed/aborted/failed observation straight to its frames in the archive's own UI - pure
+# string formatting, no archive call. ARCHIVE_TOKEN additionally backs a small on-demand
+# frame-count/reduction-status check (see api/views.py:ObservationDataStatus); unset it and that
+# check reports "unavailable" while archive_url still works.
+ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")
+ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")
+
 # Default constraints/merits pre-filled when creating a new task in the
 # web frontend.  Set via JSON env vars, e.g.:
 #   DEFAULT_CONSTRAINTS='[{"class":"pyobs.robotic.scheduler.constraints.AirmassConstraint","max_airmass":2.0}]'

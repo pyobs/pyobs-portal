@@ -1,7 +1,11 @@
+import logging
+
+import requests
 from rest_framework.request import Request
 from typing import Any
 from rest_framework.pagination import PageNumberPagination
 from astropy.time import Time
+from django.conf import settings
 from django.contrib.auth.models import User
 from django.db.models import Q
 from django.http import Http404
@@ -15,7 +19,7 @@ from rest_framework.views import APIView
 from django.db.models import Max
 from django_filters.rest_framework import DjangoFilterBackend
 
-from . import schema
+from . import archive, schema
 from .filters import ObservationFilter
 from .models import Task, Observation, ObservationState, Project
 from .serializers import (
@@ -24,6 +28,8 @@ from .serializers import (
     ProjectSerializer,
     UserSerializer,
 )
+
+log = logging.getLogger(__name__)
 
 
 @permission_classes([IsAdminUser])
@@ -173,6 +179,63 @@ class ObservationListForTask(generics.ListAPIView):
 
 
 @permission_classes([IsAuthenticated])
+class ObservationDataStatus(APIView):
+    """On-demand frame count / reduction-status check against pyobs-archive (issue #82).
+
+    Computed live on every request - no DB field, no cache, no periodic sweep. Never returns a
+    5xx to the frontend: any missing config, non-terminal state, or archive error just reports
+    `"status": "unavailable"`, while `archive_url` (built without any archive call) still renders.
+    """
+
+    def get_queryset(self):
+        queryset = Observation.objects.all()
+        if not self.request.user.is_superuser:
+            queryset = queryset.filter(
+                Q(task__project__public=True)
+                | Q(task__project__users__in=[self.request.user])
+            )
+        return queryset.distinct()
+
+    def get(self, request, pk, format=None):
+        obs = get_object_or_404(self.get_queryset(), pk=pk)
+        url = archive.archive_url(obs)
+
+        if url is None or not settings.ARCHIVE_TOKEN:
+            return Response({"archive_url": url, "status": "unavailable"})
+
+        params = archive.archive_query_params(obs.obsnum, obs.start, obs.end)
+        headers = {"Authorization": f"Token {settings.ARCHIVE_TOKEN}"}
+        frames_url = f"{settings.ARCHIVE_URL.rstrip('/')}/frames/"
+
+        try:
+            total = requests.get(
+                frames_url, params={**params, "limit": 0}, headers=headers, timeout=5
+            )
+            total.raise_for_status()
+            raw_only = requests.get(
+                frames_url,
+                params={**params, "limit": 0, "RLEVEL": 0},
+                headers=headers,
+                timeout=5,
+            )
+            raw_only.raise_for_status()
+        except requests.RequestException as exc:
+            log.warning(
+                "Archive data-status check failed for observation %s: %s", pk, exc
+            )
+            return Response({"archive_url": url, "status": "unavailable"})
+
+        count = total.json()["count"]
+        return Response(
+            {
+                "archive_url": url,
+                "count": count,
+                "reduced": count > raw_only.json()["count"],
+            }
+        )
+
+
+@permission_classes([IsAuthenticated])
 class CancelObservations(APIView):
     def get(self, request, format=None):
         after = self.request.query_params.get("after")
@@ -290,13 +353,16 @@ def estimate_duration(request):
 @permission_classes([IsAuthenticated])
 def site(request):
     from django.conf import settings
-    return Response({
-        "latitude": getattr(settings, "SITE_LATITUDE", None),
-        "longitude": getattr(settings, "SITE_LONGITUDE", None),
-        "elevation": getattr(settings, "SITE_ELEVATION", None),
-        "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
-        "default_merits": getattr(settings, "DEFAULT_MERITS", []),
-    })
+
+    return Response(
+        {
+            "latitude": getattr(settings, "SITE_LATITUDE", None),
+            "longitude": getattr(settings, "SITE_LONGITUDE", None),
+            "elevation": getattr(settings, "SITE_ELEVATION", None),
+            "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
+            "default_merits": getattr(settings, "DEFAULT_MERITS", []),
+        }
+    )
 
 
 @api_view(["GET"])
@@ -317,7 +383,9 @@ def observability(request):
 
     if lat is None or lon is None:
         return Response(
-            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            {
+                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
+            },
             status=400,
         )
 
@@ -325,7 +393,9 @@ def observability(request):
         ra = float(request.query_params["ra"])
         dec = float(request.query_params["dec"])
     except (KeyError, ValueError):
-        return Response({"error": "ra and dec query parameters are required (degrees)."}, status=400)
+        return Response(
+            {"error": "ra and dec query parameters are required (degrees)."}, status=400
+        )
 
     try:
         night = night_data(ra, dec, lat, lon, elev)
@@ -356,7 +426,9 @@ def merit_plot(request):
 
     if lat is None or lon is None:
         return Response(
-            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            {
+                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
+            },
             status=400,
         )
 
