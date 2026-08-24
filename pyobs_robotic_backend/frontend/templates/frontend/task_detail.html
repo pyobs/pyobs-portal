@@ -18,6 +18,16 @@
   .CodeMirror-scroll { min-height: 300px; }
   .CodeMirror-readonly { background-color: #161719; opacity: 0.95; }
 
+  /* Cap the two-column (label | field) SchemaForm layout's width on wide
+     screens (issue #94) -- otherwise the field column stretches to fill
+     whatever's left of an ultra-wide viewport, which looks silly for a
+     single number/text input. Nested SchemaForms (object/polymorphic
+     sub-forms) get this too, but it's a no-op there: their available width
+     is already narrower than this cap. */
+  .schema-form {
+    max-width: 40rem;
+  }
+
   /* Full-width picker (issue #95): the tree and the parameter editor are
      mutually exclusive panes, so unlike the old always-visible sidebar this
      no longer needs a fixed width at any breakpoint. */
