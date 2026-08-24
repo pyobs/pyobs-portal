@@ -4,10 +4,11 @@
   **implemented** (pyobs/pyobs-robotic-backend#89) for pyobs/pyobs-robotic-backend#82: each
   completed/aborted/failed observation gets an `archive_url` (pure link, no archive call) plus an
   on-demand frame count/reduction-status check, in the API and the Observations tab.
-- [plans/2026-08-20-script-builder.md](plans/2026-08-20-script-builder.md) — plan for
-  pyobs/pyobs-robotic-backend#81: replace the raw-YAML `ScriptEditor` on the task page with a
-  visual, schema-driven script builder (polymorphic/nested script fields, dynamic maps, live
-  validation).
+- [plans/2026-08-20-script-builder.md](plans/2026-08-20-script-builder.md) —
+  **implemented** (pyobs/pyobs-robotic-backend#90, #91, #93) for pyobs/pyobs-robotic-backend#81:
+  replaced the raw-YAML `ScriptEditor` on the task page with a visual, schema-driven script
+  builder (searchable type tree, polymorphic/nested script fields, dynamic maps, live validation,
+  mobile-responsive, source-view fallback for unmappable data).
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see

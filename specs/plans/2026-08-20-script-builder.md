@@ -2,7 +2,7 @@
 
 Tracks pyobs/pyobs-robotic-backend#81.
 Repos: pyobs-robotic-backend, pyobs-core.
-Status: planned
+Status: implemented (pyobs/pyobs-robotic-backend#90, #91, #93)
 
 ## Decisions (locked 2026-08-20)
 - `validate_script/` **is tightened** at the backend (reject class-less / unknown-class payloads).
@@ -201,20 +201,21 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
 
 ## 5. Acceptance criteria (from the issue)
 
-- [ ] Browsable, searchable tree of script types showing nesting structure.
-- [ ] Selecting a class renders a parameter form from its JSON schema.
-- [ ] Lists of objects (e.g. `instrument_configs`) editable add/remove-style.
-- [ ] Polymorphic/nested fields (script-in-script, `exposure_time` provider) editable —
+- [x] Browsable, searchable tree of script types showing nesting structure.
+- [x] Selecting a class renders a parameter form from its JSON schema.
+- [x] Lists of objects (e.g. `instrument_configs`) editable add/remove-style.
+- [x] Polymorphic/nested fields (script-in-script, `exposure_time` provider) editable —
       add/remove/choose sub-script instances, round-tripping `class` correctly.
-- [ ] Dynamic maps of scripts (`CasesRunner.cases`: name → script) editable key/value-wise.
-- [ ] Every serialized script node always carries `class` (§3.4); `{}` is emitted only
+- [x] Dynamic maps of scripts (`CasesRunner.cases`: name → script) editable key/value-wise.
+- [x] Every serialized script node always carries `class` (§3.4); `{}` is emitted only
       when no script is configured, and `validate_script/` reports a clear error for
       class-less/unknown-class payloads instead of "✓ Valid".
-- [ ] Live validation via `validate_script/`; duration estimate via `estimate_duration/`.
-- [ ] Saving produces the `script` JSON `TaskRunner` executes (verified by re-opening the
-      task and by saving → executing a smoke task if the dev environment allows).
-- [ ] Raw YAML editor available as a source view toggle; YAML preview tab still works.
-- [ ] Usable on mobile: tree pane and editor pane both reachable and operable on a phone
+- [x] Live validation via `validate_script/`; duration estimate via `estimate_duration/`.
+- [x] Saving produces the `script` JSON `TaskRunner` executes (verified by re-opening the
+      task and reloading — restores the exact builder state. Executing a smoke task wasn't
+      done: no telescope simulator was available in the dev environment used for this check).
+- [x] Raw YAML editor available as a source view toggle; YAML preview tab still works.
+- [x] Usable on mobile: tree pane and editor pane both reachable and operable on a phone
       viewport (stacked/drawer layout, no fixed-width panes that force horizontal scroll).
 
 ## 6. Out of scope / notes / risks
