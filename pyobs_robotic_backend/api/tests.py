@@ -1,19 +1,24 @@
 import inspect
 from datetime import timedelta
+from typing import Annotated
 from unittest.mock import Mock, patch
 
 import requests
 from astropy.time import Time
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
+from pydantic import BaseModel
 from rest_framework.test import APIClient
 
+from pyobs.interfaces import IBinning, ICamera, IData, ITelescope, IWindow
 from pyobs.object import get_class_from_string
 from pyobs.robotic.observation import ObservationState
 
 from . import schema as schema_module
+from . import webadmin
 from .models import Observation, Project, Target, Task
 from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
 from .tasks import mark_window_expired
@@ -726,6 +731,263 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         # subclass should fail loudly above (assertIsNotNone) with an
         # actionable message, not via a silent set-mismatch here.
         self.assertGreaterEqual(seen, set(samples))
+
+
+class ScriptTreeCachingTests(SimpleTestCase):
+    """`script_tree()` caches its result briefly (issue #98) so the near-simultaneous
+    /api/schema/scripts/ and /api/schema/modules/ calls one page load fires don't each pay for
+    the full recursive pkgutil/importlib scan."""
+
+    def setUp(self):
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_second_call_within_ttl_served_from_cache(self):
+        first = schema_module.script_tree()
+        # If the second call actually rescanned, this would blow up -- proving it didn't.
+        with patch(
+            "pyobs_robotic_backend.api.schema.importlib.import_module",
+            side_effect=AssertionError("script_tree() rescanned instead of using the cache"),
+        ):
+            second = schema_module.script_tree()
+        self.assertEqual(first, second)
+
+    def test_cache_expiring_triggers_a_fresh_scan(self):
+        schema_module.script_tree()
+        cache.clear()  # simulates TTL expiry without waiting real seconds
+        # No patch/assertion-raising here -- this must succeed by actually rescanning.
+        second = schema_module.script_tree()
+        self.assertIn("$polymorphic", second)
+
+
+class GetModuleClassesTests(SimpleTestCase):
+    """`webadmin.get_module_classes()` (issue #98) -- must never raise, must degrade to `None`
+    whenever the result can't be trusted, exactly like archive.py's on-demand check."""
+
+    def setUp(self):
+        # get_module_classes() caches its result (success or None) briefly against a fixed key
+        # regardless of settings -- without clearing, one test's result would leak into the
+        # next's assertions instead of exercising that test's own mocked requests.get().
+        cache.clear()
+
+    @override_settings(WEBADMIN_URL="", WEBADMIN_TOKEN="tok")
+    def test_no_request_when_url_unset(self):
+        with patch("pyobs_robotic_backend.api.webadmin.requests.get") as mock_get:
+            self.assertIsNone(webadmin.get_module_classes())
+            mock_get.assert_not_called()
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="")
+    def test_no_request_when_token_unset(self):
+        with patch("pyobs_robotic_backend.api.webadmin.requests.get") as mock_get:
+            self.assertIsNone(webadmin.get_module_classes())
+            mock_get.assert_not_called()
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_success_returns_dict(self, mock_get):
+        resp = Mock(status_code=200)
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get.return_value = resp
+
+        result = webadmin.get_module_classes()
+
+        self.assertEqual(result, {"cam1": "pyobs.modules.camera.DummyCamera"})
+        args, kwargs = mock_get.call_args
+        self.assertEqual(args[0], "https://webadmin.example.org/api/modules/classes/")
+        self.assertEqual(kwargs["headers"], {"X-Hub-Token": "tok"})
+        self.assertEqual(kwargs["timeout"], 5)
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_second_call_within_ttl_reuses_cached_result_success(self, mock_get):
+        resp = Mock(status_code=200)
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get.return_value = resp
+
+        first = webadmin.get_module_classes()
+        second = webadmin.get_module_classes()
+
+        self.assertEqual(first, second)
+        mock_get.assert_called_once()
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_second_call_within_ttl_reuses_cached_result_failure(self, mock_get):
+        # A down-but-configured web-admin must not cost the full request timeout again on the
+        # very next call -- the None result itself is cached too, not just successes.
+        mock_get.side_effect = requests.ConnectionError("refused")
+
+        self.assertIsNone(webadmin.get_module_classes())
+        self.assertIsNone(webadmin.get_module_classes())
+        mock_get.assert_called_once()
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org/", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_trailing_slash_on_url_normalized(self, mock_get):
+        resp = Mock(status_code=200)
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {}
+        mock_get.return_value = resp
+
+        webadmin.get_module_classes()
+
+        self.assertEqual(mock_get.call_args[0][0], "https://webadmin.example.org/api/modules/classes/")
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_request_exception_returns_none(self, mock_get):
+        mock_get.side_effect = requests.ConnectionError("refused")
+        self.assertIsNone(webadmin.get_module_classes())
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_non_2xx_returns_none(self, mock_get):
+        resp = Mock(status_code=401)
+        resp.raise_for_status = Mock(side_effect=requests.HTTPError("401"))
+        mock_get.return_value = resp
+        self.assertIsNone(webadmin.get_module_classes())
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_malformed_body_returns_none(self, mock_get):
+        for body in (["not", "a", "dict"], {"cam1": 123}, "just a string"):
+            cache.clear()  # each iteration must hit requests.get again, not a cached prior result
+            resp = Mock(status_code=200)
+            resp.raise_for_status = Mock()
+            resp.json.return_value = body
+            mock_get.return_value = resp
+            self.assertIsNone(webadmin.get_module_classes(), body)
+
+
+class AnnotateModuleRefsTests(SimpleTestCase):
+    """`schema._annotate_module_refs()` (issue #98) -- reads real `Annotated[str, IInterface]`
+    metadata rather than a hand-maintained field-name table, so two script classes using the
+    same field name for different interfaces (e.g. `camera`) can't collide. Exercised against a
+    local fixture model rather than pyobs-core's own script classes: pyobs-core doesn't carry
+    this metadata yet (pyobs/pyobs-core#808), so this is what proves the mechanism itself works,
+    independent of that pending release."""
+
+    def test_single_and_multi_interface_fields_get_marked(self):
+        class Fixture(BaseModel):
+            camera: Annotated[str, ICamera]
+            multi: Annotated[str, IData, IBinning]
+            plain: str = "x"
+
+        s = schema_module._schema_for(Fixture)
+        schema_module._annotate_module_refs(s, Fixture)
+
+        self.assertEqual(s["properties"]["camera"]["x-pyobs-module-ref"], {"interfaces": ["ICamera"]})
+        self.assertEqual(
+            s["properties"]["multi"]["x-pyobs-module-ref"], {"interfaces": ["IData", "IBinning"]}
+        )
+        self.assertNotIn("x-pyobs-module-ref", s["properties"]["plain"])
+
+    def test_optional_field_marker_lands_on_outer_node(self):
+        # Confirmed empirically (not assumed): pydantic puts Annotated metadata on the field
+        # regardless of Optional[...], and _annotate_module_refs writes the marker onto the
+        # property node buildControl() sees first -- for an Optional[str] field that's the
+        # anyOf-carrying outer node itself, not an inner anyOf member, matching how
+        # _annotate_polymorphic already places its own marker for "optional"-container fields.
+        class Fixture(BaseModel):
+            telescope: Annotated[str | None, ITelescope] = None
+
+        s = schema_module._schema_for(Fixture)
+        schema_module._annotate_module_refs(s, Fixture)
+
+        prop = s["properties"]["telescope"]
+        self.assertEqual(prop["x-pyobs-module-ref"], {"interfaces": ["ITelescope"]})
+        self.assertIn("anyOf", prop)
+
+    def test_two_classes_same_field_name_different_interfaces_dont_collide(self):
+        class ImagingFixture(BaseModel):
+            camera: Annotated[str, ICamera]
+
+        class DarkBiasFixture(BaseModel):
+            camera: Annotated[str, IData, IBinning, IWindow]
+
+        s1 = schema_module._schema_for(ImagingFixture)
+        schema_module._annotate_module_refs(s1, ImagingFixture)
+        s2 = schema_module._schema_for(DarkBiasFixture)
+        schema_module._annotate_module_refs(s2, DarkBiasFixture)
+
+        self.assertEqual(s1["properties"]["camera"]["x-pyobs-module-ref"]["interfaces"], ["ICamera"])
+        self.assertEqual(
+            s2["properties"]["camera"]["x-pyobs-module-ref"]["interfaces"], ["IData", "IBinning", "IWindow"]
+        )
+
+
+class ModuleRefOptionsTests(SimpleTestCase):
+    """`schema.module_ref_options()` (issue #98): {interface: [module_name, ...]}, filtered by
+    real `issubclass` checks against classes resolved from web-admin's module-classes response."""
+
+    def _tree(self, *interfaces):
+        return {
+            "imaging": {
+                "imaging": {
+                    "ImagingScript": {
+                        "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                        "schema": {
+                            "properties": {
+                                "camera": {"type": "string", "x-pyobs-module-ref": {"interfaces": list(interfaces)}}
+                            }
+                        },
+                    }
+                }
+            }
+        }
+
+    def test_no_interfaces_referenced_short_circuits(self):
+        self.assertEqual(schema_module.module_ref_options(tree={}), {})
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_webadmin_unavailable_returns_empty_lists(self, mock_get_classes):
+        mock_get_classes.return_value = None
+        result = schema_module.module_ref_options(tree=self._tree("ICamera"))
+        self.assertEqual(result, {"ICamera": []})
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_filters_by_interface(self, mock_get_classes):
+        mock_get_classes.return_value = {
+            "cam1": "pyobs.modules.camera.DummyCamera",
+            "tel1": "pyobs.modules.telescope.DummyTelescope",
+        }
+        result = schema_module.module_ref_options(tree=self._tree("ICamera"))
+        self.assertEqual(result, {"ICamera": ["cam1"]})
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_unresolvable_class_is_skipped_not_fatal(self, mock_get_classes):
+        mock_get_classes.return_value = {
+            "cam1": "pyobs.modules.camera.DummyCamera",
+            "broken": "pyobs.does.not.exist.NoSuchClass",
+        }
+        result = schema_module.module_ref_options(tree=self._tree("ICamera"))
+        self.assertEqual(result, {"ICamera": ["cam1"]})
+
+
+class SchemaModulesApiTests(TestCase):
+    """`GET /api/schema/modules/` (issue #98)."""
+
+    def setUp(self):
+        self.user = User.objects.create_user("sm-alice", "sm-alice@example.com", "pw")
+
+    def _client(self):
+        client = APIClient()
+        client.force_authenticate(user=self.user)
+        return client
+
+    def test_requires_authentication(self):
+        self.assertEqual(APIClient().get("/api/schema/modules/").status_code, 401)
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_authenticated_returns_options(self, mock_get_classes):
+        mock_get_classes.return_value = None
+        res = self._client().get("/api/schema/modules/")
+        self.assertEqual(res.status_code, 200)
+        self.assertIsInstance(res.data, dict)
 
 
 class ValidateScriptClasslessTests(SimpleTestCase):

@@ -8,6 +8,7 @@ import typing
 from types import ModuleType
 from typing import Any
 
+from django.core.cache import cache
 from pydantic import BaseModel, ValidationError
 
 import pyobs.robotic.scheduler.constraints as constraints_module
@@ -17,6 +18,7 @@ import pyobs.robotic.scripts as scripts_module
 import pyobs.robotic.utils.exptime as exptime_module
 import pyobs.robotic.utils.skyflats.pointing as skyflats_pointing_module
 import pyobs.robotic.utils.skyflats.priorities as skyflats_priorities_module
+from pyobs.interfaces.interface import Interface, get_registered_interface
 from pyobs.object import get_class_from_string
 from pyobs.robotic.scheduler.constraints.constraint import Constraint
 from pyobs.robotic.scheduler.merits.merit import Merit
@@ -27,6 +29,8 @@ from pyobs.robotic.utils.exptime import ExposureTimeProvider
 from pyobs.robotic.utils.skyflats.pointing import SkyFlatsBasePointing
 from pyobs.robotic.utils.skyflats.priorities import SkyflatPriorities
 from pyobs.utils.serialization import PolymorphicBaseModel
+
+from . import webadmin
 
 try:
     import pyobs.robotic.scheduler.targets.picker as picker_module
@@ -224,6 +228,89 @@ def _annotate_polymorphic(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
     return schema
 
 
+def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[str, Any]:
+    """Mutate `schema` in place, marking every module-name field with an `x-pyobs-module-ref`
+    keyword so the frontend can render a module-name dropdown/datalist instead of a free-text
+    input (issue #98).
+
+    A module-name field is any field whose pyobs-core annotation carries one or more
+    `pyobs.interfaces` `Interface` subclasses as `Annotated` metadata, e.g.
+    `camera: Annotated[str, ICamera]` -- real Python-level type introspection, the same approach
+    `_annotate_polymorphic` uses for polymorphic fields, not a hand-maintained
+    field-name-to-interface table (which would be wrong: the same field name can require
+    different interfaces on different script classes, e.g. `ImagingScript.camera` vs.
+    `DarkBiasScript.camera`). No effect until pyobs-core actually carries this metadata
+    (pyobs/pyobs-core#808) -- until then this simply finds nothing to mark.
+
+    Only walks `cls.model_fields` directly -- unlike `_annotate_polymorphic`, this does not
+    recurse into nested `$defs` models. A module-ref field on a nested model (e.g. some future
+    `InstrumentConfig.something`) would need its own `_annotate_module_refs(def_node, NestedCls)`
+    call added at that recursion point; not needed today since every field pyobs-core#808 tags
+    lives directly on a `Script` subclass.
+    """
+    properties = schema.get("properties")
+    if not isinstance(properties, dict):
+        return schema
+    for field_name, field_info in cls.model_fields.items():
+        if field_name in IGNORED_FIELDS or field_name not in properties:
+            continue
+        interfaces = [
+            m.__name__ for m in field_info.metadata if inspect.isclass(m) and issubclass(m, Interface)
+        ]
+        if interfaces:
+            properties[field_name]["x-pyobs-module-ref"] = {"interfaces": interfaces}
+    return schema
+
+
+def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, list[str]]:
+    """{interface_name: [module_name, ...]} for every `x-pyobs-module-ref` interface referenced
+    anywhere in `tree` (a `script_tree()` result; scans a fresh one if not given).
+
+    Two distinct "nothing to offer" shapes, both of which the frontend treats identically (an
+    absent/empty key falls back to a plain text input either way) but which mean different
+    things to a caller inspecting the response directly: a bare `{}` means no field carries an
+    `x-pyobs-module-ref` marker at all (pre-pyobs-core#808, or a tree/schema with no module-ref
+    fields); `{interface_name: [], ...}` means fields do reference that interface, but
+    `webadmin.get_module_classes()` couldn't be trusted right now (`WEBADMIN_URL`/
+    `WEBADMIN_TOKEN` unset, web-admin unreachable, or no configured module happens to implement
+    it). A module whose class fails to resolve/import is skipped rather than failing the whole
+    lookup, same defensive style as `_scan_concrete_subclasses`.
+    """
+    interface_names: set[str] = set()
+
+    def _collect(node: Any) -> None:
+        if not isinstance(node, dict):
+            return
+        marker = node.get("x-pyobs-module-ref")
+        if isinstance(marker, dict):
+            interface_names.update(marker.get("interfaces", []))
+        for value in node.values():
+            _collect(value)
+
+    _collect(tree if tree is not None else script_tree())
+
+    result: dict[str, list[str]] = {name: [] for name in interface_names}
+    if not interface_names:
+        return result
+
+    classes = webadmin.get_module_classes()
+    if classes is None:
+        return result
+
+    interfaces = {name: get_registered_interface(name) for name in interface_names}
+    for module_name, fqcn in classes.items():
+        try:
+            cls = get_class_from_string(fqcn)
+        except Exception:
+            continue
+        if not inspect.isclass(cls):
+            continue
+        for name, iface in interfaces.items():
+            if iface is not None and issubclass(cls, iface):
+                result[name].append(module_name)
+    return result
+
+
 def _scan_concrete_subclasses(package: ModuleType, base: type[PolymorphicBaseModel]) -> list[type[PolymorphicBaseModel]]:
     """Recursively scan `package` (and subpackages) for concrete subclasses of `base`.
 
@@ -288,7 +375,21 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
     return registry
 
 
+# A single task-editor page load fires /api/schema/scripts/ and /api/schema/modules/ (issue
+# #98) as separate, near-simultaneous requests -- without this, both independently pay for the
+# full recursive pkgutil/importlib scan + schema generation over pyobs.robotic.scripts. This is
+# a de-duplication window, not a real staleness tolerance (module code doesn't change without a
+# process restart anyway), so it's kept short. LocMemCache pickles values on set/get, so the
+# cached tree is never the same object a caller could accidentally mutate.
+_SCRIPT_TREE_CACHE_KEY = "pyobs_robotic_backend.api.schema.script_tree"
+_SCRIPT_TREE_CACHE_TTL = 5  # seconds
+
+
 def script_tree() -> dict[str, Any]:
+    cached = cache.get(_SCRIPT_TREE_CACHE_KEY)
+    if cached is not None:
+        return cached
+
     def _scan(package: ModuleType) -> dict[str, Any]:
         results: dict[str, Any] = {}
         for _, name, ispkg in pkgutil.iter_modules(package.__path__):
@@ -313,6 +414,7 @@ def script_tree() -> dict[str, Any]:
                         s = _schema_for(cls)
                         if s is not None:
                             _annotate_polymorphic(s, cls)
+                            _annotate_module_refs(s, cls)
                             classes[cls_name] = {
                                 "class": f"{cls.__module__}.{cls.__name__}",
                                 "schema": s,
@@ -323,6 +425,7 @@ def script_tree() -> dict[str, Any]:
 
     tree = _scan(scripts_module)
     tree["$polymorphic"] = _polymorphic_registry(tree)
+    cache.set(_SCRIPT_TREE_CACHE_KEY, tree, _SCRIPT_TREE_CACHE_TTL)
     return tree
 
 

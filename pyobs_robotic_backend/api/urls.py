@@ -42,6 +42,7 @@ urlpatterns = [
     path("schema/targets/", views.schema_targets),
     path("schema/pickers/", views.schema_pickers),
     path("schema/scripts/", views.schema_scripts),
+    path("schema/modules/", views.schema_modules),
     path("validate_script/", views.validate_script),
     path("estimate_duration/", views.estimate_duration),
     path("site/", views.site),
