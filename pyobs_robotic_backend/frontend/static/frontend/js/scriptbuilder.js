@@ -6,7 +6,10 @@
  * parameters through `SchemaForm` (including nested/polymorphic script
  * fields via schemaform.js's polymorphic + dynamic-map controls), get live
  * validation, and serialize back to the task's `script` JSON. The raw YAML
- * editor is kept as a "Source" view toggle.
+ * editor has no general-purpose toggle -- it's used only as the unmappable-
+ * script fallback (§4.12: a task's `script` isn't a class-dict, or its class
+ * isn't in the tree), opened automatically with a warning and a "Try Builder
+ * view" button to attempt remapping once it's fixed.
  *
  * Keeps `ScriptEditor`'s public interface (`getData()` / `setContent()`) so
  * taskeditor.js's save/export/estimate wiring is unaffected; also exposes
@@ -49,33 +52,25 @@ class ScriptBuilder {
     const toolbar = document.createElement("div");
     toolbar.className = "d-flex flex-wrap align-items-center justify-content-between gap-2 mb-2";
 
-    const modeGroup = document.createElement("div");
-    modeGroup.className = "btn-group btn-group-sm";
-    modeGroup.setAttribute("role", "group");
+    // No general-purpose Builder/Source toggle (issue #97): the visual form
+    // already covers every schema-driven script class, so letting users
+    // hand-edit arbitrary YAML for a normal, mappable script is unnecessary
+    // risk. Source view is now reachable only as the unmappable-script
+    // fallback (§4.12, see _setContent), and this button is its sole way
+    // back into the builder -- shown only while that fallback is active.
     this.builderModeBtn = document.createElement("button");
     this.builderModeBtn.type = "button";
-    this.builderModeBtn.className = "btn btn-outline-secondary active";
-    this.builderModeBtn.textContent = "Builder";
-    this.sourceModeBtn = document.createElement("button");
-    this.sourceModeBtn.type = "button";
-    this.sourceModeBtn.className = "btn btn-outline-secondary";
-    this.sourceModeBtn.textContent = "Source";
-    modeGroup.appendChild(this.builderModeBtn);
-    modeGroup.appendChild(this.sourceModeBtn);
+    this.builderModeBtn.className = "btn btn-sm btn-outline-secondary d-none";
+    this.builderModeBtn.textContent = "Try Builder view";
     this.builderModeBtn.addEventListener("click", () => {
-      // No-op when already in builder mode: _switchToBuilder() re-parses the
-      // (possibly stale, un-synced) source editor content, which would
-      // otherwise clobber in-progress builder edits on a redundant click.
-      if (this.mode === "builder") return;
+      // Only meaningful (and only ever visible) while stuck in the
+      // unmappable-fallback source view -- guards against re-parsing stale
+      // source content and clobbering an in-progress builder form.
+      if (this.mode !== "source") return;
       this.warningEl.classList.add("d-none");
       this._switchToBuilder();
     });
-    this.sourceModeBtn.addEventListener("click", () => {
-      if (this.mode === "source") return;
-      this.warningEl.classList.add("d-none");
-      this._switchToSource();
-    });
-    toolbar.appendChild(modeGroup);
+    toolbar.appendChild(this.builderModeBtn);
 
     const right = document.createElement("div");
     right.className = "d-flex align-items-center gap-2";
@@ -345,16 +340,11 @@ class ScriptBuilder {
     this._scheduleChange();
   }
 
-  _switchToSource() {
-    this._setSourceText(this.getData());
-    this._applyMode("source");
-    this._scheduleChange();
-  }
-
   _applyMode(mode) {
     this.mode = mode;
-    this.builderModeBtn.classList.toggle("active", mode === "builder");
-    this.sourceModeBtn.classList.toggle("active", mode === "source");
+    // The "Try Builder view" button is the unmappable-fallback's only way
+    // back into the builder, so it only makes sense while stuck in source.
+    this.builderModeBtn.classList.toggle("d-none", mode !== "source");
     this.builderView.classList.toggle("d-none", mode !== "builder");
     this.sourceView.classList.toggle("d-none", mode !== "source");
     if (mode === "source") {
