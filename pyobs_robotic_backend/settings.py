@@ -244,6 +244,13 @@ SITE_ELEVATION = (
 ARCHIVE_URL = os.environ.get("ARCHIVE_URL", "")
 ARCHIVE_TOKEN = os.environ.get("ARCHIVE_TOKEN", "")
 
+# pyobs-web-admin integration (issue #98): WEBADMIN_URL/WEBADMIN_TOKEN back the module-name
+# dropdown in the script builder (GET {WEBADMIN_URL}/api/modules/classes/, authenticated via
+# X-Hub-Token). Unset either and module-name fields silently fall back to today's free-text
+# input -- no error anywhere in the chain.
+WEBADMIN_URL = os.environ.get("WEBADMIN_URL", "")
+WEBADMIN_TOKEN = os.environ.get("WEBADMIN_TOKEN", "")
+
 # Default constraints/merits pre-filled when creating a new task in the
 # web frontend.  Set via JSON env vars, e.g.:
 #   DEFAULT_CONSTRAINTS='[{"class":"pyobs.robotic.scheduler.constraints.AirmassConstraint","max_airmass":2.0}]'
