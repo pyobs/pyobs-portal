@@ -345,6 +345,16 @@ def schema_scripts(request):
     return Response(schema.script_tree())
 
 
+@api_view(["GET"])
+@permission_classes([IsAuthenticated])
+def schema_modules(request):
+    """{interface_name: [module_name, ...]} for the script builder's module-name dropdowns
+    (issue #98). `{}` for every interface whenever WEBADMIN_URL/WEBADMIN_TOKEN is unset, web-admin
+    is unreachable, or no script field is annotated with an interface yet -- the frontend falls
+    back to a free-text input in that case, same as before this feature existed."""
+    return Response(schema.module_ref_options())
+
+
 @api_view(["POST"])
 @permission_classes([IsAuthenticated])
 def validate_script(request):

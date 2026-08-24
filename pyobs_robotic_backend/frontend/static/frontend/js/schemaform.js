@@ -8,7 +8,7 @@
  * `model_json_schema()`) and builds Bootstrap form controls.
  *
  * Usage:
- *   const form = new SchemaForm(schema, defs, data, { ignoredFields, polymorphic });
+ *   const form = new SchemaForm(schema, defs, data, { ignoredFields, polymorphic, moduleRefs });
  *   container.appendChild(form.element);
  *   ...
  *   const data = form.getData();
@@ -17,6 +17,13 @@
  * resolvePolymorphicCandidates() from script_tree()'s `$polymorphic`
  * registry; omit it for schemas with no `x-pyobs-polymorphic` fields
  * (constraints/merits/targets today).
+ *
+ * `moduleRefs` is the `{interface_name: [module_name, ...]}` map fetched from
+ * /api/schema/modules/ (issue #98), threaded down to every nested control so
+ * an `x-pyobs-module-ref` field can be rendered at any depth; omit it for
+ * schemas with no such fields (or before pyobs-core carries the interface
+ * metadata this feature reads -- it degrades to a plain text input either
+ * way).
  */
 
 /** Resolve a `$ref` (and merge any sibling keys, e.g. an overriding title). */
@@ -119,16 +126,19 @@ class SchemaForm {
    * @param {object} schema - resolved or unresolved JSON Schema for an object
    * @param {object} defs - the `$defs` map from the root schema document
    * @param {object} data - current values, keyed by property name
-   * @param {object} opts - { ignoredFields: Set<string>, polymorphic: object }
+   * @param {object} opts - { ignoredFields: Set<string>, polymorphic: object, moduleRefs: object }
    *   `polymorphic` is the flattened `{ base: [{class, title, schema}] }` map
    *   produced by `resolvePolymorphicCandidates()`, threaded down to every
    *   nested control so a polymorphic field can be rendered at any depth.
+   *   `moduleRefs` is the `{ interface_name: [module_name, ...] }` map from
+   *   /api/schema/modules/ (issue #98), threaded the same way.
    */
   constructor(schema, defs, data, opts = {}) {
     this.defs = defs || {};
     this.data = data || {};
     this.ignored = opts.ignoredFields || new Set();
     this.polymorphic = opts.polymorphic || {};
+    this.moduleRefs = opts.moduleRefs || {};
     this.fields = {}; // name -> { getValue, schema }
     this.element = document.createElement("div");
     this.element.className = "schema-form";
@@ -142,7 +152,14 @@ class SchemaForm {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
-      const { control, getValue, resolvePath } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
+      const { control, getValue, resolvePath } = buildControl(
+        resolved,
+        this.defs,
+        value,
+        this.ignored,
+        this.polymorphic,
+        this.moduleRefs
+      );
       const structural = isStructuralField(resolved, this.defs);
 
       // Two columns (label | field) on wide screens, stacked on narrow/mobile,
@@ -232,13 +249,22 @@ class SchemaForm {
  * decompose into further-navigable sub-fields (object/array/map/polymorphic,
  * issue #102) -- absent on leaf controls (primitives, raw YAML fallbacks).
  */
-function buildControl(resolved, defs, value, ignored, polymorphic) {
+function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
   // Polymorphic script/provider field (backend-annotated) -- checked before
   // the generic anyOf/object branches below, since a polymorphic field's own
   // schema node is often itself an anyOf (e.g. `float | ExposureTimeProvider`)
   // or a bare $ref (e.g. `Script`).
   if (resolved["x-pyobs-polymorphic"]) {
-    return buildPolymorphicControl(resolved["x-pyobs-polymorphic"], defs, value, ignored, polymorphic);
+    return buildPolymorphicControl(resolved["x-pyobs-polymorphic"], defs, value, ignored, polymorphic, moduleRefs);
+  }
+
+  // Module-name field (backend-annotated, issue #98) -- same reasoning as
+  // the polymorphic check above: `camera: Annotated[str, ICamera]` and
+  // `telescope: Annotated[str | None, ITelescope]` both carry the marker on
+  // this outer node (confirmed against schema.py's _annotate_module_refs),
+  // so this must also be checked before the anyOf branch below.
+  if (resolved["x-pyobs-module-ref"]) {
+    return buildModuleRefControl(resolved["x-pyobs-module-ref"], value, moduleRefs);
   }
 
   // anyOf: optional fields (X | None), Time fields, or other unions
@@ -249,7 +275,7 @@ function buildControl(resolved, defs, value, ignored, polymorphic) {
       return buildDateTimeControl(value);
     }
     if (nonNull.length === 1) {
-      return buildControl(resolveSchema(nonNull[0], defs), defs, value, ignored, polymorphic);
+      return buildControl(resolveSchema(nonNull[0], defs), defs, value, ignored, polymorphic, moduleRefs);
     }
     // Ambiguous union (e.g. float | SomeProvider) -> raw YAML fallback.
     return buildYamlControl(value);
@@ -273,14 +299,14 @@ function buildControl(resolved, defs, value, ignored, polymorphic) {
     case "string":
       return buildStringControl(resolved, value);
     case "array":
-      return buildArrayControl(resolved, defs, value, ignored, polymorphic);
+      return buildArrayControl(resolved, defs, value, ignored, polymorphic, moduleRefs);
     case "object":
       // Dynamic map (additionalProperties-only, no fixed properties) --
       // e.g. CasesRunner.cases: dict[str, Script].
       if (resolved.additionalProperties && !resolved.properties) {
-        return buildMapControl(resolved, defs, value, ignored, polymorphic);
+        return buildMapControl(resolved, defs, value, ignored, polymorphic, moduleRefs);
       }
-      return buildObjectControl(resolved, defs, value, ignored, polymorphic);
+      return buildObjectControl(resolved, defs, value, ignored, polymorphic, moduleRefs);
     default:
       return buildYamlControl(value);
   }
@@ -335,6 +361,53 @@ function buildStringControl(resolved, value) {
   input.className = "form-control form-control-sm";
   if (value !== undefined && value !== null) input.value = value;
   else if (resolved.default !== undefined && resolved.default !== null) input.value = resolved.default;
+  return { control: input, getValue: () => input.value };
+}
+
+/**
+ * Module-name field (`x-pyobs-module-ref` marker, issue #98): a free-text
+ * input backed by a <datalist> of module names implementing every interface
+ * in `marker.interfaces` (AND semantics -- intersected below, since e.g.
+ * DarkBiasScript.camera requires IData+IBinning+IWindow+IExposureTime+
+ * IImageType all at once). Deliberately a <datalist>-backed <input>, not a
+ * <select>: it degrades to an ordinary free-text input for free when the
+ * intersection is empty (WEBADMIN_URL unset, web-admin unreachable, no
+ * configured module implements the interface, or pyobs-core doesn't carry
+ * the Annotated interface metadata yet) -- script editing must never be
+ * blocked on web-admin being reachable -- and it still allows typing a name
+ * not in the list (module not started yet, config drift) without a separate
+ * "custom value" escape hatch a <select> would need. Value handling mirrors
+ * buildStringControl exactly so an untouched field round-trips unchanged.
+ */
+function buildModuleRefControl(marker, value, moduleRefs) {
+  const interfaces = marker.interfaces || [];
+  const names = interfaces.length
+    ? interfaces
+        .map((i) => (moduleRefs && moduleRefs[i]) || [])
+        .reduce((a, b) => a.filter((name) => b.includes(name)))
+    : [];
+
+  const input = document.createElement("input");
+  input.type = "text";
+  input.className = "form-control form-control-sm";
+  if (value !== undefined && value !== null) input.value = value;
+
+  if (names.length) {
+    const listId = `module-ref-${Math.random().toString(36).slice(2)}`;
+    input.setAttribute("list", listId);
+    const datalist = document.createElement("datalist");
+    datalist.id = listId;
+    for (const name of names) {
+      const option = document.createElement("option");
+      option.value = name;
+      datalist.appendChild(option);
+    }
+    const wrap = document.createElement("div");
+    wrap.appendChild(input);
+    wrap.appendChild(datalist);
+    return { control: wrap, getValue: () => input.value };
+  }
+
   return { control: input, getValue: () => input.value };
 }
 
@@ -416,16 +489,16 @@ function buildInvalidValueFallback(value, reason) {
 }
 
 /** Nested object -> sub-form inside a bordered card. */
-function buildObjectControl(resolved, defs, value, ignored, polymorphic) {
+function buildObjectControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
   const card = document.createElement("div");
   card.className = "border rounded p-2 border-secondary-subtle";
-  const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored, polymorphic });
+  const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored, polymorphic, moduleRefs });
   card.appendChild(form.element);
   return { control: card, getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
 }
 
 /** Array of objects, primitives, or polymorphic nodes -> add/remove list. */
-function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
+function buildArrayControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
   const itemSchema = resolveSchema(resolved.items || {}, defs);
 
   const wrap = document.createElement("div");
@@ -442,7 +515,7 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
     // Delegates to buildControl's own dispatch (object / polymorphic /
     // primitive) so array items of any of those shapes render correctly,
     // instead of re-implementing the object-vs-primitive branch here.
-    const { control, getValue, resolvePath } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic);
+    const { control, getValue, resolvePath } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic, moduleRefs);
     control.classList.add("flex-grow-1");
     row.appendChild(control);
 
@@ -494,7 +567,7 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
  * not just polymorphic ones: the value control comes from buildControl's own
  * dispatch, so a plain `dict[str, str]` gets a text input per row here too.
  */
-function buildMapControl(resolved, defs, value, ignored, polymorphic) {
+function buildMapControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
   const valueSchema = resolveSchema(resolved.additionalProperties, defs);
 
   const wrap = document.createElement("div");
@@ -533,7 +606,7 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
     keyInput.addEventListener("input", updateDuplicateWarnings);
     row.appendChild(keyInput);
 
-    const { control, getValue, resolvePath } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic);
+    const { control, getValue, resolvePath } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic, moduleRefs);
     control.classList.add("flex-grow-1");
     row.appendChild(control);
 
@@ -597,7 +670,7 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
  * `{"class": "<fqcn>", ...fields}` (or `null` for an unset optional field) --
  * never a class-less dict.
  */
-function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
+function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, moduleRefs) {
   const candidates = (polymorphic && polymorphic[marker.base]) || [];
   const isOptional = marker.container === "optional";
   // `value.class` presence, not just "value is an object", is what
@@ -665,6 +738,7 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
     currentForm = new SchemaForm(candidate.schema || {}, defs, data || {}, {
       ignoredFields: ignored,
       polymorphic,
+      moduleRefs,
     });
     card.appendChild(currentForm.element);
     nestedWrap.appendChild(card);
