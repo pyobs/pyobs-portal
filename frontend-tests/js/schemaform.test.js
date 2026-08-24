@@ -156,19 +156,50 @@ describe("buildControl: polymorphic (optional)", () => {
   });
 });
 
-describe("buildControl: polymorphic takes priority over an ambiguous anyOf", () => {
-  it("renders the type selector, not the raw-YAML anyOf fallback", () => {
-    // Mirrors InstrumentConfig.exposure_time: float | ExposureTimeProvider.
-    const resolved = {
-      anyOf: [{ type: "number" }, { $ref: "#/$defs/ExposureTimeProvider" }],
-      "x-pyobs-polymorphic": { base: "pkg.exptime.ExposureTimeProvider", container: "single" },
-    };
-    const defs = { ExposureTimeProvider: { type: "object", properties: {} } };
-    const { control, getValue } = buildControl(resolved, defs, undefined, new Set(), POLYMORPHIC);
+describe("buildControl: polymorphic field with a scalar alternative (issue: exposure_time)", () => {
+  // Mirrors InstrumentConfig.exposure_time: float | ExposureTimeProvider -- a union mixing a
+  // plain scalar with the polymorphic base. schema.py keeps the original anyOf branches
+  // alongside the x-pyobs-polymorphic marker specifically so scalarBranchFor() can recover the
+  // scalar alternative here.
+  const resolved = {
+    anyOf: [{ type: "number" }, { $ref: "#/$defs/ExposureTimeProvider" }],
+    "x-pyobs-polymorphic": { base: "pkg.exptime.ExposureTimeProvider", container: "single" },
+  };
+  const defs = { ExposureTimeProvider: { type: "object", properties: {} } };
 
+  it("renders the type selector, not the raw-YAML anyOf fallback", () => {
+    const { control } = buildControl(resolved, defs, undefined, new Set(), POLYMORPHIC);
     expect(control.querySelector("select")).not.toBeNull();
     expect(control.querySelector("textarea")).toBeNull();
+  });
+
+  it("defaults a bare scalar value to the Fixed value option, not the first candidate class", () => {
+    // This is the bug this test used to lock in as "correct": a plain existing number (or no
+    // value at all) must never be silently replaced by whichever provider class is first.
+    const { control, getValue } = buildControl(resolved, defs, 12.5, new Set(), POLYMORPHIC);
+
+    const select = control.querySelector("select");
+    expect(select.value).toBe("__pyobs_scalar__");
+    expect(control.querySelector("input[type=number]").value).toBe("12.5");
+    expect(getValue()).toBe(12.5);
+  });
+
+  it("switches to the polymorphic form when a candidate class is picked", () => {
+    const { control, getValue } = buildControl(resolved, defs, undefined, new Set(), POLYMORPHIC);
+
+    const select = control.querySelector("select");
+    select.value = "pkg.exptime.StellarExposureTimeProvider";
+    select.dispatchEvent(new Event("change"));
+
     expect(getValue().class).toBe("pkg.exptime.StellarExposureTimeProvider");
+  });
+
+  it("initializes from an existing class-dict value by matching candidate fqcn", () => {
+    const value = { class: "pkg.exptime.StellarExposureTimeProvider", camera: "cam1" };
+    const { control, getValue } = buildControl(resolved, defs, value, new Set(), POLYMORPHIC);
+
+    expect(control.querySelector("select").value).toBe("pkg.exptime.StellarExposureTimeProvider");
+    expect(getValue()).toEqual(value);
   });
 });
 
@@ -205,18 +236,18 @@ describe("buildControl: polymorphic with an unmappable existing value", () => {
 });
 
 describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
-  it("renders a datalist populated from moduleRefs for a single-interface field", () => {
+  it("renders a select populated from moduleRefs.options for a single-interface field", () => {
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
-    const moduleRefs = { ICamera: ["cam1", "cam2"] };
-    const { control, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+    const moduleRefs = { available: true, options: { ICamera: ["cam1", "cam2"] } };
+    // `control` for an available module-ref field is the <select> itself, not a wrapper.
+    const { control: select, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
 
-    const input = control.querySelector("input");
-    expect(input.getAttribute("list")).not.toBeNull();
-    const datalist = control.querySelector("datalist");
-    expect([...datalist.options].map((o) => o.value)).toEqual(["cam1", "cam2"]);
+    expect(select.tagName).toBe("SELECT");
+    // Blank placeholder plus the two real options.
+    expect([...select.options].map((o) => o.value)).toEqual(["", "cam1", "cam2"]);
 
-    input.value = "cam1";
-    input.dispatchEvent(new Event("input"));
+    select.value = "cam1";
+    select.dispatchEvent(new Event("change"));
     expect(getValue()).toBe("cam1");
   });
 
@@ -224,20 +255,18 @@ describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
     // Mirrors DarkBiasScript.camera: IData+IBinning -- only a module in both
     // interfaces' lists is a valid candidate.
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["IData", "IBinning"] } };
-    const moduleRefs = { IData: ["cam1", "cam2"], IBinning: ["cam2", "cam3"] };
-    const { control } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+    const moduleRefs = { available: true, options: { IData: ["cam1", "cam2"], IBinning: ["cam2", "cam3"] } };
+    const { control: select } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
 
-    const datalist = control.querySelector("datalist");
-    expect([...datalist.options].map((o) => o.value)).toEqual(["cam2"]);
+    expect([...select.options].map((o) => o.value)).toEqual(["", "cam2"]);
   });
 
-  it("falls back to a plain input (no datalist) when moduleRefs has nothing for the interface", () => {
+  it("falls back to a plain input (no select) when moduleRefs.available is false", () => {
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
-    const { control, getValue } = buildControl(resolved, {}, "typed-value", new Set(), {}, {});
+    const moduleRefs = { available: false, options: {} };
+    const { control, getValue } = buildControl(resolved, {}, "typed-value", new Set(), {}, moduleRefs);
 
     expect(control.tagName).toBe("INPUT");
-    expect(control.hasAttribute("list")).toBe(false);
-    expect(control.querySelector("datalist")).toBeNull();
     expect(getValue()).toBe("typed-value");
   });
 
@@ -245,26 +274,27 @@ describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
     const { control } = buildControl(resolved, {}, undefined, new Set(), {});
     expect(control.tagName).toBe("INPUT");
-    expect(control.hasAttribute("list")).toBe(false);
   });
 
-  it("still allows a value that isn't in the datalist (free text always wins)", () => {
+  it("keeps a stored value that isn't in the option list as its own selected, flagged option", () => {
+    // Module since renamed/removed, or edited before web-admin was linked -- must be shown
+    // and kept, not silently swapped for whichever option happens to be first (issue #98
+    // follow-up; validate_script/'s server-side check is what actually flags it invalid).
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
-    const moduleRefs = { ICamera: ["cam1"] };
-    const { control, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+    const moduleRefs = { available: true, options: { ICamera: ["cam1"] } };
+    const { control: select, getValue } = buildControl(resolved, {}, "not-in-the-list", new Set(), {}, moduleRefs);
 
-    const input = control.querySelector("input");
-    input.value = "not-in-the-list";
-    input.dispatchEvent(new Event("input"));
+    expect(select.value).toBe("not-in-the-list");
+    expect([...select.options].map((o) => o.value)).toEqual(["", "not-in-the-list", "cam1"]);
     expect(getValue()).toBe("not-in-the-list");
   });
 
-  it("preserves an existing value untouched (round-trips like a plain string field)", () => {
+  it("preserves an existing value that is in the list untouched", () => {
     const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
-    const moduleRefs = { ICamera: ["cam1"] };
-    const { control, getValue } = buildControl(resolved, {}, "cam1", new Set(), {}, moduleRefs);
+    const moduleRefs = { available: true, options: { ICamera: ["cam1"] } };
+    const { control: select, getValue } = buildControl(resolved, {}, "cam1", new Set(), {}, moduleRefs);
 
-    expect(control.querySelector("input").value).toBe("cam1");
+    expect(select.value).toBe("cam1");
     expect(getValue()).toBe("cam1");
   });
 
@@ -276,10 +306,10 @@ describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
       anyOf: [{ type: "string" }, { type: "null" }],
       "x-pyobs-module-ref": { interfaces: ["ITelescope"] },
     };
-    const moduleRefs = { ITelescope: ["tel1"] };
+    const moduleRefs = { available: true, options: { ITelescope: ["tel1"] } };
     const { control } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
 
-    expect(control.querySelector("datalist")).not.toBeNull();
+    expect(control.tagName).toBe("SELECT");
   });
 });
 
@@ -613,5 +643,67 @@ describe("row layout: two-column for scalars, full-width for structural fields",
     const row = form.fields.script.rowEl;
     expect(row.classList.contains("row")).toBe(false);
     expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+  });
+
+  describe("a polymorphic field with a scalar alternative (exposure_time-like)", () => {
+    const exptimeSchema = {
+      anyOf: [{ type: "number" }, { $ref: "#/$defs/ExposureTimeProvider" }],
+      "x-pyobs-polymorphic": { base: "pkg.exptime.ExposureTimeProvider", container: "single" },
+      title: "Exposure Time",
+    };
+    const exptimeDefs = { ExposureTimeProvider: { type: "object", properties: {} } };
+
+    function makeExptimeForm(value) {
+      const schema = { type: "object", properties: { exposure_time: exptimeSchema } };
+      return new SchemaForm(schema, exptimeDefs, { exposure_time: value }, { polymorphic: POLYMORPHIC });
+    }
+
+    it("starts two-column/compact for a bare scalar value, dropdown and number on one line", () => {
+      const form = makeExptimeForm(12.5);
+      const row = form.fields.exposure_time.rowEl;
+
+      expect(row.classList.contains("row")).toBe(true);
+      expect(row.querySelector("label").classList.contains("col-sm-4")).toBe(true);
+      const content = row.children[1];
+      expect(content.classList.contains("col-sm-8")).toBe(true);
+      expect(content.querySelector("select").parentElement.classList.contains("flex-row")).toBe(true);
+      expect(content.querySelector("input[type=number]")).not.toBeNull();
+    });
+
+    it("starts full-width for an existing concrete provider value", () => {
+      const form = makeExptimeForm({ class: "pkg.exptime.StellarExposureTimeProvider", camera: "cam1" });
+      const row = form.fields.exposure_time.rowEl;
+
+      expect(row.classList.contains("row")).toBe(false);
+      expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+    });
+
+    it("switches the row to full-width the moment a candidate class is picked", () => {
+      const form = makeExptimeForm(12.5);
+      const row = form.fields.exposure_time.rowEl;
+      const select = row.querySelector("select");
+
+      select.value = "pkg.exptime.StellarExposureTimeProvider";
+      select.dispatchEvent(new Event("change"));
+
+      expect(row.classList.contains("row")).toBe(false);
+      expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+      expect(form.getData()).toEqual({
+        exposure_time: { class: "pkg.exptime.StellarExposureTimeProvider", camera: "" },
+      });
+    });
+
+    it("switches back to the compact two-column row when Fixed value is re-selected", () => {
+      const form = makeExptimeForm({ class: "pkg.exptime.StellarExposureTimeProvider", camera: "cam1" });
+      const row = form.fields.exposure_time.rowEl;
+      const select = row.querySelector("select");
+
+      select.value = "__pyobs_scalar__";
+      select.dispatchEvent(new Event("change"));
+
+      expect(row.classList.contains("row")).toBe(true);
+      expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+      expect(form.getData().exposure_time).toBe(0);
+    });
   });
 });
