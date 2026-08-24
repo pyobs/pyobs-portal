@@ -921,8 +921,9 @@ class AnnotateModuleRefsTests(SimpleTestCase):
 
 
 class ModuleRefOptionsTests(SimpleTestCase):
-    """`schema.module_ref_options()` (issue #98): {interface: [module_name, ...]}, filtered by
-    real `issubclass` checks against classes resolved from web-admin's module-classes response."""
+    """`schema.module_ref_options()` (issue #98): {"available": bool, "options": {interface:
+    [module_name, ...]}}, filtered by real `issubclass` checks against classes resolved from
+    web-admin's module-classes response."""
 
     def _tree(self, *interfaces):
         return {
@@ -941,13 +942,13 @@ class ModuleRefOptionsTests(SimpleTestCase):
         }
 
     def test_no_interfaces_referenced_short_circuits(self):
-        self.assertEqual(schema_module.module_ref_options(tree={}), {})
+        self.assertEqual(schema_module.module_ref_options(tree={}), {"available": True, "options": {}})
 
     @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
-    def test_webadmin_unavailable_returns_empty_lists(self, mock_get_classes):
+    def test_webadmin_unavailable_is_flagged_unavailable(self, mock_get_classes):
         mock_get_classes.return_value = None
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
-        self.assertEqual(result, {"ICamera": []})
+        self.assertEqual(result, {"available": False, "options": {"ICamera": []}})
 
     @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
     def test_filters_by_interface(self, mock_get_classes):
@@ -956,7 +957,7 @@ class ModuleRefOptionsTests(SimpleTestCase):
             "tel1": "pyobs.modules.telescope.DummyTelescope",
         }
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
-        self.assertEqual(result, {"ICamera": ["cam1"]})
+        self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
     @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
     def test_unresolvable_class_is_skipped_not_fatal(self, mock_get_classes):
@@ -965,7 +966,7 @@ class ModuleRefOptionsTests(SimpleTestCase):
             "broken": "pyobs.does.not.exist.NoSuchClass",
         }
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
-        self.assertEqual(result, {"ICamera": ["cam1"]})
+        self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
 
 class SchemaModulesApiTests(TestCase):
@@ -1148,6 +1149,63 @@ class ValidateScriptStructuredErrorsTests(SimpleTestCase):
         )
         self.assertFalse(result["valid"])
         self.assertEqual(result["errors"], [{"loc": ["scripts", 0, "expression"], "msg": "Field required"}])
+
+
+class ValidateScriptModuleRefTests(SimpleTestCase):
+    """`validate_script/`'s module-ref check (issue #98 follow-up): a module-ref field's value
+    must name a module `webadmin.get_module_classes()` says implements every interface the field
+    requires -- restricted the same way the frontend's real `<select>` restricts input, not just
+    a UI-level convenience. Only enforced when web-admin's module list can be trusted; an
+    unreachable/unconfigured web-admin must never block saving a script.
+    """
+
+    def _payload(self, camera):
+        return {"class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript", "camera": camera}
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_unknown_module_is_rejected(self, mock_get_classes):
+        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        result = schema_module.validate_script(self._payload("not_a_real_module"))
+        self.assertFalse(result["valid"])
+        self.assertEqual(
+            result["errors"],
+            [
+                {
+                    "loc": ["camera"],
+                    "msg": "'not_a_real_module' is not a configured module implementing "
+                    "ICamera + IBinning + IWindow + IExposureTime + IImageType",
+                }
+            ],
+        )
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_known_module_implementing_all_required_interfaces_is_accepted(self, mock_get_classes):
+        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        result = schema_module.validate_script(self._payload("cam1"))
+        self.assertEqual(result, {"valid": True})
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_module_missing_a_required_interface_is_rejected(self, mock_get_classes):
+        # A telescope implements neither ICamera nor the other four interfaces ImagingScript's
+        # camera field requires.
+        mock_get_classes.return_value = {"tel1": "pyobs.modules.telescope.DummyTelescope"}
+        result = schema_module.validate_script(self._payload("tel1"))
+        self.assertFalse(result["valid"])
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_webadmin_unavailable_never_blocks_saving(self, mock_get_classes):
+        mock_get_classes.return_value = None
+        result = schema_module.validate_script(self._payload("whatever-not-configured-anywhere"))
+        self.assertEqual(result, {"valid": True})
+
+    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    def test_empty_value_on_a_required_field_is_rejected_like_pydantic_would(self, mock_get_classes):
+        # The builder's <select> always submits the key (empty string for its blank placeholder,
+        # never an absent key), so pydantic's own "Field required" check never fires for this --
+        # module-ref's own check has to catch it instead.
+        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        result = schema_module.validate_script(self._payload(""))
+        self.assertEqual(result, {"valid": False, "error": "Field required", "errors": [{"loc": ["camera"], "msg": "Field required"}]})
 
 
 class EstimateDurationCleanErrorTests(SimpleTestCase):

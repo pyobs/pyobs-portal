@@ -262,19 +262,21 @@ def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
     return schema
 
 
-def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, list[str]]:
-    """{interface_name: [module_name, ...]} for every `x-pyobs-module-ref` interface referenced
-    anywhere in `tree` (a `script_tree()` result; scans a fresh one if not given).
+def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
+    """{"available": bool, "options": {interface_name: [module_name, ...]}} for every
+    `x-pyobs-module-ref` interface referenced anywhere in `tree` (a `script_tree()` result;
+    scans a fresh one if not given).
 
-    Two distinct "nothing to offer" shapes, both of which the frontend treats identically (an
-    absent/empty key falls back to a plain text input either way) but which mean different
-    things to a caller inspecting the response directly: a bare `{}` means no field carries an
-    `x-pyobs-module-ref` marker at all (pre-pyobs-core#808, or a tree/schema with no module-ref
-    fields); `{interface_name: [], ...}` means fields do reference that interface, but
-    `webadmin.get_module_classes()` couldn't be trusted right now (`WEBADMIN_URL`/
-    `WEBADMIN_TOKEN` unset, web-admin unreachable, or no configured module happens to implement
-    it). A module whose class fails to resolve/import is skipped rather than failing the whole
-    lookup, same defensive style as `_scan_concrete_subclasses`.
+    `available` is False only when `webadmin.get_module_classes()` couldn't be trusted right now
+    (`WEBADMIN_URL`/`WEBADMIN_TOKEN` unset, web-admin unreachable, or an unusable response) --
+    the frontend renders a real `<select>` when True and falls back to a plain free-text input
+    when False, since script editing must never be blocked on web-admin being reachable. This is
+    a distinct signal from an individual interface's option list being empty: when `available`
+    is True, an empty list for some interface genuinely means "no configured module implements
+    this", which is then an enforceable error (see `validate_script`'s module-ref check below) --
+    unlike the `available: False` case, where an empty list means "we don't know" and nothing
+    should be rejected. A module whose class fails to resolve/import is skipped rather than
+    failing the whole lookup, same defensive style as `_scan_concrete_subclasses`.
     """
     interface_names: set[str] = set()
 
@@ -289,13 +291,13 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, list[str
 
     _collect(tree if tree is not None else script_tree())
 
-    result: dict[str, list[str]] = {name: [] for name in interface_names}
+    options: dict[str, list[str]] = {name: [] for name in interface_names}
     if not interface_names:
-        return result
+        return {"available": True, "options": options}
 
     classes = webadmin.get_module_classes()
     if classes is None:
-        return result
+        return {"available": False, "options": options}
 
     interfaces = {name: get_registered_interface(name) for name in interface_names}
     for module_name, fqcn in classes.items():
@@ -307,8 +309,8 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, list[str
             continue
         for name, iface in interfaces.items():
             if iface is not None and issubclass(cls, iface):
-                result[name].append(module_name)
-    return result
+                options[name].append(module_name)
+    return {"available": True, "options": options}
 
 
 def _scan_concrete_subclasses(package: ModuleType, base: type[PolymorphicBaseModel]) -> list[type[PolymorphicBaseModel]]:
@@ -528,6 +530,70 @@ def _summarize_validation_error(e: ValidationError) -> tuple[str, list[dict[str,
     return summary, errors
 
 
+def _modules_implementing(classes: dict[str, str], interfaces: list[type[Interface]]) -> set[str]:
+    """Module names in `classes` (module_name -> class fqcn, from `webadmin.get_module_classes()`)
+    whose resolved class implements every interface in `interfaces` (AND semantics, mirroring the
+    frontend's own intersection in schemaform.js's buildModuleRefControl for fields that need more
+    than one interface at once, e.g. DarkBiasScript.camera)."""
+    allowed: set[str] | None = None
+    for iface in interfaces:
+        matching: set[str] = set()
+        for module_name, fqcn in classes.items():
+            try:
+                cls = get_class_from_string(fqcn)
+            except Exception:
+                continue
+            if inspect.isclass(cls) and issubclass(cls, iface):
+                matching.add(module_name)
+        allowed = matching if allowed is None else allowed & matching
+    return allowed or set()
+
+
+def _collect_module_ref_errors(
+    obj: Any, loc: list[Any], classes: dict[str, str], errors: list[dict[str, Any]]
+) -> None:
+    """Recursively walk a validated `Script` instance tree, flagging every module-ref field
+    (`Annotated[str, SomeInterface]`, issue #98) whose value isn't a module `classes` says
+    implements every interface the field requires. Errors use the same `{loc, msg}` shape as
+    `_summarize_validation_error`, so they flow through the existing field-error plumbing
+    (ScriptBuilder._applyFieldErrors) and mark the offending `<select>` `.is-invalid` exactly
+    like any other field error, with no extra frontend wiring needed.
+
+    A required field left empty is flagged here too, with the same "Field required" message
+    pydantic itself would use: the builder's `<select>` always submits the key (empty string for
+    its blank placeholder option, never an absence), so pydantic's own required-field check never
+    sees a missing key to complain about -- this is the only thing that actually catches it.
+
+    Only ever called with a non-None `classes` -- an unreachable/unconfigured web-admin must
+    never block saving a script (module_ref_options() degrades to a free-text input in that
+    case; passing an empty dict here would instead reject every module-ref value outright).
+    """
+    if isinstance(obj, BaseModel):
+        for field_name, field_info in type(obj).model_fields.items():
+            if field_name in IGNORED_FIELDS:
+                continue
+            value = getattr(obj, field_name, None)
+            field_loc = loc + [field_name]
+            interfaces = [m for m in field_info.metadata if inspect.isclass(m) and issubclass(m, Interface)]
+            if interfaces:
+                if isinstance(value, str) and value:
+                    if value not in _modules_implementing(classes, interfaces):
+                        names = " + ".join(i.__name__ for i in interfaces)
+                        errors.append(
+                            {"loc": field_loc, "msg": f"'{value}' is not a configured module implementing {names}"}
+                        )
+                elif not value and field_info.is_required():
+                    errors.append({"loc": field_loc, "msg": "Field required"})
+                continue
+            _collect_module_ref_errors(value, field_loc, classes, errors)
+    elif isinstance(obj, list):
+        for i, item in enumerate(obj):
+            _collect_module_ref_errors(item, loc + [i], classes, errors)
+    elif isinstance(obj, dict):
+        for k, v in obj.items():
+            _collect_module_ref_errors(v, loc + [k], classes, errors)
+
+
 def validate_script(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         return {"valid": False, "error": "Script must be a YAML/JSON object."}
@@ -535,8 +601,7 @@ def validate_script(data: Any) -> dict[str, Any]:
     if error is not None:
         return {"valid": False, "error": error}
     try:
-        Script.model_validate(data)
-        return {"valid": True}
+        script = Script.model_validate(data)
     except (ImportError, AttributeError):
         return {"valid": False, "error": f"unknown script class '{data.get('class')}'"}
     except ValidationError as e:
@@ -544,6 +609,19 @@ def validate_script(data: Any) -> dict[str, Any]:
         return {"valid": False, "error": summary, "errors": errors}
     except Exception as e:
         return {"valid": False, "error": str(e)}
+
+    classes = webadmin.get_module_classes()
+    if classes is not None:
+        module_ref_errors: list[dict[str, Any]] = []
+        _collect_module_ref_errors(script, [], classes, module_ref_errors)
+        if module_ref_errors:
+            summary = (
+                module_ref_errors[0]["msg"]
+                if len(module_ref_errors) == 1
+                else f"{len(module_ref_errors)} field(s) need attention"
+            )
+            return {"valid": False, "error": summary, "errors": module_ref_errors}
+    return {"valid": True}
 
 
 def estimate_duration(data: Any) -> dict[str, Any]:
