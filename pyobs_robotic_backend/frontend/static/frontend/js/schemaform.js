@@ -66,6 +66,12 @@ function prettyLabel(name, schema) {
 function defaultValueFor(schema, defs) {
   const resolved = resolveSchema(schema, defs);
   if (resolved.default !== undefined) return resolved.default;
+  // A new enum item needs a real member as its default -- falling through to
+  // the generic string/number default below (e.g. "") would trip
+  // buildEnumControl's issue #101 invalid-value fallback on every "Add"
+  // click, same reasoning as buildPolymorphicControl defaulting to its
+  // first candidate for a brand-new item.
+  if (resolved.enum && resolved.enum.length) return resolved.enum[0];
   if (resolved.anyOf) {
     const dt = resolved.anyOf.find((o) => o.format === "date-time");
     if (dt) return new Date().toISOString().slice(0, 19);
@@ -91,6 +97,13 @@ function defaultValueFor(schema, defs) {
     default:
       return null;
   }
+}
+
+/** Whether `value` looks like a parseable ISO-ish datetime (the same prefix
+ * toDatetimeLocal() below matches) -- used to decide whether it's safe to
+ * hand to an <input type=datetime-local> at all (issue #101). */
+function isParseableDateTime(value) {
+  return /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/.test(String(value));
 }
 
 /** Convert an ISO timestamp / Time-ish value to a value usable in <input type=datetime-local>. */
@@ -259,6 +272,15 @@ function buildBoolControl(resolved, value) {
 }
 
 function buildNumberControl(resolved, value, isInt) {
+  // issue #101: a stored value of the wrong type (e.g. a YAML string/bool
+  // where a number belongs) would otherwise be silently sanitized away --
+  // `input.value = value` on a <input type=number> blanks to "", and
+  // getValue() then reads that back as 0, losing the original value before
+  // Save is even clicked. Flag it and fall back to raw YAML instead, like
+  // buildPolymorphicControl already does for an unmappable class.
+  if (value !== undefined && value !== null && (typeof value !== "number" || Number.isNaN(value))) {
+    return buildInvalidValueFallback(value, "Stored value doesn't match this field's type (expected a number).");
+  }
   const input = document.createElement("input");
   input.type = "number";
   input.className = "form-control form-control-sm";
@@ -291,6 +313,14 @@ function buildStringControl(resolved, value) {
 }
 
 function buildEnumControl(resolved, value) {
+  // issue #101: a stored value outside the enum would otherwise leave no
+  // <option> selected, so the native <select> silently falls back to its
+  // first option with no indication the value changed. `value` is `null`
+  // for a legitimately unset Optional[...] field (buildControl's anyOf
+  // branch passes it through as-is) -- not a mismatch, so that's excluded.
+  if (value !== undefined && value !== null && !resolved.enum.includes(value)) {
+    return buildInvalidValueFallback(value, "Stored value isn't one of this field's allowed options.");
+  }
   const select = document.createElement("select");
   select.className = "form-select form-select-sm";
   for (const opt of resolved.enum) {
@@ -305,6 +335,12 @@ function buildEnumControl(resolved, value) {
 }
 
 function buildDateTimeControl(value) {
+  // issue #101: an unparseable stored string would otherwise sanitize to ""
+  // the moment the form renders (getValue() then reads back `null`), before
+  // Save is even clicked.
+  if (value !== undefined && value !== null && !isParseableDateTime(value)) {
+    return buildInvalidValueFallback(value, "Stored value isn't a recognizable date/time.");
+  }
   const input = document.createElement("input");
   input.type = "datetime-local";
   input.step = "1";
@@ -334,6 +370,23 @@ function buildYamlControl(value) {
       }
     },
   };
+}
+
+/** Wraps buildYamlControl() with a visible warning for a primitive field
+ * (number/enum/date-time) whose stored value doesn't validate against its
+ * own schema (issue #101) -- mirrors buildPolymorphicControl's raw-YAML
+ * fallback for an unmappable class, so the value is flagged and preserved
+ * (round-trips through Save untouched) rather than silently sanitized away,
+ * until the user notices and either fixes or replaces it. */
+function buildInvalidValueFallback(value, reason) {
+  const wrap = document.createElement("div");
+  const warn = document.createElement("div");
+  warn.className = "small text-warning mb-1";
+  warn.textContent = `⚠ ${reason} Preserved as raw YAML below.`;
+  wrap.appendChild(warn);
+  const { control, getValue } = buildYamlControl(value);
+  wrap.appendChild(control);
+  return { control: wrap, getValue };
 }
 
 /** Nested object -> sub-form inside a bordered card. */

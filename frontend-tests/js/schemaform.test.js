@@ -319,6 +319,93 @@ describe("buildArrayControl: unaffected by the polymorphic-dispatch rewrite", ()
   });
 });
 
+describe("buildControl: invalid primitive values fall back to raw YAML (issue #101)", () => {
+  it("number: a wrong-type stored value (string) is flagged and preserved, not sanitized to 0", () => {
+    const { control, getValue } = buildControl({ type: "number" }, {}, "not a number", new Set(), POLYMORPHIC);
+    expect(control.querySelector("textarea")).not.toBeNull();
+    expect(control.querySelector("input[type=number]")).toBeNull();
+    expect(control.textContent).toMatch(/doesn't match this field's type/);
+    expect(getValue()).toBe("not a number");
+  });
+
+  it("number: NaN is flagged the same way", () => {
+    const { control } = buildControl({ type: "number" }, {}, NaN, new Set(), POLYMORPHIC);
+    expect(control.querySelector("textarea")).not.toBeNull();
+    expect(control.querySelector("input[type=number]")).toBeNull();
+  });
+
+  it("number: a valid stored value still gets the normal numeric input", () => {
+    const { control, getValue } = buildControl({ type: "number" }, {}, 3.5, new Set(), POLYMORPHIC);
+    expect(control.tagName).toBe("INPUT");
+    expect(getValue()).toBe(3.5);
+  });
+
+  it("number: undefined/null aren't flagged -- they mean 'use the default', not 'invalid'", () => {
+    const { control: c1, getValue: g1 } = buildControl({ type: "number", default: 5 }, {}, undefined, new Set(), POLYMORPHIC);
+    expect(c1.tagName).toBe("INPUT");
+    expect(g1()).toBe(5);
+    const { control: c2 } = buildControl({ type: "number" }, {}, null, new Set(), POLYMORPHIC);
+    expect(c2.tagName).toBe("INPUT");
+  });
+
+  it("enum: a value outside the allowed options is flagged and preserved, not silently defaulted", () => {
+    const resolved = { type: "string", enum: ["a", "b", "c"] };
+    const { control, getValue } = buildControl(resolved, {}, "z", new Set(), POLYMORPHIC);
+    expect(control.querySelector("textarea")).not.toBeNull();
+    expect(control.querySelector("select")).toBeNull();
+    expect(getValue()).toBe("z");
+  });
+
+  it("enum: a valid stored value still gets the normal <select>", () => {
+    const resolved = { type: "string", enum: ["a", "b", "c"] };
+    const { control, getValue } = buildControl(resolved, {}, "b", new Set(), POLYMORPHIC);
+    expect(control.tagName).toBe("SELECT");
+    expect(getValue()).toBe("b");
+  });
+
+  it("enum: null isn't flagged -- it's a legitimately unset Optional[...] field", () => {
+    const resolved = { anyOf: [{ type: "string", enum: ["a", "b"] }, { type: "null" }] };
+    const { control } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
+    expect(control.tagName).toBe("SELECT");
+  });
+
+  it("enum: a brand-new array item defaults to the first enum member, not the invalid-value fallback", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        choice: { type: "array", items: { type: "string", enum: ["a", "b", "c"] }, title: "Choice" },
+      },
+    };
+    const form = new SchemaForm(schema, {}, {}, { polymorphic: POLYMORPHIC });
+    form.element.querySelector("button.btn-outline-secondary").click();
+
+    expect(form.element.querySelector("textarea")).toBeNull();
+    expect(form.getData().choice).toEqual(["a"]);
+  });
+
+  it("date-time: an unparseable stored string is flagged and preserved, not sanitized to null", () => {
+    const { control, getValue } = buildControl({ type: "string", format: "date-time" }, {}, "not a date", new Set(), POLYMORPHIC);
+    expect(control.querySelector("textarea")).not.toBeNull();
+    expect(control.querySelector("input[type=datetime-local]")).toBeNull();
+    expect(getValue()).toBe("not a date");
+  });
+
+  it("date-time: a valid ISO stored value still gets the normal datetime-local input", () => {
+    const { control, getValue } = buildControl(
+      { type: "string", format: "date-time" },
+      {},
+      "2024-01-02T03:04:05",
+      new Set(),
+      POLYMORPHIC
+    );
+    expect(control.tagName).toBe("INPUT");
+    // jsdom's <input type=datetime-local step=1> normalizes the stored value
+    // (e.g. appends ".000"); the point of this test is that it's still the
+    // normal input, not the raw-YAML fallback.
+    expect(getValue()).toMatch(/^2024-01-02T03:04:05/);
+  });
+});
+
 describe("row layout: two-column for scalars, full-width for structural fields", () => {
   it("a scalar field (string) gets the two-column row", () => {
     const schema = {
