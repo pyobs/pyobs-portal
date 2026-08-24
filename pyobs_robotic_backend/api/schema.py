@@ -8,7 +8,7 @@ import typing
 from types import ModuleType
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 import pyobs.robotic.scheduler.constraints as constraints_module
 import pyobs.robotic.scheduler.merits as merits_module
@@ -408,6 +408,23 @@ def _check_no_classless_nodes(data: Any, expected_base: type[PolymorphicBaseMode
     return _check_fields_for_classless_nodes(cls, data)
 
 
+def _summarize_validation_error(e: ValidationError) -> tuple[str, list[dict[str, Any]]]:
+    """issue #102: pydantic's own str(e)/repr dumps every error verbatim, one
+    block per offending field path, each with a
+    "https://errors.pydantic.dev/..." doc link -- unreadable as a one-line
+    status message, and meaningless to an end user of this app.
+
+    Returns a short summary plus each error's `loc` (a path of field names /
+    list indices, e.g. ["configuration", "instrument_configs", 0, "window",
+    0]) and `msg` separately, with no URL, so a caller that has a form on
+    screen to walk (validate_script/) can flag the actual offending field
+    instead of just showing the summary.
+    """
+    errors = [{"loc": list(err["loc"]), "msg": err["msg"]} for err in e.errors(include_url=False)]
+    summary = errors[0]["msg"] if len(errors) == 1 else f"{len(errors)} field(s) need attention"
+    return summary, errors
+
+
 def validate_script(data: Any) -> dict[str, Any]:
     if not isinstance(data, dict):
         return {"valid": False, "error": "Script must be a YAML/JSON object."}
@@ -419,6 +436,9 @@ def validate_script(data: Any) -> dict[str, Any]:
         return {"valid": True}
     except (ImportError, AttributeError):
         return {"valid": False, "error": f"unknown script class '{data.get('class')}'"}
+    except ValidationError as e:
+        summary, errors = _summarize_validation_error(e)
+        return {"valid": False, "error": summary, "errors": errors}
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
@@ -450,5 +470,12 @@ def estimate_duration(data: Any) -> dict[str, Any]:
             # Legacy: called with just the script dict.
             script = Script.model_validate(data)
             return {"duration": script.estimate_duration()}
+    except ValidationError as e:
+        # issue #102: same raw-pydantic-dump problem as validate_script/ --
+        # this runs on every script edit now (issue #96's auto-estimate), so
+        # an in-progress/incomplete script would otherwise show it constantly.
+        # No form on screen to flag a field against here, just the summary.
+        summary, _ = _summarize_validation_error(e)
+        return {"error": summary}
     except Exception as e:
         return {"error": str(e)}

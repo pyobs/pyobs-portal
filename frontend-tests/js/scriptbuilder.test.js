@@ -470,6 +470,129 @@ describe("ScriptBuilder: source-view validation status", () => {
   });
 });
 
+describe("ScriptBuilder: places validate_script/ errors next to their field (issue #102)", () => {
+  afterEach(() => {
+    delete window.apiRequest;
+  });
+
+  it("flags the offending field's control and shows the message right after its row", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "Field required",
+        errors: [{ loc: ["expression"], msg: "Field required" }],
+      });
+
+    await builder._validate();
+
+    const input = container.querySelector("input[type=text]");
+    expect(input.classList.contains("is-invalid")).toBe(true);
+    expect(input.closest(".row").nextElementSibling.textContent).toBe("Field required");
+  });
+
+  it("resolves through an array + polymorphic nested field", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "SequentialRunner");
+    // Add a script to the (initially empty) scripts array; defaults to LogScript.
+    container.querySelector(".script-builder-editor .btn-outline-secondary").click();
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "Field required",
+        errors: [{ loc: ["scripts", 0, "expression"], msg: "Field required" }],
+      });
+
+    await builder._validate();
+
+    const nestedInput = container.querySelector("input[type=text]");
+    expect(nestedInput.classList.contains("is-invalid")).toBe(true);
+  });
+
+  it("groups multiple errors landing on the same row into one message", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "2 field(s) need attention",
+        errors: [
+          { loc: ["expression"], msg: "first problem" },
+          { loc: ["expression"], msg: "second problem" },
+        ],
+      });
+
+    await builder._validate();
+
+    const input = container.querySelector("input[type=text]");
+    expect(input.closest(".row").nextElementSibling.textContent).toBe("first problem / second problem");
+    expect(builder._fieldErrorEls).toHaveLength(1);
+  });
+
+  it("clears previously applied field errors on the next validation pass", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "Field required",
+        errors: [{ loc: ["expression"], msg: "Field required" }],
+      });
+    await builder._validate();
+    const input = container.querySelector("input[type=text]");
+    expect(input.classList.contains("is-invalid")).toBe(true);
+
+    window.apiRequest = () => Promise.resolve({ valid: true });
+    await builder._validate();
+
+    expect(input.classList.contains("is-invalid")).toBe(false);
+    expect(input.closest(".row").nextElementSibling).toBeNull();
+    expect(builder._fieldErrorEls).toHaveLength(0);
+  });
+
+  it("lists an error whose loc doesn't match any field, formatted, rather than dropping it", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "1 field(s) need attention",
+        errors: [{ loc: ["nonexistent_field"], msg: "huh" }],
+      });
+
+    await builder._validate();
+
+    expect(builder.unresolvedErrorsEl.classList.contains("d-none")).toBe(false);
+    expect(builder.unresolvedErrorsEl.textContent).toBe("Nonexistent Field: huh");
+  });
+
+  it("does not touch the form in source mode (no fields to flag)", async () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
+
+    window.apiRequest = () =>
+      Promise.resolve({
+        valid: false,
+        error: "bad",
+        errors: [{ loc: ["x"], msg: "bad" }],
+      });
+
+    await expect(builder._validate()).resolves.toBeUndefined();
+    expect(builder.unresolvedErrorsEl.classList.contains("d-none")).toBe(true);
+  });
+});
+
 describe("ScriptBuilder: refreshView()", () => {
   it("only refreshes the source editor while in source mode", () => {
     const builder = new ScriptBuilder(makeContainer(), TREE, {});
