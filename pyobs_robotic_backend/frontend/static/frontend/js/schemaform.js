@@ -110,10 +110,13 @@ class SchemaForm {
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
       const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
+
+      // Two columns (label | field) on wide screens, stacked on narrow/mobile --
+      // Bootstrap's standard horizontal-form row (issue #94).
       const row = document.createElement("div");
-      row.className = "mb-2";
+      row.className = "row mb-2";
       const label = document.createElement("label");
-      label.className = "form-label small text-secondary mb-1";
+      label.className = "col-sm-4 col-form-label col-form-label-sm small text-secondary mb-1 mb-sm-0";
       label.textContent = prettyLabel(name, resolved);
       if (required.has(name)) {
         const star = document.createElement("span");
@@ -123,13 +126,16 @@ class SchemaForm {
         label.appendChild(star);
       }
       row.appendChild(label);
-      row.appendChild(control);
+      const fieldCol = document.createElement("div");
+      fieldCol.className = "col-sm-8";
+      fieldCol.appendChild(control);
       if (resolved.description) {
         const help = document.createElement("div");
         help.className = "form-text small mt-1";
         help.textContent = resolved.description;
-        row.appendChild(help);
+        fieldCol.appendChild(help);
       }
+      row.appendChild(fieldCol);
       this.element.appendChild(row);
       this.fields[name] = { getValue, schema: resolved, rowEl: row };
     }
