@@ -18,20 +18,16 @@
   .CodeMirror-scroll { min-height: 300px; }
   .CodeMirror-readonly { background-color: #161719; opacity: 0.95; }
 
+  /* Full-width picker (issue #95): the tree and the parameter editor are
+     mutually exclusive panes, so unlike the old always-visible sidebar this
+     no longer needs a fixed width at any breakpoint. */
   .script-builder-tree {
-    max-height: 320px;
+    max-height: 60vh;
     overflow-y: auto;
   }
   .script-builder-tree summary {
     cursor: pointer;
     list-style-position: outside;
-  }
-  @media (min-width: 768px) {
-    .script-builder-tree {
-      width: 260px;
-      flex: 0 0 260px;
-      max-height: 70vh;
-    }
   }
 </style>
 {% endblock %}

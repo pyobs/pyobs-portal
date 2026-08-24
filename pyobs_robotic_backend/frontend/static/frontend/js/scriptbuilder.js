@@ -96,32 +96,21 @@ class ScriptBuilder {
     this.warningEl.className = "alert alert-warning small py-2 px-3 d-none mb-2";
     container.appendChild(this.warningEl);
 
-    // Builder view: responsive two-pane layout -- a plain sidebar on desktop
-    // (Bootstrap md+), a toggleable drawer above the editor pane on mobile
-    // (a `.collapse` element that `d-md-block` forces open at md+; see the
-    // `.script-builder-tree` CSS in task_detail.html for the width switch).
+    // Builder view: mutually-exclusive tree/editor panes -- only one is
+    // visible at a time (issue #95: an always-visible tree next to the
+    // editor made it too easy to switch root class mid-edit and lose form
+    // state). Picking a type in the tree hides it and shows the editor;
+    // "Delete script" (in _selectRoot) clears the form and brings the tree
+    // back. This also removes the need for a mobile drawer/toggle: whichever
+    // pane is active already gets the full width on any viewport.
     this.builderView = document.createElement("div");
-    this.builderView.className = "d-flex flex-column flex-md-row gap-3";
-
-    this.treePaneId = `script-tree-pane-${Math.random().toString(36).slice(2)}`;
-    const treeToggleBtn = document.createElement("button");
-    treeToggleBtn.type = "button";
-    treeToggleBtn.className = "btn btn-sm btn-outline-secondary d-md-none mb-2";
-    treeToggleBtn.innerHTML = '<i class="bi bi-list"></i> Browse script types';
-    treeToggleBtn.setAttribute("data-bs-toggle", "collapse");
-    treeToggleBtn.setAttribute("data-bs-target", `#${this.treePaneId}`);
 
     this.treePane = document.createElement("div");
-    this.treePane.id = this.treePaneId;
-    this.treePane.className = "collapse d-md-block script-builder-tree";
-
-    const treeWrap = document.createElement("div");
-    treeWrap.appendChild(treeToggleBtn);
-    treeWrap.appendChild(this.treePane);
-    this.builderView.appendChild(treeWrap);
+    this.treePane.className = "script-builder-tree";
+    this.builderView.appendChild(this.treePane);
 
     this.editorPane = document.createElement("div");
-    this.editorPane.className = "flex-grow-1 script-builder-editor";
+    this.editorPane.className = "script-builder-editor d-none";
     this.editorPane.addEventListener("input", () => this._scheduleValidate());
     this.editorPane.addEventListener("change", () => this._scheduleValidate());
     this.editorPane.addEventListener("click", (e) => {
@@ -150,6 +139,11 @@ class ScriptBuilder {
   _buildTree() {
     this.treePane.innerHTML = "";
 
+    const lead = document.createElement("p");
+    lead.className = "text-secondary small mb-2";
+    lead.textContent = "Select a script type to begin.";
+    this.treePane.appendChild(lead);
+
     const search = document.createElement("input");
     search.type = "search";
     search.className = "form-control form-control-sm mb-2";
@@ -176,7 +170,6 @@ class ScriptBuilder {
             btn.title = path;
             btn.addEventListener("click", () => {
               this._selectRoot(entry.class);
-              this._collapseTreeOnMobile();
             });
             container.appendChild(btn);
             this._treeLeafButtons.push({ btn, fqcn: entry.class, searchText: path.toLowerCase() });
@@ -212,12 +205,6 @@ class ScriptBuilder {
     });
   }
 
-  _collapseTreeOnMobile() {
-    if (window.bootstrap && window.matchMedia && window.matchMedia("(max-width: 767.98px)").matches) {
-      window.bootstrap.Collapse.getOrCreateInstance(this.treePane, { toggle: false }).hide();
-    }
-  }
-
   _highlightTree() {
     for (const { btn, fqcn } of this._treeLeafButtons) {
       btn.classList.toggle("active", fqcn === this.rootClass);
@@ -231,6 +218,24 @@ class ScriptBuilder {
     this.rootClass = fqcn;
     this._highlightTree();
     this.editorPane.innerHTML = "";
+    this.treePane.classList.add("d-none");
+    this.editorPane.classList.remove("d-none");
+
+    const header = document.createElement("div");
+    header.className = "d-flex align-items-center justify-content-between gap-2 mb-2";
+    const title = document.createElement("div");
+    title.className = "fw-semibold";
+    title.textContent = fqcn.split(".").pop();
+    header.appendChild(title);
+    const deleteBtn = document.createElement("button");
+    deleteBtn.type = "button";
+    deleteBtn.className = "btn btn-sm btn-outline-danger";
+    deleteBtn.innerHTML = '<i class="bi bi-trash"></i> Delete script';
+    deleteBtn.title = "Clear this script and pick a different type";
+    deleteBtn.addEventListener("click", () => this._deleteScript());
+    header.appendChild(deleteBtn);
+    this.editorPane.appendChild(header);
+
     if (!entry) {
       this.form = null;
       const p = document.createElement("p");
@@ -240,10 +245,6 @@ class ScriptBuilder {
       return;
     }
 
-    const title = document.createElement("div");
-    title.className = "fw-semibold mb-2";
-    title.textContent = fqcn.split(".").pop();
-    this.editorPane.appendChild(title);
     if (entry.schema.description) {
       const desc = document.createElement("p");
       desc.className = "text-secondary small";
@@ -257,11 +258,28 @@ class ScriptBuilder {
     this.editorPane.appendChild(this.form.element);
   }
 
-  _showEmptyEditor() {
+  /** Back to the picker: hide the editor, clear the current selection, and
+   * show the type tree again -- the only way back once a type is picked
+   * (issue #95), so it always goes through the confirmation in
+   * _deleteScript() rather than a stray click on the (now-hidden) tree. */
+  _showPicker() {
     this.rootClass = null;
     this.form = null;
     this._highlightTree();
-    this.editorPane.innerHTML = '<p class="text-secondary small">Select a script type from the list to get started.</p>';
+    this.editorPane.innerHTML = "";
+    this.editorPane.classList.add("d-none");
+    this.treePane.classList.remove("d-none");
+  }
+
+  /** "Delete script" button: clears the in-progress form and returns to the
+   * type picker. Destructive enough (an entire configured script, possibly
+   * with nested polymorphic children) to warrant a confirmation. */
+  _deleteScript() {
+    if (!confirm("Delete this script and start fresh? This clears all configured parameters and the script YAML.")) return;
+    this.warningEl.classList.add("d-none");
+    this._showPicker();
+    this._setSourceText({});
+    this._scheduleValidate();
   }
 
   // ── Content / mode ───────────────────────────────────────────────────
@@ -275,7 +293,7 @@ class ScriptBuilder {
     const isEmpty = !data || typeof data !== "object" || Object.keys(data).length === 0;
 
     if (isEmpty) {
-      this._showEmptyEditor();
+      this._showPicker();
       this._setSourceText({});
       this._applyMode("builder");
       this._scheduleValidate();
@@ -315,7 +333,7 @@ class ScriptBuilder {
     const cls = isEmpty ? undefined : parsed.class;
 
     if (isEmpty) {
-      this._showEmptyEditor();
+      this._showPicker();
     } else if (!cls || !this._leafByClass.has(cls)) {
       this.warningEl.textContent = cls
         ? `Unknown script class "${cls}" -- can't switch to the builder view without dropping data. Fix the class name or install the script package first.`
@@ -373,6 +391,15 @@ class ScriptBuilder {
   }
 
   async _validate() {
+    if (this.mode === "builder" && !this.rootClass) {
+      // No type picked yet (fresh empty script, or just back from Delete) --
+      // clear the status rather than running validate_script/ against {},
+      // which would show "no script class selected" as a red error for a
+      // state the user hasn't done anything wrong to reach.
+      this.statusEl.textContent = "";
+      this.statusEl.className = "small";
+      return;
+    }
     if (this.mode === "source" && this._parseSource() === undefined) {
       // getData() flattens invalid YAML into {}, which validate_script/
       // would report as "no script class selected" -- misleading when the
