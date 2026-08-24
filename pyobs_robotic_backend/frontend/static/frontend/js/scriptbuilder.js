@@ -373,6 +373,14 @@ class ScriptBuilder {
   }
 
   async _validate() {
+    if (this.mode === "source" && this._parseSource() === undefined) {
+      // getData() flattens invalid YAML into {}, which validate_script/
+      // would report as "no script class selected" -- misleading when the
+      // actual problem is the YAML itself not parsing.
+      this.statusEl.textContent = "✗ Invalid YAML";
+      this.statusEl.className = "small text-danger";
+      return;
+    }
     const data = this.getData();
     try {
       const result = await apiRequest("validate_script/", { method: "POST", body: data });

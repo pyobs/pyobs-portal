@@ -273,6 +273,39 @@ describe("ScriptBuilder: mode toggle", () => {
     expect(builder.warningEl.classList.contains("d-none")).toBe(false);
     expect(builder.getData()).toEqual(unmappable);
   });
+
+  it("Source -> Builder warns (non-blocking) when a field doesn't survive the rebuild", () => {
+    // The schema only knows about `expression`; extra_field is silently
+    // dropped by SchemaForm, which only reads its own schema.properties --
+    // the switch still succeeds, but the stableStringify mismatch must be
+    // surfaced so the user notices before saving.
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    builder.sourceModeBtn.click();
+    builder.sourceEditor.editor.setValue(
+      JSON.stringify({ class: "pkg.utils.log.LogScript", expression: "x", extra_field: "dropped" })
+    );
+
+    builder.builderModeBtn.click();
+
+    expect(builder.mode).toBe("builder");
+    expect(builder.warningEl.classList.contains("d-none")).toBe(false);
+    expect(builder.warningEl.textContent).toMatch(/doesn't exactly match/);
+    expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "x" });
+  });
+});
+
+describe("ScriptBuilder: source-view validation status", () => {
+  it("shows an Invalid YAML message rather than getData()'s {} fallback misreporting via validate_script/", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    builder.sourceModeBtn.click();
+    builder.sourceEditor.editor.setValue("not valid json{{{");
+
+    await builder._validate();
+
+    expect(builder.statusEl.textContent).toBe("✗ Invalid YAML");
+  });
 });
 
 describe("ScriptBuilder: refreshView()", () => {
