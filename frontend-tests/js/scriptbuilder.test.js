@@ -298,8 +298,17 @@ describe("ScriptBuilder: unmappable data (§4.12)", () => {
   });
 });
 
-describe("ScriptBuilder: redundant mode clicks are no-ops", () => {
-  it("clicking Builder while already in builder mode doesn't touch the form", () => {
+describe("ScriptBuilder: no general-purpose Builder/Source toggle (issue #97)", () => {
+  it("a normal, mappable script has no Source button to switch away to", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    expect(builder.sourceModeBtn).toBeUndefined();
+    expect(builder.builderModeBtn.classList.contains("d-none")).toBe(true);
+  });
+
+  it("clicking the (hidden) builderModeBtn while already in builder mode is a no-op", () => {
     const container = makeContainer();
     const builder = new ScriptBuilder(container, TREE, {});
     selectByText(container, "LogScript");
@@ -308,57 +317,40 @@ describe("ScriptBuilder: redundant mode clicks are no-ops", () => {
     input.dispatchEvent(new Event("input"));
 
     // The source editor was never synced with this edit (only construction
-    // set it, to `{}`) -- if the redundant click weren't a no-op, it would
-    // re-parse that stale/empty content and wipe the in-progress edit.
+    // set it, to `{}`) -- if this weren't a no-op, it would re-parse that
+    // stale/empty content and wipe the in-progress edit.
     builder.builderModeBtn.click();
 
     expect(builder.mode).toBe("builder");
     expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "in progress" });
   });
-
-  it("clicking Source while already in source mode doesn't touch the editor content", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
-    builder.sourceEditor.editor.setValue("not valid json{{{");
-
-    builder.sourceModeBtn.click();
-
-    expect(builder.mode).toBe("source");
-    expect(builder.sourceEditor.editor.getValue()).toBe("not valid json{{{");
-  });
 });
 
-describe("ScriptBuilder: mode toggle", () => {
-  it("Builder -> Source dumps the current builder state to YAML", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    selectByText(container, "LogScript");
-    builder.sourceModeBtn.click();
+describe("ScriptBuilder: unmappable-fallback recovery (\"Try Builder view\")", () => {
+  it("the fallback shows a visible 'Try Builder view' button", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
 
     expect(builder.mode).toBe("source");
-    expect(JSON.parse(builder.sourceEditor.editor.getValue())).toEqual({
-      class: "pkg.utils.log.LogScript",
-      expression: "",
-    });
+    expect(builder.builderModeBtn.classList.contains("d-none")).toBe(false);
+    expect(builder.builderModeBtn.textContent).toBe("Try Builder view");
   });
 
-  it("Source -> Builder rebuilds the tree/form selection from valid YAML", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
+  it("rebuilds the tree/form selection once the class is fixed to a valid one", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
     builder.sourceEditor.editor.setValue(JSON.stringify({ class: "pkg.utils.log.LogScript", expression: "x" }));
 
     builder.builderModeBtn.click();
 
     expect(builder.mode).toBe("builder");
+    expect(builder.builderModeBtn.classList.contains("d-none")).toBe(true);
     expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "x" });
   });
 
-  it("Source -> Builder with invalid YAML stays in source view with a warning", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
+  it("stays in source view with a warning if the YAML is still invalid", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
     builder.sourceEditor.editor.setValue("not json{{{");
 
     builder.builderModeBtn.click();
@@ -367,28 +359,26 @@ describe("ScriptBuilder: mode toggle", () => {
     expect(builder.warningEl.classList.contains("d-none")).toBe(false);
   });
 
-  it("Source -> Builder with an unknown class stays in source view without dropping data", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
-    const unmappable = { class: "pkg.uninstalled.GoneScript", x: 1 };
-    builder.sourceEditor.editor.setValue(JSON.stringify(unmappable));
+  it("stays in source view without dropping data if the class is still unknown", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
+    const stillUnmappable = { class: "pkg.uninstalled.StillGone", x: 2 };
+    builder.sourceEditor.editor.setValue(JSON.stringify(stillUnmappable));
 
     builder.builderModeBtn.click();
 
     expect(builder.mode).toBe("source");
     expect(builder.warningEl.classList.contains("d-none")).toBe(false);
-    expect(builder.getData()).toEqual(unmappable);
+    expect(builder.getData()).toEqual(stillUnmappable);
   });
 
-  it("Source -> Builder warns (non-blocking) when a field doesn't survive the rebuild", () => {
+  it("warns (non-blocking) when a field doesn't survive the rebuild", () => {
     // The schema only knows about `expression`; extra_field is silently
     // dropped by SchemaForm, which only reads its own schema.properties --
     // the switch still succeeds, but the stableStringify mismatch must be
     // surfaced so the user notices before saving.
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
     builder.sourceEditor.editor.setValue(
       JSON.stringify({ class: "pkg.utils.log.LogScript", expression: "x", extra_field: "dropped" })
     );
@@ -400,13 +390,26 @@ describe("ScriptBuilder: mode toggle", () => {
     expect(builder.warningEl.textContent).toMatch(/doesn't exactly match/);
     expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "x" });
   });
+
+  it("clicking 'Try Builder view' while already in builder mode is a no-op (defensive: the button is hidden then)", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
+    builder.sourceEditor.editor.setValue(JSON.stringify({ class: "pkg.utils.log.LogScript", expression: "x" }));
+    builder.builderModeBtn.click();
+    expect(builder.mode).toBe("builder");
+
+    builder.sourceEditor.editor.setValue("not valid json{{{"); // stale, unsynced content
+    builder.builderModeBtn.click();
+
+    expect(builder.mode).toBe("builder");
+    expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "x" });
+  });
 });
 
 describe("ScriptBuilder: source-view validation status", () => {
   it("shows an Invalid YAML message rather than getData()'s {} fallback misreporting via validate_script/", async () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
-    builder.sourceModeBtn.click();
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
     builder.sourceEditor.editor.setValue("not valid json{{{");
 
     await builder._validate();
@@ -417,15 +420,14 @@ describe("ScriptBuilder: source-view validation status", () => {
 
 describe("ScriptBuilder: refreshView()", () => {
   it("only refreshes the source editor while in source mode", () => {
-    const container = makeContainer();
-    const builder = new ScriptBuilder(container, TREE, {});
+    const builder = new ScriptBuilder(makeContainer(), TREE, {});
     let refreshed = 0;
     builder.sourceEditor.editor.refresh = () => refreshed++;
 
     builder.refreshView(); // builder mode -- no-op
     expect(refreshed).toBe(0);
 
-    builder.sourceModeBtn.click();
+    builder.setContent({ class: "pkg.uninstalled.GoneScript", x: 1 }); // unmappable -- forces source mode
     builder.refreshView();
     expect(refreshed).toBe(1);
   });
