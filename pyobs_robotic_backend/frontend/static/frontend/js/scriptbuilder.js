@@ -150,12 +150,32 @@ class ScriptBuilder {
         if (isLeafGroup) {
           for (const [clsName, entry] of Object.entries(value)) {
             const path = `${prefix}${name}/${clsName}`;
+            const description = entry.schema.description || "";
             this._leafByClass.set(entry.class, entry);
             const btn = document.createElement("button");
             btn.type = "button";
-            btn.className = "list-group-item list-group-item-action py-1 px-2 small";
-            btn.textContent = clsName;
-            btn.title = path;
+            btn.className = "list-group-item list-group-item-action py-1 px-2";
+            // Full path (+ description, if any) as a tooltip -- useful when
+            // the description below is truncated to two lines.
+            btn.title = description ? `${path}\n\n${description}` : path;
+
+            const nameEl = document.createElement("div");
+            nameEl.className = "small";
+            nameEl.textContent = clsName;
+            btn.appendChild(nameEl);
+
+            if (description) {
+              // Issue #100: surface each script type's description in the
+              // picker itself (previously shown only after selection, in
+              // _selectRoot()'s editor-pane header) -- picking a type hides
+              // the tree (#95/#99), so a wrong guess is costly to back out
+              // of. Clamped to 2 lines; the full text is in the tooltip.
+              const descEl = document.createElement("div");
+              descEl.className = "text-secondary script-builder-tree-item-desc";
+              descEl.textContent = description;
+              btn.appendChild(descEl);
+            }
+
             btn.addEventListener("click", () => {
               this._selectRoot(entry.class);
             });

@@ -39,6 +39,16 @@
     cursor: pointer;
     list-style-position: outside;
   }
+  /* Script type description in the picker (issue #100) -- clamp to two
+     lines so a long docstring doesn't blow out the list; full text is
+     still available via the button's title tooltip. */
+  .script-builder-tree-item-desc {
+    font-size: 0.75rem;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
 </style>
 {% endblock %}
 
