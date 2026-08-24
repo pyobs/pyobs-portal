@@ -148,6 +148,58 @@ describe("ScriptBuilder: selecting a script type", () => {
   });
 });
 
+describe("ScriptBuilder: type picker shows each type's description (issue #100)", () => {
+  // A tree entry that carries a schema.description, unlike TREE's LogScript
+  // / SequentialRunner -- keeps the shared TREE/selectByText() untouched
+  // (its exact-textContent match would break once a description is appended
+  // as a sibling node inside the button).
+  const TREE_WITH_DESC = {
+    utils: {
+      log: {
+        LogScript: {
+          class: "pkg.utils.log.LogScript",
+          schema: {
+            title: "LogScript",
+            type: "object",
+            description: "Logs an arbitrary Python expression to the observation log.",
+            properties: { expression: { type: "string", title: "Expression" } },
+            required: ["expression"],
+          },
+        },
+      },
+    },
+  };
+
+  it("renders the description below the class name", () => {
+    const container = makeContainer();
+    new ScriptBuilder(container, TREE_WITH_DESC, {});
+
+    const btn = [...container.querySelectorAll(".list-group-item")][0];
+    expect(btn.querySelector(".script-builder-tree-item-desc").textContent).toBe(
+      "Logs an arbitrary Python expression to the observation log."
+    );
+  });
+
+  it("puts the path and description in the tooltip", () => {
+    const container = makeContainer();
+    new ScriptBuilder(container, TREE_WITH_DESC, {});
+
+    const btn = [...container.querySelectorAll(".list-group-item")][0];
+    expect(btn.title).toBe("utils/log/LogScript\n\nLogs an arbitrary Python expression to the observation log.");
+  });
+
+  it("omits the description element for a type with no schema description", () => {
+    const container = makeContainer();
+    new ScriptBuilder(container, TREE, {}); // TREE's LogScript has no description
+
+    const btn = [...container.querySelectorAll(".list-group-item")].find(
+      (b) => b.querySelector(".small")?.textContent === "LogScript"
+    );
+    expect(btn.querySelector(".script-builder-tree-item-desc")).toBeNull();
+    expect(btn.title).toBe("utils/log/LogScript");
+  });
+});
+
 describe("ScriptBuilder: tree/editor pane exclusivity (issue #95)", () => {
   afterEach(() => {
     vi.restoreAllMocks();
