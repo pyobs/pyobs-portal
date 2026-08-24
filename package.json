@@ -1,4 +1,5 @@
 {
+  "name": "pyobs-robotic-backend",
   "private": true,
   "type": "module",
   "scripts": {

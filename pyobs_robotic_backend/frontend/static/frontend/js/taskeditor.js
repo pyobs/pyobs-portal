@@ -524,28 +524,12 @@ class TargetEditor {
 }
 
 /** YAML script editor with live validation and "insert template" menu. */
+/** Raw-YAML script editor (CodeMirror over a textarea). Composed by
+ * ScriptBuilder (scriptbuilder.js) as its "Source" view -- ScriptBuilder owns
+ * validation/status display for both its views, so this stays a plain
+ * get/set wrapper with an onChange hook rather than validating itself. */
 class ScriptEditor {
-  constructor(container, scriptTree, scriptData) {
-    this.templateMap = {};
-
-    const toolbar = document.createElement("div");
-    toolbar.className = "d-flex justify-content-end mb-2";
-
-    const select = document.createElement("select");
-    select.className = "form-select form-select-sm w-auto";
-    const placeholder = document.createElement("option");
-    placeholder.value = "";
-    placeholder.textContent = "Insert template…";
-    select.appendChild(placeholder);
-    this._walk(scriptTree, "", select);
-    select.addEventListener("change", () => {
-      if (!select.value) return;
-      this._insertTemplate(this.templateMap[select.value]);
-      select.value = "";
-    });
-    toolbar.appendChild(select);
-    container.appendChild(toolbar);
-
+  constructor(container, scriptData, opts = {}) {
     const ta = document.createElement("textarea");
     ta.value = scriptData ? jsyaml.dump(scriptData) : "";
     container.appendChild(ta);
@@ -562,73 +546,8 @@ class ScriptEditor {
     });
     setTimeout(() => this.editor.refresh(), 0);
 
-    this.status = document.createElement("div");
-    this.status.className = "small mt-1";
-    container.appendChild(this.status);
-
-    let timer = null;
-    this.editor.on("change", () => {
-      clearTimeout(timer);
-      timer = setTimeout(() => this._validate(), 400);
-    });
-    this._validate();
-  }
-
-  /** Walk the (possibly nested) script tree, registering leaves in templateMap. */
-  _walk(tree, prefix, select) {
-    for (const [name, value] of Object.entries(tree)) {
-      const isClassesDict = Object.values(value).every((v) => v && typeof v === "object" && "class" in v && "schema" in v);
-      if (isClassesDict) {
-        for (const [clsName, entry] of Object.entries(value)) {
-          const key = `${prefix}${name}/${clsName}`;
-          this.templateMap[key] = entry;
-          const opt = document.createElement("option");
-          opt.value = key;
-          opt.textContent = key;
-          select.appendChild(opt);
-        }
-      } else {
-        this._walk(value, `${prefix}${name}/`, select);
-      }
-    }
-  }
-
-  _insertTemplate(entry) {
-    if (!entry) return;
-    const schema = entry.schema || {};
-    const defs = schema.$defs || {};
-    const template = { class: entry.class, ...templateForSchema(schema, defs) };
-    const snippet = jsyaml.dump(template);
-    const currentValue = this.editor.getValue();
-    if (!currentValue.trim()) {
-      this.editor.setValue(snippet);
-    } else {
-      this.editor.setValue(currentValue + (currentValue.endsWith("\n") ? "" : "\n") + snippet);
-    }
-    this._validate();
-  }
-
-  async _validate() {
-    let data;
-    try {
-      data = jsyaml.load(this.editor.getValue()) || {};
-    } catch (e) {
-      this.status.textContent = `✗ Invalid YAML: ${e.message}`;
-      this.status.className = "small mt-1 text-danger";
-      return;
-    }
-    try {
-      const result = await apiRequest("validate_script/", { method: "POST", body: data });
-      if (result.valid) {
-        this.status.textContent = "✓ Valid";
-        this.status.className = "small mt-1 text-success";
-      } else {
-        this.status.textContent = `✗ ${result.error}`;
-        this.status.className = "small mt-1 text-danger";
-      }
-    } catch (e) {
-      this.status.textContent = `✗ ${e.message}`;
-      this.status.className = "small mt-1 text-danger";
+    if (opts.onChange) {
+      this.editor.on("change", () => opts.onChange());
     }
   }
 
@@ -688,17 +607,6 @@ async function simbadSearch(name) {
     return { ra: data.data[0][0], dec: data.data[0][1] };
   }
   return null;
-}
-
-/** Build a minimal-but-valid instance of a schema, for "insert template". */
-function templateForSchema(schema, defs) {
-  const resolved = resolveSchema(schema, defs);
-  const result = {};
-  for (const [name, prop] of Object.entries(resolved.properties || {})) {
-    if (IGNORED_TASK_FIELDS.has(name)) continue;
-    result[name] = defaultValueFor(prop, defs);
-  }
-  return result;
 }
 
 // ── Page bootstrap ──────────────────────────────────────────────────────────
@@ -797,7 +705,40 @@ async function initTaskEditor(taskId) {
   const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints);
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
-  const scriptEditor = new ScriptEditor(els.script, scriptTree, task.script);
+
+  // Shared by the Duration field's stopwatch button and ScriptBuilder's own
+  // "Estimate duration" button, so both trigger the same full-task-payload
+  // estimate_duration/ call (needed for e.g. TransitImagingScript to find its
+  // TransitMerit and return the correct window duration).
+  async function estimateDuration() {
+    const btn = document.getElementById("btn-estimate-duration");
+    btn.disabled = true;
+    try {
+      const payload = {
+        id: els.code.value,
+        project: els.project.value,
+        constraints: constraintsEditor.getData(),
+        merits: meritsEditor.getData(),
+        script: scriptBuilder.getData(),
+      };
+      const result = await apiRequest("estimate_duration/", { method: "POST", body: payload });
+      if (result.error) {
+        els.saveStatus.textContent = `✗ ${result.error}`;
+        els.saveStatus.className = "small ms-2 text-danger";
+      } else {
+        els.duration.value = result.duration;
+        els.saveStatus.textContent = `Estimated: ${result.duration} s`;
+        els.saveStatus.className = "small ms-2 text-secondary";
+      }
+    } catch (e) {
+      els.saveStatus.textContent = `✗ ${e.message}`;
+      els.saveStatus.className = "small ms-2 text-danger";
+    } finally {
+      btn.disabled = false;
+    }
+  }
+
+  const scriptBuilder = new ScriptBuilder(els.script, scriptTree, task.script, { onEstimateDuration: estimateDuration });
 
   // Initialise merit plot (requires buildPayload, defined below, so we use a closure)
   if (typeof initMeritPlot === "function") {
@@ -821,7 +762,7 @@ async function initTaskEditor(taskId) {
         constraints: constraintsEditor.getData(),
         merits: meritsEditor.getData(),
         target,
-        script: scriptEditor.getData(),
+        script: scriptBuilder.getData(),
       };
     }, siteConfig);
   }
@@ -844,36 +785,7 @@ async function initTaskEditor(taskId) {
   _patchEditor(constraintsEditor);
   _patchEditor(meritsEditor);
 
-  document.getElementById("btn-estimate-duration").addEventListener("click", async () => {
-    const btn = document.getElementById("btn-estimate-duration");
-    btn.disabled = true;
-    try {
-      // Send the full task payload (not just the script) so that scripts like
-      // TransitImagingScript can find their TransitMerit and return the correct
-      // window duration rather than falling back to summing exposure times.
-      const payload = {
-        id: els.code.value,
-        project: els.project.value,
-        constraints: constraintsEditor.getData(),
-        merits: meritsEditor.getData(),
-        script: scriptEditor.getData(),
-      };
-      const result = await apiRequest("estimate_duration/", { method: "POST", body: payload });
-      if (result.error) {
-        els.saveStatus.textContent = `✗ ${result.error}`;
-        els.saveStatus.className = "small ms-2 text-danger";
-      } else {
-        els.duration.value = result.duration;
-        els.saveStatus.textContent = `Estimated: ${result.duration} s`;
-        els.saveStatus.className = "small ms-2 text-secondary";
-      }
-    } catch (e) {
-      els.saveStatus.textContent = `✗ ${e.message}`;
-      els.saveStatus.className = "small ms-2 text-danger";
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  document.getElementById("btn-estimate-duration").addEventListener("click", estimateDuration);
 
   document.getElementById("observations-data-th").classList.toggle("d-none", !siteConfig.archive_enabled);
 
@@ -895,7 +807,7 @@ async function initTaskEditor(taskId) {
     constraints: constraintsEditor.getData(),
     merits: meritsEditor.getData(),
     target: targetEditor.getData(),
-    script: scriptEditor.getData(),
+    script: scriptBuilder.getData(),
   });
 
   els.exportBtn.addEventListener("click", () => {
@@ -917,7 +829,7 @@ async function initTaskEditor(taskId) {
   });
 
   document.getElementById("tab-script-nav").addEventListener("show.bs.tab", () => {
-    setTimeout(() => scriptEditor.editor.refresh(), 0);
+    setTimeout(() => scriptBuilder.refreshView(), 0);
   });
 
   let yamlPreviewEditor = null;
@@ -1067,4 +979,14 @@ function dataStatusEl(text, muted = false) {
 
 function unavailableDataStatusEl() {
   return dataStatusEl("unavailable", true);
+}
+
+// ScriptEditor is a `class` (not `var`/`function`), so it isn't a `window`
+// property automatically even in a classic <script> -- scriptbuilder.js
+// composes it by bare name, which resolves fine in the browser (shared
+// classic-script scope) but needs this to resolve under vitest, where each
+// file is its own ES module. See schemaform.js's window exposure for the
+// same pattern.
+if (typeof window !== "undefined") {
+  window.ScriptEditor = ScriptEditor;
 }
