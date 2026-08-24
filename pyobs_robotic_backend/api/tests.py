@@ -6,6 +6,7 @@ from unittest.mock import Mock, patch
 import requests
 from astropy.time import Time
 from django.contrib.auth.models import User
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.utils import timezone
@@ -732,9 +733,44 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         self.assertGreaterEqual(seen, set(samples))
 
 
+class ScriptTreeCachingTests(SimpleTestCase):
+    """`script_tree()` caches its result briefly (issue #98) so the near-simultaneous
+    /api/schema/scripts/ and /api/schema/modules/ calls one page load fires don't each pay for
+    the full recursive pkgutil/importlib scan."""
+
+    def setUp(self):
+        cache.clear()
+
+    def tearDown(self):
+        cache.clear()
+
+    def test_second_call_within_ttl_served_from_cache(self):
+        first = schema_module.script_tree()
+        # If the second call actually rescanned, this would blow up -- proving it didn't.
+        with patch(
+            "pyobs_robotic_backend.api.schema.importlib.import_module",
+            side_effect=AssertionError("script_tree() rescanned instead of using the cache"),
+        ):
+            second = schema_module.script_tree()
+        self.assertEqual(first, second)
+
+    def test_cache_expiring_triggers_a_fresh_scan(self):
+        schema_module.script_tree()
+        cache.clear()  # simulates TTL expiry without waiting real seconds
+        # No patch/assertion-raising here -- this must succeed by actually rescanning.
+        second = schema_module.script_tree()
+        self.assertIn("$polymorphic", second)
+
+
 class GetModuleClassesTests(SimpleTestCase):
     """`webadmin.get_module_classes()` (issue #98) -- must never raise, must degrade to `None`
     whenever the result can't be trusted, exactly like archive.py's on-demand check."""
+
+    def setUp(self):
+        # get_module_classes() caches its result (success or None) briefly against a fixed key
+        # regardless of settings -- without clearing, one test's result would leak into the
+        # next's assertions instead of exercising that test's own mocked requests.get().
+        cache.clear()
 
     @override_settings(WEBADMIN_URL="", WEBADMIN_TOKEN="tok")
     def test_no_request_when_url_unset(self):
@@ -763,6 +799,31 @@ class GetModuleClassesTests(SimpleTestCase):
         self.assertEqual(args[0], "https://webadmin.example.org/api/modules/classes/")
         self.assertEqual(kwargs["headers"], {"X-Hub-Token": "tok"})
         self.assertEqual(kwargs["timeout"], 5)
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_second_call_within_ttl_reuses_cached_result_success(self, mock_get):
+        resp = Mock(status_code=200)
+        resp.raise_for_status = Mock()
+        resp.json.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get.return_value = resp
+
+        first = webadmin.get_module_classes()
+        second = webadmin.get_module_classes()
+
+        self.assertEqual(first, second)
+        mock_get.assert_called_once()
+
+    @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
+    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    def test_second_call_within_ttl_reuses_cached_result_failure(self, mock_get):
+        # A down-but-configured web-admin must not cost the full request timeout again on the
+        # very next call -- the None result itself is cached too, not just successes.
+        mock_get.side_effect = requests.ConnectionError("refused")
+
+        self.assertIsNone(webadmin.get_module_classes())
+        self.assertIsNone(webadmin.get_module_classes())
+        mock_get.assert_called_once()
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org/", WEBADMIN_TOKEN="tok")
     @patch("pyobs_robotic_backend.api.webadmin.requests.get")
@@ -794,6 +855,7 @@ class GetModuleClassesTests(SimpleTestCase):
     @patch("pyobs_robotic_backend.api.webadmin.requests.get")
     def test_malformed_body_returns_none(self, mock_get):
         for body in (["not", "a", "dict"], {"cam1": 123}, "just a string"):
+            cache.clear()  # each iteration must hit requests.get again, not a cached prior result
             resp = Mock(status_code=200)
             resp.raise_for_status = Mock()
             resp.json.return_value = body

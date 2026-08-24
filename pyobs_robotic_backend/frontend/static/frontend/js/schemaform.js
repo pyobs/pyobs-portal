@@ -379,6 +379,8 @@ function buildStringControl(resolved, value) {
  * "custom value" escape hatch a <select> would need. Value handling mirrors
  * buildStringControl exactly so an untouched field round-trips unchanged.
  */
+let _moduleRefDatalistCounter = 0;
+
 function buildModuleRefControl(marker, value, moduleRefs) {
   const interfaces = marker.interfaces || [];
   const names = interfaces.length
@@ -393,7 +395,7 @@ function buildModuleRefControl(marker, value, moduleRefs) {
   if (value !== undefined && value !== null) input.value = value;
 
   if (names.length) {
-    const listId = `module-ref-${Math.random().toString(36).slice(2)}`;
+    const listId = `module-ref-${_moduleRefDatalistCounter++}`;
     input.setAttribute("list", listId);
     const datalist = document.createElement("datalist");
     datalist.id = listId;

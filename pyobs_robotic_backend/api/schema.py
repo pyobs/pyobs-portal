@@ -8,6 +8,7 @@ import typing
 from types import ModuleType
 from typing import Any
 
+from django.core.cache import cache
 from pydantic import BaseModel, ValidationError
 
 import pyobs.robotic.scheduler.constraints as constraints_module
@@ -240,6 +241,12 @@ def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
     different interfaces on different script classes, e.g. `ImagingScript.camera` vs.
     `DarkBiasScript.camera`). No effect until pyobs-core actually carries this metadata
     (pyobs/pyobs-core#808) -- until then this simply finds nothing to mark.
+
+    Only walks `cls.model_fields` directly -- unlike `_annotate_polymorphic`, this does not
+    recurse into nested `$defs` models. A module-ref field on a nested model (e.g. some future
+    `InstrumentConfig.something`) would need its own `_annotate_module_refs(def_node, NestedCls)`
+    call added at that recursion point; not needed today since every field pyobs-core#808 tags
+    lives directly on a `Script` subclass.
     """
     properties = schema.get("properties")
     if not isinstance(properties, dict):
@@ -259,11 +266,15 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, list[str
     """{interface_name: [module_name, ...]} for every `x-pyobs-module-ref` interface referenced
     anywhere in `tree` (a `script_tree()` result; scans a fresh one if not given).
 
-    Backed by `webadmin.get_module_classes()` -- returns `{}` (every interface maps to an empty
-    list, so the frontend's dropdown falls back to free text) whenever that's unavailable:
-    `WEBADMIN_URL`/`WEBADMIN_TOKEN` unset, web-admin unreachable, or no interfaces are actually
-    referenced yet (pre-#808). A module whose class fails to resolve/import is skipped rather
-    than failing the whole lookup, same defensive style as `_scan_concrete_subclasses`.
+    Two distinct "nothing to offer" shapes, both of which the frontend treats identically (an
+    absent/empty key falls back to a plain text input either way) but which mean different
+    things to a caller inspecting the response directly: a bare `{}` means no field carries an
+    `x-pyobs-module-ref` marker at all (pre-pyobs-core#808, or a tree/schema with no module-ref
+    fields); `{interface_name: [], ...}` means fields do reference that interface, but
+    `webadmin.get_module_classes()` couldn't be trusted right now (`WEBADMIN_URL`/
+    `WEBADMIN_TOKEN` unset, web-admin unreachable, or no configured module happens to implement
+    it). A module whose class fails to resolve/import is skipped rather than failing the whole
+    lookup, same defensive style as `_scan_concrete_subclasses`.
     """
     interface_names: set[str] = set()
 
@@ -364,7 +375,21 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
     return registry
 
 
+# A single task-editor page load fires /api/schema/scripts/ and /api/schema/modules/ (issue
+# #98) as separate, near-simultaneous requests -- without this, both independently pay for the
+# full recursive pkgutil/importlib scan + schema generation over pyobs.robotic.scripts. This is
+# a de-duplication window, not a real staleness tolerance (module code doesn't change without a
+# process restart anyway), so it's kept short. LocMemCache pickles values on set/get, so the
+# cached tree is never the same object a caller could accidentally mutate.
+_SCRIPT_TREE_CACHE_KEY = "pyobs_robotic_backend.api.schema.script_tree"
+_SCRIPT_TREE_CACHE_TTL = 5  # seconds
+
+
 def script_tree() -> dict[str, Any]:
+    cached = cache.get(_SCRIPT_TREE_CACHE_KEY)
+    if cached is not None:
+        return cached
+
     def _scan(package: ModuleType) -> dict[str, Any]:
         results: dict[str, Any] = {}
         for _, name, ispkg in pkgutil.iter_modules(package.__path__):
@@ -400,6 +425,7 @@ def script_tree() -> dict[str, Any]:
 
     tree = _scan(scripts_module)
     tree["$polymorphic"] = _polymorphic_registry(tree)
+    cache.set(_SCRIPT_TREE_CACHE_KEY, tree, _SCRIPT_TREE_CACHE_TTL)
     return tree
 
 

@@ -285,6 +285,34 @@ can be merged and deployed here without breaking anything, ahead of the pyobs-co
    builders), `taskeditor.js` (fetch + `.catch` fallback), `scriptbuilder.js` (`moduleRefs`
    passthrough). 7 new frontend tests, full suite (84 tests across both spec files) green.
 
+## PR #103 review follow-ups (all addressed)
+
+thusser's review on #103 approved with four non-blocking suggestions, all fixed in the same PR:
+
+1. **Double `script_tree()` scan** — `/api/schema/scripts/` and `/api/schema/modules/` are
+   separate requests fired together by the same `Promise.all`, so both independently paid for
+   the full recursive `pkgutil`/`importlib` scan. `script_tree()` now caches its result for 5s
+   via Django's cache framework (`_SCRIPT_TREE_CACHE_KEY`) — a de-duplication window, not a
+   staleness tolerance (module code doesn't change without a process restart). Covered by
+   `ScriptTreeCachingTests` (asserts the second call doesn't re-invoke `importlib.import_module`,
+   and that a cleared cache does trigger a fresh scan).
+2. **Page-load latency when web-admin is configured but unreachable** — `webadmin.py`'s 5s
+   `requests.get` timeout ran fresh on every page load. `get_module_classes()` now caches its
+   result (success **or** `None`) for 30s, so a down web-admin only costs the timeout once per
+   window, not once per page load. Covered by two new cache-reuse tests (success and failure
+   paths); existing tests needed `cache.clear()` in `setUp`/mid-loop to keep the mocked-per-call
+   assertions valid against the now-cached function.
+3. **Nested-model gap in pyobs-core#808's scope** — `_annotate_module_refs` only walks a script
+   class's own `model_fields`, no recursion into nested `$defs` models (unlike
+   `_annotate_polymorphic`). Documented explicitly in its docstring, and flagged as a comment on
+   pyobs-core#808 so that issue's implementation stays scoped to direct `Script` fields (which is
+   all the table there already lists) rather than assuming a nested field would "just work" once
+   tagged.
+4. **Cosmetic** — `module_ref_options()`'s docstring now spells out why `{}` (no key) and
+   `{interface: []}` (key present, empty) are two different signals, not an inconsistency; the
+   frontend's datalist `id` generation switched from `Math.random()` to a module-level counter
+   (`_moduleRefDatalistCounter`).
+
 Steps 3-4 (this repo's own code) were written and merged ahead of #808 landing — the degradation
 behavior above means nothing breaks either way — but the feature has no visible effect until the
 pin is bumped once pyobs-core#808 ships.
