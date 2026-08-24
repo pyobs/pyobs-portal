@@ -102,6 +102,51 @@ docker compose run --rm web uv run python manage.py createsuperuser
 Or set `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` in `.env` to skip this — a matching superuser is
 synced automatically as part of the migration step above.
 
+### Building a site-specific image
+
+The published image only ships `pyobs-core`. Some features need more than that to work fully at
+a given site: in particular, the script builder's module-name dropdowns (`WEBADMIN_URL`, see
+`.env.example`) resolve real module classes with `issubclass()` against `pyobs.interfaces` to
+filter them, which means each configured module's class has to actually *import* in this
+process. If your modules use a hardware-specific driver package (`pyobs-iagvt`, `pyobs-fli`,
+`pyobs-brot`, ...), that package needs to be installed on top of the base image — and since it's
+site-specific (and often private), it doesn't belong in this repo or its published image. Build
+a thin derived image instead, in your own deployment config repo, alongside your `docker-compose.yml`:
+
+```dockerfile
+# deploy/Dockerfile
+FROM ghcr.io/pyobs/pyobs-robotic-backend:latest
+
+# Only needed for a private git dependency, forwarding your SSH agent instead of baking in a key:
+RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN --mount=type=ssh \
+    mkdir -p -m 0700 ~/.ssh && ssh-keyscan gitlab.example.org >> ~/.ssh/known_hosts && \
+    uv pip install git+ssh://git@gitlab.example.org/your-org/pyobs-yoursite.git
+```
+
+Then point every service in your `docker-compose.yml` that runs this image (`web`, `celery`,
+`task_scheduler`) at that Dockerfile instead, replacing each `image: ghcr.io/...` line with:
+
+```yaml
+    build:
+      context: ./deploy
+      ssh:
+        - default
+```
+
+Build and run with your SSH agent forwarded (`--ssh default` picks up `$SSH_AUTH_SOCK`; make
+sure the key that can clone your private repo is loaded first, e.g. `ssh-add ~/.ssh/id_ed25519`):
+
+```bash
+DOCKER_BUILDKIT=1 docker compose build --ssh default
+docker compose up -d
+```
+
+No `--mount=type=ssh`/SSH agent forwarding is needed if your extra package is public — drop that
+`RUN` block's SSH setup and just `uv pip install` the package directly.
+
 ## API Overview
 
 Authentication is via token (`Authorization: Token <token>`), Django session cookie, or a Keycloak Bearer token (if configured). Obtain a static token at `/api-token-auth/`.
