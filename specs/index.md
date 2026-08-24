@@ -10,12 +10,11 @@
   builder (searchable type tree, polymorphic/nested script fields, dynamic maps, live validation,
   mobile-responsive, source-view fallback for unmappable data).
 - [plans/2026-08-24-module-ref-dropdowns.md](plans/2026-08-24-module-ref-dropdowns.md) —
-  **this repo's side implemented, blocked on pyobs/pyobs-core#808** for
-  pyobs/pyobs-robotic-backend#98: render module-name script fields
-  (`ImagingScript.camera`/`.telescope`/…) as dropdowns fed by pyobs-web-admin's
-  `GET /api/modules/classes/` (already merged there), filtered per-field by required
-  `pyobs.interfaces` tagged in pyobs-core via `Annotated[str, ICamera]`-style metadata. No
-  visible effect until #808 ships and the `pyobs-core` pin here is bumped.
+  **implemented** for pyobs/pyobs-robotic-backend#98: module-name script fields
+  (`ImagingScript.camera`/`.telescope`/…) render as dropdowns fed by pyobs-web-admin's
+  `GET /api/modules/classes/`, filtered per-field by required `pyobs.interfaces` tagged in
+  pyobs-core via `Annotated[str, ICamera]`-style metadata (pyobs-core#808, shipped in
+  2.0.0.dev94).
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
