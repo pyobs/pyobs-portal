@@ -318,3 +318,50 @@ describe("buildArrayControl: unaffected by the polymorphic-dispatch rewrite", ()
     expect(form.getData().names).toEqual(["a", "b", ""]);
   });
 });
+
+describe("row layout: two-column for scalars, full-width for structural fields", () => {
+  it("a scalar field (string) gets the two-column row", () => {
+    const schema = {
+      type: "object",
+      properties: { name: { type: "string", title: "Name" } },
+    };
+    const form = new SchemaForm(schema, {}, {}, { polymorphic: POLYMORPHIC });
+    const row = form.fields.name.rowEl;
+    expect(row.classList.contains("row")).toBe(true);
+    expect(row.querySelector("label").classList.contains("col-sm-4")).toBe(true);
+    expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+  });
+
+  it("an array-of-objects field (instrument_configs-like) gets a full-width row", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        items: {
+          type: "array",
+          items: { type: "object", properties: { count: { type: "integer", title: "Count", default: 1 } } },
+          title: "Items",
+        },
+      },
+    };
+    const form = new SchemaForm(schema, {}, { items: [{ count: 3 }] }, { polymorphic: POLYMORPHIC });
+    const row = form.fields.items.rowEl;
+    expect(row.classList.contains("row")).toBe(false);
+    expect(row.querySelector("label").classList.contains("col-sm-4")).toBe(false);
+    expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+
+    // ...but the nested object's own fields (e.g. "count" inside each array
+    // item) still get the two-column treatment -- only the array/object
+    // field itself goes full-width, not everything underneath it.
+    const nestedInput = row.querySelector('input[type=number]');
+    const nestedLabel = nestedInput.closest(".row").querySelector("label");
+    expect(nestedLabel.classList.contains("col-sm-4")).toBe(true);
+  });
+
+  it("a polymorphic field gets a full-width row", () => {
+    const schema = { type: "object", properties: { script: scriptFieldSchema("single") } };
+    const form = new SchemaForm(schema, SCRIPT_DEFS, {}, { polymorphic: POLYMORPHIC });
+    const row = form.fields.script.rowEl;
+    expect(row.classList.contains("row")).toBe(false);
+    expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+  });
+});
