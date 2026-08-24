@@ -1,4 +1,4 @@
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 
 // scriptbuilder.js composes ScriptEditor (taskeditor.js) for its Source view
 // and SchemaForm/resolvePolymorphicCandidates (schemaform.js) for its
@@ -145,6 +145,67 @@ describe("ScriptBuilder: selecting a script type", () => {
       class: "pkg.control.sequential.SequentialRunner",
       scripts: [{ class: "pkg.utils.log.LogScript", expression: "" }],
     });
+  });
+});
+
+describe("ScriptBuilder: tree/editor pane exclusivity (issue #95)", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("starts with only the tree pane visible, editor pane hidden", () => {
+    const builder = new ScriptBuilder(makeContainer(), TREE, {});
+    expect(builder.treePane.classList.contains("d-none")).toBe(false);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(true);
+  });
+
+  it("picking a type hides the tree pane and shows the editor pane", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+
+    expect(builder.treePane.classList.contains("d-none")).toBe(true);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(false);
+  });
+
+  it("restoring an existing valid script opens straight into the editor pane, tree hidden", () => {
+    const data = { class: "pkg.utils.log.LogScript", expression: "existing" };
+    const builder = new ScriptBuilder(makeContainer(), TREE, data);
+    expect(builder.treePane.classList.contains("d-none")).toBe(true);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(false);
+  });
+
+  it("Delete script asks for confirmation; declining leaves the form untouched", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+    const input = container.querySelector("input[type=text]");
+    input.value = "in progress";
+    input.dispatchEvent(new Event("input"));
+
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    container.querySelector(".script-builder-editor .btn-outline-danger").click();
+
+    expect(builder.treePane.classList.contains("d-none")).toBe(true);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(false);
+    expect(builder.getData()).toEqual({ class: "pkg.utils.log.LogScript", expression: "in progress" });
+  });
+
+  it("Delete script, once confirmed, clears the form and shows the tree again", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+    const input = container.querySelector("input[type=text]");
+    input.value = "in progress";
+    input.dispatchEvent(new Event("input"));
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    container.querySelector(".script-builder-editor .btn-outline-danger").click();
+
+    expect(builder.rootClass).toBeNull();
+    expect(builder.treePane.classList.contains("d-none")).toBe(false);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(true);
+    expect(builder.getData()).toEqual({});
   });
 });
 
