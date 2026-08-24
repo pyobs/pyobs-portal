@@ -1,11 +1,17 @@
 # Plan: Module-name fields render as dropdowns fed by pyobs-web-admin
 
 Tracks pyobs/pyobs-robotic-backend#98.
-Depends on pyobs/pyobs-core#808 (interface tagging on script fields — not yet implemented).
-Repos: pyobs-core (small, see #808) + pyobs-robotic-backend. The pyobs-web-admin side is already
+Depended on pyobs/pyobs-core#808 (interface tagging on script fields).
+Repos: pyobs-core (see #808/PR #809) + pyobs-robotic-backend. The pyobs-web-admin side is already
 merged (see below).
-Status: **this repo's implementation is done** (backend + frontend, all tests passing); has no
-visible effect yet — blocked on pyobs-core#808 landing and its pin being bumped here.
+Status: **fully implemented and live.** pyobs-core#808 shipped in pyobs-core 2.0.0.dev94
+(released 2026-08-24); the pin here is bumped to `>=2.0.0.dev94` and `uv.lock` updated.
+Verified directly against the real dependency: `ImagingScript.camera` now carries
+`{"interfaces": ["ICamera", "IBinning", "IWindow", "IExposureTime", "IImageType"]}`,
+`DarkBiasScript.camera` carries a different 5-interface set as designed (no collision), and
+`module_ref_options()` reports 18 distinct interfaces referenced across the script tree. Full
+test suite green (81 backend + 84 frontend) against the real pyobs-core release, not just
+fixtures.
 
 ## Problem
 
