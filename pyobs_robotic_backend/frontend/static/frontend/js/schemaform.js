@@ -65,33 +65,32 @@ function scalarBranchFor(resolved, defs) {
  * its own two-column rows. Mirrors buildControl's own dispatch below so the
  * row layout always matches what actually gets rendered.
  *
- * `value` (optional) only matters for a polymorphic field with a scalar alternative (e.g.
- * `exposure_time: float | ExposureTimeProvider`): its row starts two-column/compact -- the
- * "Fixed value" dropdown option plus a plain number input fit fine next to a label, same as
- * any other scalar field -- unless the stored value is already a concrete provider instance
- * (`{class: ..., ...}`), which needs the full-width nested-form treatment from the start. Once
- * built, the control itself flips its own row between the two layouts as the user switches
- * between "Fixed value" and a candidate class (see the "pyobs:field-structural-change" listener
- * in SchemaForm._build()) -- this only decides where it starts. */
-function isStructuralField(resolved, defs, value) {
-  if (resolved["x-pyobs-polymorphic"]) {
-    if (!scalarBranchFor(resolved, defs)) return true;
-    return value !== undefined && value !== null && typeof value === "object" && value.class !== undefined;
-  }
+ * A polymorphic field with a scalar alternative (e.g. `exposure_time: float |
+ * ExposureTimeProvider`) is the one exception: its row is never structural -- the dropdown
+ * always stays in the two-column layout's right column, same as any other scalar field,
+ * regardless of whether "Fixed value" or a candidate class is selected. A candidate class's
+ * nested form still needs full width, but buildPolymorphicControl() gets that by returning it
+ * as `extra` -- a separate block SchemaForm._build() places right after this (always
+ * two-column) row -- rather than by changing the row itself. An earlier version instead toggled
+ * the whole row full-width on a class pick, which needed a "pyobs:field-structural-change"
+ * event every field row's listener reacted to; an unstopped bubble from one field's toggle
+ * corrupted every ancestor row's layout too (confirmed live: exposure_time flipping back to
+ * "Fixed value" was collapsing the enclosing "Instrument Configs" array row) -- gone now that
+ * the row never needs to change in the first place. */
+function isStructuralField(resolved, defs) {
+  if (resolved["x-pyobs-polymorphic"]) return !scalarBranchFor(resolved, defs);
   if (resolved.anyOf) {
     const nonNull = resolved.anyOf.filter((o) => o.type !== "null");
     if (nonNull.find((o) => resolveSchema(o, defs).format === "date-time")) return false;
-    if (nonNull.length === 1) return isStructuralField(resolveSchema(nonNull[0], defs), defs, value);
+    if (nonNull.length === 1) return isStructuralField(resolveSchema(nonNull[0], defs), defs);
     return false; // ambiguous union -> a single raw-YAML textarea, not a nested form
   }
   if (resolved.enum || resolved.format === "date-time") return false;
   return resolved.type === "array" || resolved.type === "object";
 }
 
-/** Set a field row's layout classes -- shared between SchemaForm._build()'s initial render
- * and its "pyobs:field-structural-change" listener, which re-applies this when a polymorphic
- * field with a scalar alternative switches between its compact and full-width states (see
- * isStructuralField() and buildPolymorphicControl()). */
+/** Set a field row's layout classes, given whether isStructuralField() says this field's row is
+ * full-width or two-column. Used once, at SchemaForm._build()'s initial render. */
 function applyRowLayout(row, label, content, structural) {
   row.className = structural ? "mb-2" : "row mb-2";
   label.className = structural
@@ -191,7 +190,7 @@ class SchemaForm {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
-      const { control, getValue, resolvePath } = buildControl(
+      const { control, getValue, resolvePath, extra } = buildControl(
         resolved,
         this.defs,
         value,
@@ -199,7 +198,7 @@ class SchemaForm {
         this.polymorphic,
         this.moduleRefs
       );
-      const structural = isStructuralField(resolved, this.defs, value);
+      const structural = isStructuralField(resolved, this.defs);
 
       // Two columns (label | field) on wide screens, stacked on narrow/mobile,
       // for scalar fields (issue #94); structural fields (object/array/map/
@@ -218,22 +217,23 @@ class SchemaForm {
       const content = document.createElement("div");
       applyRowLayout(row, label, content, structural);
       content.appendChild(control);
-      // A polymorphic field with a scalar alternative (buildPolymorphicControl,
-      // scalarSchema) starts compact but switches its own row full-width the moment a
-      // concrete provider class is picked -- a nested form needs the room a col-sm-8
-      // can't spare, same reasoning isStructuralField already applies up front for a
-      // field whose *stored* value is already a class instance.
-      content.addEventListener("pyobs:field-structural-change", (e) => {
-        applyRowLayout(row, label, content, e.detail.structural);
-      });
       if (resolved.description) {
         const help = document.createElement("div");
         help.className = "form-text small mt-1";
+        // pre-wrap (not a plain block) so a multi-line description (e.g. a docstring with
+        // blank-line-separated paragraphs, pyobs-core#811) keeps its line breaks instead of
+        // collapsing to one run-on line -- textContent alone strips nothing, but the browser's
+        // default white-space handling for a <div> does.
+        help.style.whiteSpace = "pre-wrap";
         help.textContent = resolved.description;
         content.appendChild(help);
       }
       row.appendChild(content);
       this.element.appendChild(row);
+      // `extra` (buildPolymorphicControl, a scalar-alternative field like exposure_time): a
+      // candidate class's nested form, placed full-width right after this row instead of
+      // squeezed into its col-sm-8 -- see buildPolymorphicControl's own comment for why.
+      if (extra) this.element.appendChild(extra);
       this.fields[name] = { getValue, schema: resolved, rowEl: row, resolvePath };
     }
     if (!Object.keys(props).length) {
@@ -764,29 +764,8 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
     return buildYamlControl(value);
   }
 
-  const wrap = document.createElement("div");
-
-  // A field with a scalar alternative lays the dropdown and its "Fixed value" control out on
-  // one line (matches its row's compact, two-column layout -- see isStructuralField()); picking
-  // a candidate class instead needs the room a nested form takes, so that goes back to stacked,
-  // full width. A field with no scalar alternative (e.g. Script | None) is always structural
-  // and always stacked -- isCompactMode() is never consulted for it below.
-  function isCompactMode(mode) {
-    return mode === POLYMORPHIC_SCALAR_OPTION || mode === "";
-  }
-  function applyWrapLayout(mode) {
-    wrap.className = scalarSchema && isCompactMode(mode) ? "d-flex flex-row gap-2 align-items-start" : "d-flex flex-column gap-2";
-  }
-
   const select = document.createElement("select");
   select.className = "form-select form-select-sm";
-  if (scalarSchema) {
-    // .form-select's own width: 100% would otherwise become this flex item's resolved
-    // flex-basis (flex-basis: auto takes its value from width when one is set), so the
-    // select claims the whole row regardless of flex-grow/shrink -- override both explicitly.
-    select.style.flex = "0 0 auto";
-    select.style.width = "auto";
-  }
 
   if (isOptional) {
     const none = document.createElement("option");
@@ -822,25 +801,85 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
     }
   }
 
+  // issue #102: PolymorphicBaseModel's deserialization validator resolves the concrete class
+  // and validates *that* model directly, so a loc path continues straight into the concrete
+  // class's own fields with no "class"-selection segment of its own -- both branches below
+  // delegate to `current.resolvePath` as-is, not loc.slice(1).
+  let current = null; // { getValue, resolvePath? } for whatever candidate/value is current
+
+  if (!scalarSchema) {
+    // No scalar alternative (e.g. `Script | None`): unchanged from before this field type had
+    // one at all -- the dropdown and the selected candidate's nested form stack vertically,
+    // inside this field's own row, itself always full-width (isStructuralField()).
+    const wrap = document.createElement("div");
+    wrap.className = "d-flex flex-column gap-2";
+    wrap.appendChild(select);
+    const nestedWrap = document.createElement("div");
+    wrap.appendChild(nestedWrap);
+
+    function renderNested(mode, data) {
+      nestedWrap.innerHTML = "";
+      current = null;
+      const candidate = candidates.find((c) => c.class === mode);
+      if (!candidate) return;
+      const card = document.createElement("div");
+      card.className = "border rounded p-2 border-secondary-subtle";
+      const form = new SchemaForm(candidate.schema || {}, defs, data || {}, {
+        ignoredFields: ignored,
+        polymorphic,
+        moduleRefs,
+      });
+      card.appendChild(form.element);
+      nestedWrap.appendChild(card);
+      current = { getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
+    }
+
+    const initialMode = hasExisting ? value.class : isOptional ? "" : candidates[0].class;
+    select.value = initialMode;
+    renderNested(initialMode, hasExisting ? value : undefined);
+    select.addEventListener("change", () => renderNested(select.value, undefined));
+
+    return {
+      control: wrap,
+      getValue: () => {
+        if (!select.value) return null;
+        return { class: select.value, ...(current ? current.getValue() : {}) };
+      },
+      resolvePath: (loc) => (current && current.resolvePath ? current.resolvePath(loc) : null),
+    };
+  }
+
+  // With a scalar alternative (e.g. `exposure_time: float | ExposureTimeProvider`): the
+  // dropdown stays in this field's row's own two-column right column always, same as any other
+  // scalar field, regardless of what's selected -- "Fixed value" renders inline next to it, but
+  // a candidate class's nested form is returned as `extra`, a separate block
+  // SchemaForm._build() places full-width right after this field's row instead of squeezing it
+  // into that row's col-sm-8 (not needed for "Fixed value": a single control fits fine inline).
+  select.style.flex = "0 0 auto"; // .form-select's own width: 100% would otherwise become this
+  select.style.width = "auto"; // flex item's resolved flex-basis, claiming the whole line.
+
+  const wrap = document.createElement("div");
+  wrap.className = "d-flex flex-row gap-2 align-items-start";
   wrap.appendChild(select);
+  const inlineArea = document.createElement("div");
+  inlineArea.className = "flex-grow-1";
+  wrap.appendChild(inlineArea);
 
-  const nestedWrap = document.createElement("div");
-  if (scalarSchema) nestedWrap.className = "flex-grow-1";
-  wrap.appendChild(nestedWrap);
-  let current = null; // { getValue, resolvePath? } for whatever's currently rendered below
+  const fullWidthArea = document.createElement("div");
+  fullWidthArea.className = "mt-2";
 
-  function renderNested(mode, data) {
-    nestedWrap.innerHTML = "";
+  function render(mode, data) {
+    inlineArea.innerHTML = "";
+    fullWidthArea.innerHTML = "";
     current = null;
-    applyWrapLayout(mode);
     if (mode === POLYMORPHIC_SCALAR_OPTION) {
       const built = buildControl(scalarSchema, defs, data, ignored, polymorphic, moduleRefs);
-      nestedWrap.appendChild(built.control);
+      inlineArea.appendChild(built.control);
       current = built;
       return;
     }
     const candidate = candidates.find((c) => c.class === mode);
-    if (!candidate) return;
+    if (!candidate) return; // "" (none), for a field that's somehow both optional and scalar-alternative
     const card = document.createElement("div");
     card.className = "border rounded p-2 border-secondary-subtle";
     const form = new SchemaForm(candidate.schema || {}, defs, data || {}, {
@@ -849,45 +888,23 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
       moduleRefs,
     });
     card.appendChild(form.element);
-    nestedWrap.appendChild(card);
+    fullWidthArea.appendChild(card);
     current = { getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
   }
 
-  const initialMode = hasExisting
-    ? value.class
-    : scalarSchema && !hasClass
-      ? POLYMORPHIC_SCALAR_OPTION
-      : isOptional
-        ? ""
-        : candidates[0].class;
+  const initialMode = hasExisting ? value.class : !hasClass ? POLYMORPHIC_SCALAR_OPTION : isOptional ? "" : candidates[0].class;
   select.value = initialMode;
-  renderNested(initialMode, initialMode === POLYMORPHIC_SCALAR_OPTION || hasExisting ? value : undefined);
-
-  select.addEventListener("change", () => {
-    renderNested(select.value, undefined);
-    if (scalarSchema) {
-      wrap.dispatchEvent(
-        new CustomEvent("pyobs:field-structural-change", {
-          bubbles: true,
-          detail: { structural: !isCompactMode(select.value) },
-        })
-      );
-    }
-  });
+  render(initialMode, initialMode === POLYMORPHIC_SCALAR_OPTION || hasExisting ? value : undefined);
+  select.addEventListener("change", () => render(select.value, undefined));
 
   return {
     control: wrap,
+    extra: fullWidthArea,
     getValue: () => {
       if (!select.value) return null;
       if (select.value === POLYMORPHIC_SCALAR_OPTION) return current ? current.getValue() : undefined;
       return { class: select.value, ...(current ? current.getValue() : {}) };
     },
-    // issue #102: PolymorphicBaseModel's deserialization validator resolves
-    // the concrete class and validates *that* model directly, so a loc path
-    // continues straight into the concrete class's own fields with no
-    // "class"-selection segment of its own -- delegate as-is, not loc.slice(1).
-    // The scalar branch has no sub-fields of its own to resolve into, so this
-    // naturally returns null there (current.resolvePath is undefined).
     resolvePath: (loc) => (current && current.resolvePath ? current.resolvePath(loc) : null),
   };
 }

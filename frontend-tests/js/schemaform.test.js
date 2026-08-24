@@ -658,7 +658,19 @@ describe("row layout: two-column for scalars, full-width for structural fields",
       return new SchemaForm(schema, exptimeDefs, { exposure_time: value }, { polymorphic: POLYMORPHIC });
     }
 
-    it("starts two-column/compact for a bare scalar value, dropdown and number on one line", () => {
+    // The row is always two-column/compact, whatever's selected -- the dropdown stays in the
+    // right column like any other scalar field's control. "Fixed value" renders its number
+    // input inline next to the dropdown, inside that same row; a candidate class's nested form
+    // instead appears as a separate full-width block right after the row (`extra`, returned by
+    // buildPolymorphicControl and placed by SchemaForm._build()), since a real form needs more
+    // room than col-sm-8 can spare -- not by changing the row's own layout (an earlier version
+    // did that, and it corrupted every ancestor row's layout too when toggled; see git history).
+
+    function fullWidthSibling(row) {
+      return row.nextElementSibling;
+    }
+
+    it("the row is two-column/compact for a bare scalar value, dropdown and number on one line", () => {
       const form = makeExptimeForm(12.5);
       const row = form.fields.exposure_time.rowEl;
 
@@ -668,17 +680,22 @@ describe("row layout: two-column for scalars, full-width for structural fields",
       expect(content.classList.contains("col-sm-8")).toBe(true);
       expect(content.querySelector("select").parentElement.classList.contains("flex-row")).toBe(true);
       expect(content.querySelector("input[type=number]")).not.toBeNull();
+      expect(fullWidthSibling(row).children.length).toBe(0);
     });
 
-    it("starts full-width for an existing concrete provider value", () => {
+    it("the row stays two-column/compact for an existing concrete provider value, with its nested form full-width after it", () => {
       const form = makeExptimeForm({ class: "pkg.exptime.StellarExposureTimeProvider", camera: "cam1" });
       const row = form.fields.exposure_time.rowEl;
 
-      expect(row.classList.contains("row")).toBe(false);
-      expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+      expect(row.classList.contains("row")).toBe(true);
+      expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+      expect(row.querySelector("input[type=number]")).toBeNull();
+
+      const sibling = fullWidthSibling(row);
+      expect(sibling.querySelector("input").value).toBe("cam1");
     });
 
-    it("switches the row to full-width the moment a candidate class is picked", () => {
+    it("picking a candidate class renders its nested form full-width right after the (still compact) row", () => {
       const form = makeExptimeForm(12.5);
       const row = form.fields.exposure_time.rowEl;
       const select = row.querySelector("select");
@@ -686,14 +703,16 @@ describe("row layout: two-column for scalars, full-width for structural fields",
       select.value = "pkg.exptime.StellarExposureTimeProvider";
       select.dispatchEvent(new Event("change"));
 
-      expect(row.classList.contains("row")).toBe(false);
-      expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+      expect(row.classList.contains("row")).toBe(true);
+      expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+      expect(row.querySelector("input[type=number]")).toBeNull();
+      expect(fullWidthSibling(row).querySelector("input")).not.toBeNull();
       expect(form.getData()).toEqual({
         exposure_time: { class: "pkg.exptime.StellarExposureTimeProvider", camera: "" },
       });
     });
 
-    it("switches back to the compact two-column row when Fixed value is re-selected", () => {
+    it("re-selecting Fixed value clears the full-width nested form and restores the inline number input", () => {
       const form = makeExptimeForm({ class: "pkg.exptime.StellarExposureTimeProvider", camera: "cam1" });
       const row = form.fields.exposure_time.rowEl;
       const select = row.querySelector("select");
@@ -702,8 +721,40 @@ describe("row layout: two-column for scalars, full-width for structural fields",
       select.dispatchEvent(new Event("change"));
 
       expect(row.classList.contains("row")).toBe(true);
-      expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+      expect(row.querySelector("input[type=number]")).not.toBeNull();
+      expect(fullWidthSibling(row).children.length).toBe(0);
       expect(form.getData().exposure_time).toBe(0);
+    });
+
+    it("does not affect an ancestor row's layout (e.g. an instrument_configs-like array field)", () => {
+      const schema = {
+        type: "object",
+        properties: {
+          instrument_configs: {
+            type: "array",
+            items: { type: "object", properties: { exposure_time: exptimeSchema }, title: "InstrumentConfig" },
+            title: "Instrument Configs",
+          },
+        },
+      };
+      const form = new SchemaForm(
+        schema,
+        exptimeDefs,
+        { instrument_configs: [{ exposure_time: 12.5 }] },
+        { polymorphic: POLYMORPHIC }
+      );
+      const arrayRow = form.fields.instrument_configs.rowEl;
+      expect(arrayRow.classList.contains("row")).toBe(false); // array field: full-width, as always
+
+      const select = arrayRow.querySelector("select");
+      select.value = "pkg.exptime.StellarExposureTimeProvider";
+      select.dispatchEvent(new Event("change"));
+      expect(arrayRow.classList.contains("row")).toBe(false); // still full-width, unaffected
+
+      select.value = "__pyobs_scalar__";
+      select.dispatchEvent(new Event("change"));
+      expect(arrayRow.classList.contains("row")).toBe(false);
+      expect(arrayRow.children[1].classList.contains("col-sm-8")).toBe(false);
     });
   });
 });
