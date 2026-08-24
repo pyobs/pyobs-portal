@@ -93,6 +93,11 @@ MIDDLEWARE = [
 
 ROOT_URLCONF = "pyobs_robotic_backend.urls"
 
+# Distinct from other pyobs Django apps (e.g. web-admin) so browser cookies don't
+# collide when both are run on localhost at once - cookies are scoped by host, not port.
+SESSION_COOKIE_NAME = "robotic_backend_sessionid"
+CSRF_COOKIE_NAME = "robotic_backend_csrftoken"
+
 TEMPLATES = [
     {
         "BACKEND": "django.template.backends.django.DjangoTemplates",
