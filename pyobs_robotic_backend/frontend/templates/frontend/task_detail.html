@@ -17,6 +17,22 @@
   }
   .CodeMirror-scroll { min-height: 300px; }
   .CodeMirror-readonly { background-color: #161719; opacity: 0.95; }
+
+  .script-builder-tree {
+    max-height: 320px;
+    overflow-y: auto;
+  }
+  .script-builder-tree summary {
+    cursor: pointer;
+    list-style-position: outside;
+  }
+  @media (min-width: 768px) {
+    .script-builder-tree {
+      width: 260px;
+      flex: 0 0 260px;
+      max-height: 70vh;
+    }
+  }
 </style>
 {% endblock %}
 
@@ -250,6 +266,8 @@
 <script src="{% static 'frontend/js/visplot.js' %}"></script>
 <script src="{% static 'frontend/js/meritplot.js' %}"></script>
 <script src="{% static 'frontend/js/taskeditor.js' %}"></script>
+<script src="{% static 'frontend/js/scriptbuilder.js' %}"></script>
+
 <script>
 {% if task_id %}
 initTaskEditor("{{ task_id|escapejs }}");

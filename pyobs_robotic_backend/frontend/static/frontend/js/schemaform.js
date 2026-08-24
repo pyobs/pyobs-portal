@@ -104,6 +104,7 @@ class SchemaForm {
 
   _build(schema) {
     const props = schema.properties || {};
+    const required = new Set(schema.required || []);
     for (const [name, propSchema] of Object.entries(props)) {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
@@ -114,8 +115,21 @@ class SchemaForm {
       const label = document.createElement("label");
       label.className = "form-label small text-secondary mb-1";
       label.textContent = prettyLabel(name, resolved);
+      if (required.has(name)) {
+        const star = document.createElement("span");
+        star.className = "text-danger ms-1";
+        star.title = "Required";
+        star.textContent = "*";
+        label.appendChild(star);
+      }
       row.appendChild(label);
       row.appendChild(control);
+      if (resolved.description) {
+        const help = document.createElement("div");
+        help.className = "form-text small mt-1";
+        help.textContent = resolved.description;
+        row.appendChild(help);
+      }
       this.element.appendChild(row);
       this.fields[name] = { getValue, schema: resolved, rowEl: row };
     }
