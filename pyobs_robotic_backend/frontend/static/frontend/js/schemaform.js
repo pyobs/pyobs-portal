@@ -35,6 +35,25 @@ function resolveSchema(schema, defs) {
   return schema;
 }
 
+/** True for fields whose control is itself another form (object/array/map/
+ * polymorphic) rather than a single scalar input. These get a full-width,
+ * label-above row instead of the two-column layout (issue #94 follow-up):
+ * squeezing a nested form (e.g. each `InstrumentConfig` in a list) into a
+ * col-sm-8 leaves it very little room, especially once nested again inside
+ * its own two-column rows. Mirrors buildControl's own dispatch below so the
+ * row layout always matches what actually gets rendered. */
+function isStructuralField(resolved, defs) {
+  if (resolved["x-pyobs-polymorphic"]) return true;
+  if (resolved.anyOf) {
+    const nonNull = resolved.anyOf.filter((o) => o.type !== "null");
+    if (nonNull.find((o) => resolveSchema(o, defs).format === "date-time")) return false;
+    if (nonNull.length === 1) return isStructuralField(resolveSchema(nonNull[0], defs), defs);
+    return false; // ambiguous union -> a single raw-YAML textarea, not a nested form
+  }
+  if (resolved.enum || resolved.format === "date-time") return false;
+  return resolved.type === "array" || resolved.type === "object";
+}
+
 const LABEL_OVERRIDES = { ra: "RA" };
 
 function prettyLabel(name, schema) {
@@ -111,13 +130,17 @@ class SchemaForm {
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
       const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
+      const structural = isStructuralField(resolved, this.defs);
 
-      // Two columns (label | field) on wide screens, stacked on narrow/mobile --
-      // Bootstrap's standard horizontal-form row (issue #94).
+      // Two columns (label | field) on wide screens, stacked on narrow/mobile,
+      // for scalar fields (issue #94); structural fields (object/array/map/
+      // polymorphic) instead get a full-width row -- see isStructuralField().
       const row = document.createElement("div");
-      row.className = "row mb-2";
+      row.className = structural ? "mb-2" : "row mb-2";
       const label = document.createElement("label");
-      label.className = "col-sm-4 col-form-label col-form-label-sm small text-secondary mb-1 mb-sm-0";
+      label.className = structural
+        ? "form-label small text-secondary mb-1"
+        : "col-sm-4 col-form-label col-form-label-sm small text-secondary mb-1 mb-sm-0";
       label.textContent = prettyLabel(name, resolved);
       if (required.has(name)) {
         const star = document.createElement("span");
@@ -127,16 +150,16 @@ class SchemaForm {
         label.appendChild(star);
       }
       row.appendChild(label);
-      const fieldCol = document.createElement("div");
-      fieldCol.className = "col-sm-8";
-      fieldCol.appendChild(control);
+      const content = document.createElement("div");
+      if (!structural) content.className = "col-sm-8";
+      content.appendChild(control);
       if (resolved.description) {
         const help = document.createElement("div");
         help.className = "form-text small mt-1";
         help.textContent = resolved.description;
-        fieldCol.appendChild(help);
+        content.appendChild(help);
       }
-      row.appendChild(fieldCol);
+      row.appendChild(content);
       this.element.appendChild(row);
       this.fields[name] = { getValue, schema: resolved, rowEl: row };
     }
@@ -595,4 +618,5 @@ if (typeof window !== "undefined") {
   window.resolveSchema = resolveSchema;
   window.defaultValueFor = defaultValueFor;
   window.resolvePolymorphicCandidates = resolvePolymorphicCandidates;
+  window.isStructuralField = isStructuralField;
 }
