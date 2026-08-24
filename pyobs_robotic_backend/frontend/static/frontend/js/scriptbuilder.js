@@ -31,7 +31,7 @@ class ScriptBuilder {
   constructor(container, scriptTree, scriptData, opts = {}) {
     this.tree = scriptTree || {};
     this.polymorphic = resolvePolymorphicCandidates(this.tree);
-    this.moduleRefs = opts.moduleRefs || {};
+    this.moduleRefs = opts.moduleRefs || { available: false, options: {} };
     this.onChange = opts.onChange || null;
     this.mode = "builder"; // "builder" | "source"
     this.rootClass = null;

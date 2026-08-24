@@ -641,7 +641,7 @@ async function initTaskEditor(taskId) {
       // issue #98: module-name dropdowns are an optional enhancement (web-admin
       // may be unreachable/unconfigured) -- never let a failure here break the
       // rest of the task editor page load.
-      apiRequest("schema/modules/").catch(() => ({})),
+      apiRequest("schema/modules/").catch(() => ({ available: false, options: {} })),
       apiList("projects/"),
       apiRequest("site/"),
     ]);

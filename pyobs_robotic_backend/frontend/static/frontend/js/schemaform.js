@@ -130,15 +130,15 @@ class SchemaForm {
    *   `polymorphic` is the flattened `{ base: [{class, title, schema}] }` map
    *   produced by `resolvePolymorphicCandidates()`, threaded down to every
    *   nested control so a polymorphic field can be rendered at any depth.
-   *   `moduleRefs` is the `{ interface_name: [module_name, ...] }` map from
-   *   /api/schema/modules/ (issue #98), threaded the same way.
+   *   `moduleRefs` is the `{ available, options: { interface_name: [module_name, ...] } }`
+   *   result from /api/schema/modules/ (issue #98), threaded the same way.
    */
   constructor(schema, defs, data, opts = {}) {
     this.defs = defs || {};
     this.data = data || {};
     this.ignored = opts.ignoredFields || new Set();
     this.polymorphic = opts.polymorphic || {};
-    this.moduleRefs = opts.moduleRefs || {};
+    this.moduleRefs = opts.moduleRefs || { available: false, options: {} };
     this.fields = {}; // name -> { getValue, schema }
     this.element = document.createElement("div");
     this.element.className = "schema-form";
@@ -365,52 +365,64 @@ function buildStringControl(resolved, value) {
 }
 
 /**
- * Module-name field (`x-pyobs-module-ref` marker, issue #98): a free-text
- * input backed by a <datalist> of module names implementing every interface
- * in `marker.interfaces` (AND semantics -- intersected below, since e.g.
- * DarkBiasScript.camera requires IData+IBinning+IWindow+IExposureTime+
- * IImageType all at once). Deliberately a <datalist>-backed <input>, not a
- * <select>: it degrades to an ordinary free-text input for free when the
- * intersection is empty (WEBADMIN_URL unset, web-admin unreachable, no
- * configured module implements the interface, or pyobs-core doesn't carry
- * the Annotated interface metadata yet) -- script editing must never be
- * blocked on web-admin being reachable -- and it still allows typing a name
- * not in the list (module not started yet, config drift) without a separate
- * "custom value" escape hatch a <select> would need. Value handling mirrors
- * buildStringControl exactly so an untouched field round-trips unchanged.
+ * Module-name field (`x-pyobs-module-ref` marker, issue #98): a real <select> of module names
+ * implementing every interface in `marker.interfaces` (AND semantics -- intersected below,
+ * since e.g. DarkBiasScript.camera requires IData+IBinning+IWindow+IExposureTime+IImageType all
+ * at once), populated from `moduleRefs.options` (the /api/schema/modules/ result).
+ *
+ * Falls back to a plain free-text <input> only when `moduleRefs.available` is false
+ * (WEBADMIN_URL unset, web-admin unreachable, or its response was unusable) -- script editing
+ * must never be blocked on web-admin being reachable. When available, values are restricted to
+ * configured modules (issue #98 follow-up): a stored value that isn't in the option list
+ * (module since renamed/removed, or edited before web-admin was linked) still gets its own
+ * synthetic <option> so it's shown and kept rather than silently swapped for whichever option
+ * happens to be first -- validate_script/'s matching server-side check
+ * (schema._collect_module_ref_errors) then flags it invalid via the normal {loc, msg}
+ * mechanism, which marks this <select> with .is-invalid the same way any other field error does
+ * (see ScriptBuilder._applyFieldErrors).
  */
-let _moduleRefDatalistCounter = 0;
-
 function buildModuleRefControl(marker, value, moduleRefs) {
   const interfaces = marker.interfaces || [];
-  const names = interfaces.length
-    ? interfaces
-        .map((i) => (moduleRefs && moduleRefs[i]) || [])
-        .reduce((a, b) => a.filter((name) => b.includes(name)))
-    : [];
+  const available = !!(moduleRefs && moduleRefs.available);
+  const hasValue = value !== undefined && value !== null && value !== "";
 
-  const input = document.createElement("input");
-  input.type = "text";
-  input.className = "form-control form-control-sm";
-  if (value !== undefined && value !== null) input.value = value;
-
-  if (names.length) {
-    const listId = `module-ref-${_moduleRefDatalistCounter++}`;
-    input.setAttribute("list", listId);
-    const datalist = document.createElement("datalist");
-    datalist.id = listId;
-    for (const name of names) {
-      const option = document.createElement("option");
-      option.value = name;
-      datalist.appendChild(option);
-    }
-    const wrap = document.createElement("div");
-    wrap.appendChild(input);
-    wrap.appendChild(datalist);
-    return { control: wrap, getValue: () => input.value };
+  if (!available) {
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "form-control form-control-sm";
+    if (hasValue) input.value = value;
+    return { control: input, getValue: () => input.value };
   }
 
-  return { control: input, getValue: () => input.value };
+  const options = (moduleRefs && moduleRefs.options) || {};
+  const names = interfaces.length
+    ? interfaces.map((i) => options[i] || []).reduce((a, b) => a.filter((name) => b.includes(name)))
+    : [];
+
+  const select = document.createElement("select");
+  select.className = "form-select form-select-sm";
+
+  const blank = document.createElement("option");
+  blank.value = "";
+  select.appendChild(blank);
+
+  if (hasValue && !names.includes(value)) {
+    const invalidOption = document.createElement("option");
+    invalidOption.value = value;
+    invalidOption.textContent = `${value} (unknown module)`;
+    select.appendChild(invalidOption);
+  }
+
+  for (const name of names) {
+    const option = document.createElement("option");
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
+  }
+
+  if (hasValue) select.value = value;
+
+  return { control: select, getValue: () => select.value };
 }
 
 function buildEnumControl(resolved, value) {
