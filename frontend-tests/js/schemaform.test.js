@@ -428,6 +428,41 @@ describe("buildArrayControl: unaffected by the polymorphic-dispatch rewrite", ()
   });
 });
 
+describe("buildControl: fixed-length tuple (prefixItems, e.g. ImaginScript's binning)", () => {
+  const binningSchema = {
+    type: "array",
+    prefixItems: [{ type: "integer" }, { type: "integer" }],
+    minItems: 2,
+    maxItems: 2,
+    title: "Binning",
+  };
+
+  it("renders one number input per element, not a YAML textarea", () => {
+    const { control, getValue } = buildControl(binningSchema, {}, [2, 3], new Set(), POLYMORPHIC);
+    const inputs = control.querySelectorAll("input[type=number]");
+    expect(inputs.length).toBe(2);
+    expect(control.querySelector("textarea")).toBeNull();
+    expect(inputs[0].value).toBe("2");
+    expect(inputs[1].value).toBe("3");
+    expect(getValue()).toEqual([2, 3]);
+  });
+
+  it("has no add/remove buttons -- the length is fixed", () => {
+    const { control } = buildControl(binningSchema, {}, [1, 1], new Set(), POLYMORPHIC);
+    expect(control.querySelector("button")).toBeNull();
+  });
+
+  it("gets the two-column row layout, like other scalar fields", () => {
+    const schema = { type: "object", properties: { binning: binningSchema } };
+    const form = new SchemaForm(schema, {}, { binning: [1, 1] }, { polymorphic: POLYMORPHIC });
+    const row = form.fields.binning.rowEl;
+    expect(row.classList.contains("row")).toBe(true);
+    expect(row.querySelector("label").classList.contains("col-sm-4")).toBe(true);
+    expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+    expect(form.getData()).toEqual({ binning: [1, 1] });
+  });
+});
+
 describe("buildControl: invalid primitive values fall back to raw YAML (issue #101)", () => {
   it("number: a wrong-type stored value (string) is flagged and preserved, not sanitized to 0", () => {
     const { control, getValue } = buildControl({ type: "number" }, {}, "not a number", new Set(), POLYMORPHIC);
