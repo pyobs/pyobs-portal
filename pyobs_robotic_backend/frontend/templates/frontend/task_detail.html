@@ -30,11 +30,11 @@
 
   /* Full-width picker (issue #95): the tree and the parameter editor are
      mutually exclusive panes, so unlike the old always-visible sidebar this
-     no longer needs a fixed width at any breakpoint. */
-  .script-builder-tree {
-    max-height: 60vh;
-    overflow-y: auto;
-  }
+     no longer needs a fixed width at any breakpoint. No max-height/scroll
+     cap here: the Script tab is the last thing on the page when active
+     (Bootstrap hides the other tab-panes entirely), so there's nothing
+     below it to push off-screen -- it just flows with the normal page
+     scroll like every other tab's content. */
   .script-builder-tree summary {
     cursor: pointer;
     list-style-position: outside;
