@@ -706,13 +706,11 @@ async function initTaskEditor(taskId) {
   const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
   const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
 
-  // Shared by the Duration field's stopwatch button and ScriptBuilder's own
-  // "Estimate duration" button, so both trigger the same full-task-payload
-  // estimate_duration/ call (needed for e.g. TransitImagingScript to find its
-  // TransitMerit and return the correct window duration).
+  // Runs the same full-task-payload estimate_duration/ call (needed for e.g.
+  // TransitImagingScript to find its TransitMerit and return the correct
+  // window duration) automatically whenever ScriptBuilder reports an edit
+  // (issue #96 -- no more explicit "Estimate duration" button).
   async function estimateDuration() {
-    const btn = document.getElementById("btn-estimate-duration");
-    btn.disabled = true;
     try {
       const payload = {
         id: els.code.value,
@@ -733,12 +731,10 @@ async function initTaskEditor(taskId) {
     } catch (e) {
       els.saveStatus.textContent = `✗ ${e.message}`;
       els.saveStatus.className = "small ms-2 text-danger";
-    } finally {
-      btn.disabled = false;
     }
   }
 
-  const scriptBuilder = new ScriptBuilder(els.script, scriptTree, task.script, { onEstimateDuration: estimateDuration });
+  const scriptBuilder = new ScriptBuilder(els.script, scriptTree, task.script, { onChange: estimateDuration });
 
   // Initialise merit plot (requires buildPayload, defined below, so we use a closure)
   if (typeof initMeritPlot === "function") {
@@ -784,8 +780,6 @@ async function initTaskEditor(taskId) {
   };
   _patchEditor(constraintsEditor);
   _patchEditor(meritsEditor);
-
-  document.getElementById("btn-estimate-duration").addEventListener("click", estimateDuration);
 
   document.getElementById("observations-data-th").classList.toggle("d-none", !siteConfig.archive_enabled);
 

@@ -28,13 +28,14 @@ class ScriptBuilder {
   constructor(container, scriptTree, scriptData, opts = {}) {
     this.tree = scriptTree || {};
     this.polymorphic = resolvePolymorphicCandidates(this.tree);
-    this.onEstimateDuration = opts.onEstimateDuration || null;
+    this.onChange = opts.onChange || null;
     this.mode = "builder"; // "builder" | "source"
     this.rootClass = null;
     this.form = null;
     this._leafByClass = new Map(); // fqcn -> {class, schema} tree entry
     this._treeLeafButtons = []; // { btn, fqcn, searchText }
     this._validateTimer = null;
+    this._changeTimer = null;
 
     this._buildDom(container);
     this._setContent(scriptData);
@@ -78,14 +79,6 @@ class ScriptBuilder {
 
     const right = document.createElement("div");
     right.className = "d-flex align-items-center gap-2";
-    if (this.onEstimateDuration) {
-      const estimateBtn = document.createElement("button");
-      estimateBtn.type = "button";
-      estimateBtn.className = "btn btn-sm btn-outline-secondary";
-      estimateBtn.innerHTML = '<i class="bi bi-stopwatch"></i> Estimate duration';
-      estimateBtn.addEventListener("click", () => this.onEstimateDuration());
-      right.appendChild(estimateBtn);
-    }
     this.statusEl = document.createElement("span");
     this.statusEl.className = "small";
     right.appendChild(this.statusEl);
@@ -111,12 +104,12 @@ class ScriptBuilder {
 
     this.editorPane = document.createElement("div");
     this.editorPane.className = "script-builder-editor d-none";
-    this.editorPane.addEventListener("input", () => this._scheduleValidate());
-    this.editorPane.addEventListener("change", () => this._scheduleValidate());
+    this.editorPane.addEventListener("input", () => this._scheduleChange());
+    this.editorPane.addEventListener("change", () => this._scheduleChange());
     this.editorPane.addEventListener("click", (e) => {
       // Add/remove-row buttons (schemaform.js's array/map controls) don't
       // fire input/change -- re-validate on any button click too.
-      if (e.target.closest("button")) this._scheduleValidate();
+      if (e.target.closest("button")) this._scheduleChange();
     });
     this.builderView.appendChild(this.editorPane);
     container.appendChild(this.builderView);
@@ -129,7 +122,7 @@ class ScriptBuilder {
     this.sourceView = document.createElement("div");
     this.sourceView.className = "d-none";
     container.appendChild(this.sourceView);
-    this.sourceEditor = new ScriptEditor(this.sourceView, null, { onChange: () => this._scheduleValidate() });
+    this.sourceEditor = new ScriptEditor(this.sourceView, null, { onChange: () => this._scheduleChange() });
   }
 
   /** Render the type tree, reusing ScriptEditor's group-detection logic
@@ -279,7 +272,7 @@ class ScriptBuilder {
     this.warningEl.classList.add("d-none");
     this._showPicker();
     this._setSourceText({});
-    this._scheduleValidate();
+    this._scheduleChange();
   }
 
   // ── Content / mode ───────────────────────────────────────────────────
@@ -349,13 +342,13 @@ class ScriptBuilder {
       this.warningEl.textContent = "The builder view doesn't exactly match the YAML you had -- some fields may have changed.";
       this.warningEl.classList.remove("d-none");
     }
-    this._scheduleValidate();
+    this._scheduleChange();
   }
 
   _switchToSource() {
     this._setSourceText(this.getData());
     this._applyMode("source");
-    this._scheduleValidate();
+    this._scheduleChange();
   }
 
   _applyMode(mode) {
@@ -388,6 +381,18 @@ class ScriptBuilder {
   _scheduleValidate() {
     clearTimeout(this._validateTimer);
     this._validateTimer = setTimeout(() => this._validate(), 400);
+  }
+
+  /** Like _scheduleValidate(), but also (debounced, same 400 ms) notifies
+   * onChange -- used at actual edit sites so the task editor can re-run
+   * estimate_duration/ as the user works, without doing so on the initial
+   * load in _setContent() and clobbering the task's stored duration. */
+  _scheduleChange() {
+    this._scheduleValidate();
+    clearTimeout(this._changeTimer);
+    this._changeTimer = setTimeout(() => {
+      if (this.onChange) this.onChange();
+    }, 400);
   }
 
   async _validate() {
