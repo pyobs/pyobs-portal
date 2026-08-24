@@ -118,12 +118,9 @@ describe("buildControl: polymorphic (single, required)", () => {
     select.dispatchEvent(new Event("change"));
 
     expect(control.querySelector("input[type=text]")).toBeNull();
-    // Note: buildBoolControl doesn't apply the schema `default` for an unset
-    // value (unlike the other primitive controls) -- pre-existing behavior,
-    // unrelated to the polymorphic control itself.
     expect(getValue()).toEqual({
       class: "pkg.control.sequential.SequentialRunner",
-      check_all_can_run: false,
+      check_all_can_run: true,
     });
   });
 
