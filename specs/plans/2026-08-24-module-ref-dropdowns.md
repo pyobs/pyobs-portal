@@ -280,16 +280,29 @@ can be merged and deployed here without breaking anything, ahead of the pyobs-co
 
 ## Sequencing
 
-1. ~~pyobs-core#808 (interface tagging) merged and released.~~ **pending**
-2. ~~Bump `pyobs-core` pin here.~~ **pending**
+1. ~~pyobs-core#808 (interface tagging) merged and released.~~ **done** — merged via pyobs-core
+   PR #809 (commit `696f8bf5`), released as pyobs-core 2.0.0.dev94 (2026-08-24).
+2. ~~Bump `pyobs-core` pin here.~~ **done** — `pyproject.toml`/`uv.lock` bumped to
+   `>=2.0.0.dev94` and synced; verified directly against the installed release (not a fixture):
+   `ImagingScript.camera` → `{"interfaces": ["ICamera", "IBinning", "IWindow", "IExposureTime",
+   "IImageType"]}`, `DarkBiasScript.camera` → a different 5-interface set (no collision), 18
+   distinct interfaces referenced across the whole script tree.
 3. ~~Backend steps 1-6 above.~~ **done** — `api/webadmin.py`, `api/schema.py`
    (`_annotate_module_refs`, `module_ref_options`), `api/views.py` (`schema_modules`),
-   `api/urls.py` (`schema/modules/`), `settings.py` (`WEBADMIN_URL`/`WEBADMIN_TOKEN`). 16 new
-   backend tests, full `pyobs_robotic_backend.api` suite (77 tests) green.
+   `api/urls.py` (`schema/modules/`), `settings.py` (`WEBADMIN_URL`/`WEBADMIN_TOKEN`). 20
+   backend tests (16 original + 4 caching), full `pyobs_robotic_backend.api` suite (81 tests)
+   green against the real pyobs-core release.
 4. ~~Frontend steps 7-9 above.~~ **done** — `schemaform.js` (`buildModuleRefControl` +
    `moduleRefs` threaded through `buildControl`/`SchemaForm`/array/object/map/polymorphic
    builders), `taskeditor.js` (fetch + `.catch` fallback), `scriptbuilder.js` (`moduleRefs`
    passthrough). 7 new frontend tests, full suite (84 tests across both spec files) green.
+
+PR #103 merged into `develop` (merge commit `10f09f2`, 2026-08-24). The feature is fully wired
+end-to-end in code. The **only remaining item is operational, not code**: a deployment needs
+`WEBADMIN_URL`/`WEBADMIN_TOKEN` actually set (matching a `HUB_CLIENTS` entry on that
+pyobs-web-admin instance) before the dropdowns show real data instead of falling back to plain
+text input — see the manual-verification step above, which nobody has run against a live
+web-admin instance yet.
 
 ## PR #103 review follow-ups (all addressed)
 
