@@ -86,6 +86,11 @@ function isStructuralField(resolved, defs) {
     return false; // ambiguous union -> a single raw-YAML textarea, not a nested form
   }
   if (resolved.enum || resolved.format === "date-time") return false;
+  // A fixed-length tuple (pydantic `tuple[int, int]` -> JSON Schema `prefixItems`, not `items`,
+  // issue: ImaginScript's `binning` field) renders as a compact row of scalar controls via
+  // buildTupleControl -- same two-column treatment as any other scalar field, not the full-width
+  // add/remove array UI a dynamic-length array gets.
+  if (resolved.type === "array" && resolved.prefixItems) return false;
   return resolved.type === "array" || resolved.type === "object";
 }
 
@@ -350,6 +355,11 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
     case "string":
       return buildStringControl(resolved, value);
     case "array":
+      // Fixed-length tuple (`prefixItems`, e.g. pydantic's `tuple[int, int]`) -- a dynamic-length
+      // array has `items` instead and goes through buildArrayControl below.
+      if (resolved.prefixItems) {
+        return buildTupleControl(resolved, defs, value, ignored, polymorphic, moduleRefs);
+      }
       return buildArrayControl(resolved, defs, value, ignored, polymorphic, moduleRefs);
     case "object":
       // Dynamic map (additionalProperties-only, no fixed properties) --
@@ -560,6 +570,38 @@ function buildObjectControl(resolved, defs, value, ignored, polymorphic, moduleR
   const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored, polymorphic, moduleRefs });
   card.appendChild(form.element);
   return { control: card, getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
+}
+
+/**
+ * Fixed-length tuple (`prefixItems`, e.g. pydantic's `tuple[int, int]` -> ImaginScript's
+ * `binning`, or `tuple[int, int, int, int]` -> `window`) -> one compact control per element,
+ * laid out in a row with no add/remove buttons (the length can't change). Without this, these
+ * fell through to buildArrayControl's `resolved.items || {}` (undefined for a tuple schema),
+ * rendering each element as a full-size raw-YAML textarea instead of e.g. a plain number input.
+ */
+function buildTupleControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
+  const itemSchemas = resolved.prefixItems.map((s) => resolveSchema(s, defs));
+
+  const wrap = document.createElement("div");
+  wrap.className = "d-flex flex-row gap-2";
+
+  const items = itemSchemas.map((itemSchema, i) => {
+    const itemValue = Array.isArray(value) ? value[i] : undefined;
+    const { control, getValue, resolvePath } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic, moduleRefs);
+    wrap.appendChild(control);
+    return { getValue, resolvePath };
+  });
+
+  return {
+    control: wrap,
+    getValue: () => items.map((it) => it.getValue()),
+    resolvePath: (loc) => {
+      const [idx, ...rest] = loc;
+      const item = items[Number(idx)];
+      if (!item) return null;
+      return rest.length && item.resolvePath ? item.resolvePath(rest) : null;
+    },
+  };
 }
 
 /** Array of objects, primitives, or polymorphic nodes -> add/remove list. */
