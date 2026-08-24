@@ -39,6 +39,7 @@ class ScriptBuilder {
     this._treeLeafButtons = []; // { btn, fqcn, searchText }
     this._validateTimer = null;
     this._changeTimer = null;
+    this._fieldErrorEls = []; // { controlEl, msgEl } currently applied by _applyFieldErrors()
 
     this._buildDom(container);
     this._setContent(scriptData);
@@ -83,6 +84,14 @@ class ScriptBuilder {
     this.warningEl = document.createElement("div");
     this.warningEl.className = "alert alert-warning small py-2 px-3 d-none mb-2";
     container.appendChild(this.warningEl);
+
+    // validate_script/ errors this builder couldn't place next to their
+    // actual field (issue #102) -- e.g. a loc path into a shape the form
+    // doesn't decompose further. Rare (see _applyFieldErrors()), but listed
+    // here rather than dropped.
+    this.unresolvedErrorsEl = document.createElement("div");
+    this.unresolvedErrorsEl.className = "alert alert-danger small py-2 px-3 d-none mb-2";
+    container.appendChild(this.unresolvedErrorsEl);
 
     // Builder view: mutually-exclusive tree/editor panes -- only one is
     // visible at a time (issue #95: an always-visible tree next to the
@@ -406,6 +415,7 @@ class ScriptBuilder {
   }
 
   async _validate() {
+    this._clearFieldErrors();
     if (this.mode === "builder" && !this.rootClass) {
       // No type picked yet (fresh empty script, or just back from Delete) --
       // clear the status rather than running validate_script/ against {},
@@ -432,11 +442,75 @@ class ScriptBuilder {
       } else {
         this.statusEl.textContent = `✗ ${result.error}`;
         this.statusEl.className = "small text-danger";
+        if (result.errors) this._applyFieldErrors(result.errors);
       }
     } catch (e) {
       this.statusEl.textContent = `✗ ${e.message}`;
       this.statusEl.className = "small text-danger";
     }
+  }
+
+  /** Remove whatever _applyFieldErrors() flagged on the previous run --
+   * always called first in _validate(), so a fixed field's flag disappears
+   * on the next debounced pass even if the overall script is still invalid
+   * for other reasons. */
+  _clearFieldErrors() {
+    for (const { controlEl, msgEl } of this._fieldErrorEls) {
+      controlEl?.classList.remove("is-invalid");
+      msgEl.remove();
+    }
+    this._fieldErrorEls = [];
+    this.unresolvedErrorsEl.classList.add("d-none");
+    this.unresolvedErrorsEl.textContent = "";
+  }
+
+  /** Place each validate_script/ error (issue #102: `{loc, msg}`, `loc` a
+   * path of field names / list indices / dict keys) next to the actual
+   * field it's about, via SchemaForm.resolveFieldPath() -- instead of the
+   * old one-line raw pydantic dump in the status bar. Only meaningful in
+   * builder mode with a form actually on screen; source-mode/no-form errors
+   * still show via the status bar's summary alone. Multiple errors that
+   * resolve to the same row (e.g. several missing entries in a tuple field
+   * the form doesn't decompose further, all falling back to that field's
+   * own row -- see SchemaForm.resolveFieldPath()'s degrade-gracefully
+   * behavior) are grouped into one message rather than duplicated. */
+  _applyFieldErrors(errors) {
+    if (this.mode !== "builder" || !this.form) return;
+
+    const byRow = new Map(); // rowEl -> string[]
+    const unresolved = [];
+    for (const err of errors) {
+      const resolved = this.form.resolveFieldPath(err.loc);
+      if (!resolved) {
+        unresolved.push(err);
+        continue;
+      }
+      if (!byRow.has(resolved.rowEl)) byRow.set(resolved.rowEl, []);
+      byRow.get(resolved.rowEl).push(err.msg);
+    }
+
+    for (const [rowEl, messages] of byRow) {
+      const controlEl = rowEl.querySelector("input, select, textarea");
+      controlEl?.classList.add("is-invalid");
+      const msgEl = document.createElement("div");
+      msgEl.className = "small text-danger mt-1";
+      msgEl.textContent = messages.join(" / ");
+      rowEl.insertAdjacentElement("afterend", msgEl);
+      this._fieldErrorEls.push({ controlEl, msgEl });
+    }
+
+    if (unresolved.length) {
+      this.unresolvedErrorsEl.textContent = unresolved.map((err) => `${this._formatLoc(err.loc)}: ${err.msg}`).join("; ");
+      this.unresolvedErrorsEl.classList.remove("d-none");
+    }
+  }
+
+  /** Render a validate_script/ error's `loc` path as something a user
+   * recognizes -- e.g. `["configuration", "instrument_configs", 0,
+   * "window"]` -> "Configuration → Instrument Configs → item 1 → Window" --
+   * for the rare unresolved-error fallback list. */
+  _formatLoc(loc) {
+    return loc.map((seg) => (typeof seg === "number" ? `item ${seg + 1}` : prettyLabel(seg))).join(" → ");
   }
 
   // ── Public interface (matches ScriptEditor) ─────────────────────────

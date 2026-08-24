@@ -142,7 +142,7 @@ class SchemaForm {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
-      const { control, getValue } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
+      const { control, getValue, resolvePath } = buildControl(resolved, this.defs, value, this.ignored, this.polymorphic);
       const structural = isStructuralField(resolved, this.defs);
 
       // Two columns (label | field) on wide screens, stacked on narrow/mobile,
@@ -174,7 +174,7 @@ class SchemaForm {
       }
       row.appendChild(content);
       this.element.appendChild(row);
-      this.fields[name] = { getValue, schema: resolved, rowEl: row };
+      this.fields[name] = { getValue, schema: resolved, rowEl: row, resolvePath };
     }
     if (!Object.keys(props).length) {
       const p = document.createElement("p");
@@ -200,11 +200,37 @@ class SchemaForm {
     input.value = value;
     input.dispatchEvent(new Event("input"));
   }
+
+  /** Walk a pydantic ValidationError's `loc` path (issue #102, e.g.
+   * `["configuration", "instrument_configs", 0, "window", 0]`, as returned
+   * by validate_script/) down through this form's fields -- and, via each
+   * field's own `resolvePath`, into nested object/array/map/polymorphic
+   * sub-forms -- to find the DOM row the error should be flagged against.
+   * Degrades gracefully: if a path segment can't be resolved any deeper
+   * (e.g. it names a field this builder doesn't decompose further, like a
+   * tuple rendered as a single control), returns the nearest ancestor field
+   * that *was* resolved rather than nothing, so the error still lands
+   * somewhere close to the actual problem instead of being dropped. Returns
+   * `null` only if the very first segment doesn't match any field here. */
+  resolveFieldPath(loc) {
+    if (!loc || !loc.length) return null;
+    const [head, ...rest] = loc;
+    const field = this.fields[head];
+    if (!field) return null;
+    if (rest.length && field.resolvePath) {
+      const nested = field.resolvePath(rest);
+      if (nested) return nested;
+    }
+    return { rowEl: field.rowEl };
+  }
 }
 
 /**
  * Build a control (and a getValue() accessor) for a single resolved schema.
- * Returns { control: HTMLElement, getValue: () => any }.
+ * Returns { control: HTMLElement, getValue: () => any, resolvePath?: (loc)
+ * => {rowEl} | null }. `resolvePath` is only present for controls that
+ * decompose into further-navigable sub-fields (object/array/map/polymorphic,
+ * issue #102) -- absent on leaf controls (primitives, raw YAML fallbacks).
  */
 function buildControl(resolved, defs, value, ignored, polymorphic) {
   // Polymorphic script/provider field (backend-annotated) -- checked before
@@ -395,7 +421,7 @@ function buildObjectControl(resolved, defs, value, ignored, polymorphic) {
   card.className = "border rounded p-2 border-secondary-subtle";
   const form = new SchemaForm(resolved, defs, value || {}, { ignoredFields: ignored, polymorphic });
   card.appendChild(form.element);
-  return { control: card, getValue: () => form.getData() };
+  return { control: card, getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
 }
 
 /** Array of objects, primitives, or polymorphic nodes -> add/remove list. */
@@ -407,7 +433,7 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
   list.className = "d-flex flex-column gap-2 mb-2";
   wrap.appendChild(list);
 
-  const items = []; // { element, getValue }
+  const items = []; // { row, getValue, resolvePath }
 
   function addItem(itemValue) {
     const row = document.createElement("div");
@@ -416,7 +442,7 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
     // Delegates to buildControl's own dispatch (object / polymorphic /
     // primitive) so array items of any of those shapes render correctly,
     // instead of re-implementing the object-vs-primitive branch here.
-    const { control, getValue } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic);
+    const { control, getValue, resolvePath } = buildControl(itemSchema, defs, itemValue, ignored, polymorphic);
     control.classList.add("flex-grow-1");
     row.appendChild(control);
 
@@ -431,7 +457,7 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
     });
     row.appendChild(removeBtn);
 
-    items.push({ row, getValue });
+    items.push({ row, getValue, resolvePath });
     list.appendChild(row);
   }
 
@@ -447,6 +473,18 @@ function buildArrayControl(resolved, defs, value, ignored, polymorphic) {
   return {
     control: wrap,
     getValue: () => items.map((it) => it.getValue()),
+    // issue #102: pydantic's array-index loc segments (e.g. `scripts.0...`)
+    // map 1:1 onto `items`' insertion order.
+    resolvePath: (loc) => {
+      const [idx, ...rest] = loc;
+      const item = items[Number(idx)];
+      if (!item) return null;
+      if (rest.length && item.resolvePath) {
+        const nested = item.resolvePath(rest);
+        if (nested) return nested;
+      }
+      return { rowEl: item.row };
+    },
   };
 }
 
@@ -495,7 +533,7 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
     keyInput.addEventListener("input", updateDuplicateWarnings);
     row.appendChild(keyInput);
 
-    const { control, getValue } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic);
+    const { control, getValue, resolvePath } = buildControl(valueSchema, defs, itemValue, ignored, polymorphic);
     control.classList.add("flex-grow-1");
     row.appendChild(control);
 
@@ -511,7 +549,7 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
     });
     row.appendChild(removeBtn);
 
-    rows.push({ row, keyInput, getValue });
+    rows.push({ row, keyInput, getValue, resolvePath });
     list.appendChild(row);
     updateDuplicateWarnings();
   }
@@ -537,6 +575,17 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic) {
         if (key) result[key] = r.getValue();
       }
       return result;
+    },
+    // issue #102: a dict-field loc segment is the actual key string.
+    resolvePath: (loc) => {
+      const [key, ...rest] = loc;
+      const row = rows.find((r) => r.keyInput.value === key);
+      if (!row) return null;
+      if (rest.length && row.resolvePath) {
+        const nested = row.resolvePath(rest);
+        if (nested) return nested;
+      }
+      return { rowEl: row.row };
     },
   };
 }
@@ -635,6 +684,11 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic) {
       if (!select.value) return null;
       return { class: select.value, ...(currentForm ? currentForm.getData() : {}) };
     },
+    // issue #102: PolymorphicBaseModel's deserialization validator resolves
+    // the concrete class and validates *that* model directly, so a loc path
+    // continues straight into the concrete class's own fields with no
+    // "class"-selection segment of its own -- delegate as-is, not loc.slice(1).
+    resolvePath: (loc) => (currentForm ? currentForm.resolveFieldPath(loc) : null),
   };
 }
 
@@ -672,4 +726,5 @@ if (typeof window !== "undefined") {
   window.defaultValueFor = defaultValueFor;
   window.resolvePolymorphicCandidates = resolvePolymorphicCandidates;
   window.isStructuralField = isStructuralField;
+  window.prettyLabel = prettyLabel;
 }

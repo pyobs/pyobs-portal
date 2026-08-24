@@ -406,6 +406,90 @@ describe("buildControl: invalid primitive values fall back to raw YAML (issue #1
   });
 });
 
+describe("SchemaForm.resolveFieldPath(): walks a validate_script/ error loc to a DOM row (issue #102)", () => {
+  const SCHEMA = {
+    type: "object",
+    properties: {
+      name: { type: "string", title: "Name" },
+      nested: {
+        type: "object",
+        title: "Nested",
+        properties: { count: { type: "integer", title: "Count" } },
+      },
+      items: {
+        type: "array",
+        title: "Items",
+        items: { type: "object", properties: { x: { type: "integer", title: "X" } } },
+      },
+      cases: { type: "object", additionalProperties: { type: "string" }, title: "Cases" },
+      script: scriptFieldSchema("single"),
+    },
+  };
+  const DATA = {
+    name: "a",
+    nested: { count: 1 },
+    items: [{ x: 1 }, { x: 2 }],
+    cases: { foo: "bar" },
+    script: { class: "pkg.utils.log.LogScript", expression: "existing" },
+  };
+
+  function makeForm() {
+    return new SchemaForm(SCHEMA, SCRIPT_DEFS, DATA, { polymorphic: POLYMORPHIC });
+  }
+
+  it("resolves a top-level scalar field", () => {
+    const form = makeForm();
+    expect(form.resolveFieldPath(["name"])).toEqual({ rowEl: form.fields.name.rowEl });
+  });
+
+  it("resolves into a nested object field's own sub-row", () => {
+    const form = makeForm();
+    const resolved = form.resolveFieldPath(["nested", "count"]);
+    expect(resolved.rowEl).not.toBe(form.fields.nested.rowEl);
+    expect(resolved.rowEl.querySelector("input[type=number]")).not.toBeNull();
+  });
+
+  it("resolves an array item by numeric index", () => {
+    const form = makeForm();
+    const resolved = form.resolveFieldPath(["items", 1, "x"]);
+    const secondItemInput = form.fields.items.rowEl.querySelectorAll("input[type=number]")[1];
+    expect(resolved.rowEl.contains(secondItemInput)).toBe(true);
+  });
+
+  it("falls back to the array field's own row for an out-of-range index", () => {
+    const form = makeForm();
+    expect(form.resolveFieldPath(["items", 99, "x"])).toEqual({ rowEl: form.fields.items.rowEl });
+  });
+
+  it("resolves a dynamic-map entry by its key", () => {
+    const form = makeForm();
+    const resolved = form.resolveFieldPath(["cases", "foo"]);
+    const valueInput = [...form.fields.cases.rowEl.querySelectorAll("input")].find((i) => i.value === "bar");
+    expect(resolved.rowEl.contains(valueInput)).toBe(true);
+  });
+
+  it("falls back to the map field's own row for an unknown key", () => {
+    const form = makeForm();
+    expect(form.resolveFieldPath(["cases", "missing"])).toEqual({ rowEl: form.fields.cases.rowEl });
+  });
+
+  it("resolves through a polymorphic field with no 'class'-selection segment of its own", () => {
+    const form = makeForm();
+    const resolved = form.resolveFieldPath(["script", "expression"]);
+    expect(resolved.rowEl.querySelector("input[type=text]").value).toBe("existing");
+  });
+
+  it("returns null when the first segment doesn't match any field", () => {
+    const form = makeForm();
+    expect(form.resolveFieldPath(["nonexistent"])).toBeNull();
+  });
+
+  it("returns null for an empty loc", () => {
+    const form = makeForm();
+    expect(form.resolveFieldPath([])).toBeNull();
+  });
+});
+
 describe("row layout: two-column for scalars, full-width for structural fields", () => {
   it("a scalar field (string) gets the two-column row", () => {
     const schema = {

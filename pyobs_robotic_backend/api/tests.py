@@ -825,3 +825,84 @@ class ValidateScriptClasslessTests(SimpleTestCase):
         )
         self.assertFalse(result["valid"])
         self.assertEqual(result["error"], "unknown class 'totally.bogus.Provider'")
+
+
+class ValidateScriptStructuredErrorsTests(SimpleTestCase):
+    """`validate_script/` must return pydantic's ValidationError as structured,
+    frontend-consumable data rather than its raw str(e) dump (issue #102):
+    a short `error` summary plus an `errors` list of {loc, msg} the frontend
+    can walk down its own form tree to flag the actual offending field, with
+    no "https://errors.pydantic.dev/..." boilerplate anywhere.
+    """
+
+    def test_single_error_has_no_pydantic_url_boilerplate(self):
+        # `camera` is ImagingScript's only required field.
+        result = schema_module.validate_script({"class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript"})
+        self.assertFalse(result["valid"])
+        self.assertNotIn("errors.pydantic.dev", result["error"])
+        self.assertNotIn("errors.pydantic.dev", str(result["errors"]))
+
+    def test_single_error_summary_is_the_message_itself(self):
+        result = schema_module.validate_script({"class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript"})
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["errors"], [{"loc": ["camera"], "msg": "Field required"}])
+        self.assertEqual(result["error"], "Field required")
+
+    def test_multi_error_summary_is_a_count(self):
+        # camera required, plus 4 required entries in the empty window tuple.
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "configuration": {"instrument_configs": [{"window": []}]},
+            }
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["error"], "5 field(s) need attention")
+        self.assertEqual(len(result["errors"]), 5)
+
+    def test_loc_carries_field_names_and_list_indices_for_a_nested_error(self):
+        # Mirrors the exact scenario from issue #102: an empty `window` tuple
+        # nested two levels down, inside instrument_configs[0].
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "configuration": {"instrument_configs": [{"window": []}]},
+            }
+        )
+        self.assertFalse(result["valid"])
+        locs = [e["loc"] for e in result["errors"]]
+        self.assertIn(["configuration", "instrument_configs", 0, "window", 0], locs)
+
+    def test_loc_for_a_nested_polymorphic_field_has_no_class_indirection(self):
+        # scripts[0]'s concrete class (LogScript) is resolved via
+        # PolymorphicBaseModel's own validator -- the loc must continue
+        # straight into LogScript's own fields, not some wrapper segment.
+        result = schema_module.validate_script(
+            {
+                "class": "pyobs.robotic.scripts.control.sequential.SequentialRunner",
+                "scripts": [{"class": "pyobs.robotic.scripts.utils.log.LogScript"}],
+            }
+        )
+        self.assertFalse(result["valid"])
+        self.assertEqual(result["errors"], [{"loc": ["scripts", 0, "expression"], "msg": "Field required"}])
+
+
+class EstimateDurationCleanErrorTests(SimpleTestCase):
+    """`estimate_duration/` must clean up a pydantic ValidationError the same
+    way `validate_script/` does (issue #102) -- it runs on every script edit
+    now (issue #96's auto-estimate), so an in-progress/incomplete script
+    would otherwise show the raw multi-block pydantic dump constantly, not
+    just on an explicit validate.
+    """
+
+    def test_invalid_script_reports_a_clean_summary_not_a_raw_pydantic_dump(self):
+        result = schema_module.estimate_duration(
+            {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "configuration": {"instrument_configs": [{"window": []}]},
+            }
+        )
+        self.assertEqual(result, {"error": "5 field(s) need attention"})
+        self.assertNotIn("errors.pydantic.dev", result["error"])
+        self.assertNotIn("For further information", result["error"])
