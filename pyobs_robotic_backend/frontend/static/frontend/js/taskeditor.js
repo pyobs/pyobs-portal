@@ -631,15 +631,20 @@ async function initTaskEditor(taskId) {
     title: document.getElementById("page-title"),
   };
 
-  const [constraintSchemas, meritSchemas, targetSchemas, pickerSchemas, scriptTree, projects, siteConfig] = await Promise.all([
-    apiRequest("schema/constraints/"),
-    apiRequest("schema/merits/"),
-    apiRequest("schema/targets/"),
-    apiRequest("schema/pickers/"),
-    apiRequest("schema/scripts/"),
-    apiList("projects/"),
-    apiRequest("site/"),
-  ]);
+  const [constraintSchemas, meritSchemas, targetSchemas, pickerSchemas, scriptTree, moduleRefs, projects, siteConfig] =
+    await Promise.all([
+      apiRequest("schema/constraints/"),
+      apiRequest("schema/merits/"),
+      apiRequest("schema/targets/"),
+      apiRequest("schema/pickers/"),
+      apiRequest("schema/scripts/"),
+      // issue #98: module-name dropdowns are an optional enhancement (web-admin
+      // may be unreachable/unconfigured) -- never let a failure here break the
+      // rest of the task editor page load.
+      apiRequest("schema/modules/").catch(() => ({})),
+      apiList("projects/"),
+      apiRequest("site/"),
+    ]);
 
   els.project.innerHTML = "";
   projects.forEach((p) => {
@@ -734,7 +739,10 @@ async function initTaskEditor(taskId) {
     }
   }
 
-  const scriptBuilder = new ScriptBuilder(els.script, scriptTree, task.script, { onChange: estimateDuration });
+  const scriptBuilder = new ScriptBuilder(els.script, scriptTree, task.script, {
+    onChange: estimateDuration,
+    moduleRefs,
+  });
 
   // Initialise merit plot (requires buildPayload, defined below, so we use a closure)
   if (typeof initMeritPlot === "function") {

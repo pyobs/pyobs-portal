@@ -9,6 +9,12 @@
   replaced the raw-YAML `ScriptEditor` on the task page with a visual, schema-driven script
   builder (searchable type tree, polymorphic/nested script fields, dynamic maps, live validation,
   mobile-responsive, source-view fallback for unmappable data).
+- [plans/2026-08-24-module-ref-dropdowns.md](plans/2026-08-24-module-ref-dropdowns.md) —
+  **implemented** for pyobs/pyobs-robotic-backend#98: module-name script fields
+  (`ImagingScript.camera`/`.telescope`/…) render as dropdowns fed by pyobs-web-admin's
+  `GET /api/modules/classes/`, filtered per-field by required `pyobs.interfaces` tagged in
+  pyobs-core via `Annotated[str, ICamera]`-style metadata (pyobs-core#808, shipped in
+  2.0.0.dev94).
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see

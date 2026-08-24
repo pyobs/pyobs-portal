@@ -204,6 +204,85 @@ describe("buildControl: polymorphic with an unmappable existing value", () => {
   });
 });
 
+describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
+  it("renders a datalist populated from moduleRefs for a single-interface field", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
+    const moduleRefs = { ICamera: ["cam1", "cam2"] };
+    const { control, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    const input = control.querySelector("input");
+    expect(input.getAttribute("list")).not.toBeNull();
+    const datalist = control.querySelector("datalist");
+    expect([...datalist.options].map((o) => o.value)).toEqual(["cam1", "cam2"]);
+
+    input.value = "cam1";
+    input.dispatchEvent(new Event("input"));
+    expect(getValue()).toBe("cam1");
+  });
+
+  it("intersects module lists across multiple required interfaces (AND semantics)", () => {
+    // Mirrors DarkBiasScript.camera: IData+IBinning -- only a module in both
+    // interfaces' lists is a valid candidate.
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["IData", "IBinning"] } };
+    const moduleRefs = { IData: ["cam1", "cam2"], IBinning: ["cam2", "cam3"] };
+    const { control } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    const datalist = control.querySelector("datalist");
+    expect([...datalist.options].map((o) => o.value)).toEqual(["cam2"]);
+  });
+
+  it("falls back to a plain input (no datalist) when moduleRefs has nothing for the interface", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
+    const { control, getValue } = buildControl(resolved, {}, "typed-value", new Set(), {}, {});
+
+    expect(control.tagName).toBe("INPUT");
+    expect(control.hasAttribute("list")).toBe(false);
+    expect(control.querySelector("datalist")).toBeNull();
+    expect(getValue()).toBe("typed-value");
+  });
+
+  it("falls back to a plain input when moduleRefs is omitted entirely", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
+    const { control } = buildControl(resolved, {}, undefined, new Set(), {});
+    expect(control.tagName).toBe("INPUT");
+    expect(control.hasAttribute("list")).toBe(false);
+  });
+
+  it("still allows a value that isn't in the datalist (free text always wins)", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
+    const moduleRefs = { ICamera: ["cam1"] };
+    const { control, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    const input = control.querySelector("input");
+    input.value = "not-in-the-list";
+    input.dispatchEvent(new Event("input"));
+    expect(getValue()).toBe("not-in-the-list");
+  });
+
+  it("preserves an existing value untouched (round-trips like a plain string field)", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"] } };
+    const moduleRefs = { ICamera: ["cam1"] };
+    const { control, getValue } = buildControl(resolved, {}, "cam1", new Set(), {}, moduleRefs);
+
+    expect(control.querySelector("input").value).toBe("cam1");
+    expect(getValue()).toBe("cam1");
+  });
+
+  it("takes priority over the anyOf branch for an optional field (Optional[str])", () => {
+    // Mirrors how _annotate_module_refs places the marker on the outer node
+    // for an Optional[...] field, and how the polymorphic marker already
+    // relies on this same check-before-anyOf ordering in buildControl.
+    const resolved = {
+      anyOf: [{ type: "string" }, { type: "null" }],
+      "x-pyobs-module-ref": { interfaces: ["ITelescope"] },
+    };
+    const moduleRefs = { ITelescope: ["tel1"] };
+    const { control } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    expect(control.querySelector("datalist")).not.toBeNull();
+  });
+});
+
 describe("array of polymorphic scripts (SequentialRunner.scripts-like)", () => {
   const SCHEMA = {
     type: "object",

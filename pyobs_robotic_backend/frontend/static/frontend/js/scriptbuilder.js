@@ -31,6 +31,7 @@ class ScriptBuilder {
   constructor(container, scriptTree, scriptData, opts = {}) {
     this.tree = scriptTree || {};
     this.polymorphic = resolvePolymorphicCandidates(this.tree);
+    this.moduleRefs = opts.moduleRefs || {};
     this.onChange = opts.onChange || null;
     this.mode = "builder"; // "builder" | "source"
     this.rootClass = null;
@@ -271,7 +272,10 @@ class ScriptBuilder {
 
     const rest = data && typeof data === "object" ? { ...data } : {};
     delete rest.class;
-    this.form = new SchemaForm(entry.schema, entry.schema.$defs || {}, rest, { polymorphic: this.polymorphic });
+    this.form = new SchemaForm(entry.schema, entry.schema.$defs || {}, rest, {
+      polymorphic: this.polymorphic,
+      moduleRefs: this.moduleRefs,
+    });
     this.editorPane.appendChild(this.form.element);
   }
 
