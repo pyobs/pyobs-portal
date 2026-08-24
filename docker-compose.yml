@@ -1,6 +1,6 @@
 services:
   web:
-    image: ghcr.io/pyobs/pyobs/pyobs-robotic-backend:latest
+    image: ghcr.io/pyobs/pyobs-robotic-backend:latest
     command: >
       sh -c "
       uv run manage.py migrate &&
@@ -39,7 +39,7 @@ services:
       RABBITMQ_SERVER_ADDITIONAL_ERL_ARGS: "-rabbitmq_deprecated_features permit transient_nonexcl_queues true"
 
   celery:
-      image: ghcr.io/pyobs/pyobs/pyobs-robotic-backend:latest
+      image: ghcr.io/pyobs/pyobs-robotic-backend:latest
       command: uv run celery -A pyobs_robotic_backend worker -B --loglevel INFO --without-gossip --without-mingle --without-heartbeat
       env_file:
         - ./.env
@@ -53,7 +53,7 @@ services:
           hard: 4096
 
   task_scheduler:
-      image: ghcr.io/pyobs/pyobs/pyobs-robotic-backend:latest
+      image: ghcr.io/pyobs/pyobs-robotic-backend:latest
       command: uv run manage.py runscript pyobs_robotic_backend.task_scheduler
       env_file:
         - ./.env
