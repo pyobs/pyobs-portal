@@ -99,6 +99,7 @@ class SchemaForm {
     this.polymorphic = opts.polymorphic || {};
     this.fields = {}; // name -> { getValue, schema }
     this.element = document.createElement("div");
+    this.element.className = "schema-form";
     this._build(resolveSchema(schema, this.defs));
   }
 
