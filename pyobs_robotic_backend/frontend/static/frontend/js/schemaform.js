@@ -42,23 +42,62 @@ function resolveSchema(schema, defs) {
   return schema;
 }
 
+/** A polymorphic field's union can mix a plain scalar with its polymorphic base (e.g.
+ * `exposure_time: float | ExposureTimeProvider`) -- schema.py's `_annotate_module_refs`
+ * marks the whole node `x-pyobs-polymorphic` without discarding the original `anyOf`, so the
+ * non-$ref, non-null branch (the scalar alternative) is still sitting right there. Returns its
+ * resolved schema, or null if this polymorphic field has no such alternative (the common case,
+ * e.g. `Script | None`, where every branch is the polymorphic base itself or null). */
+function scalarBranchFor(resolved, defs) {
+  if (!Array.isArray(resolved.anyOf)) return null;
+  for (const branch of resolved.anyOf) {
+    if (!branch || branch.$ref || branch.type === "null") continue;
+    return resolveSchema(branch, defs);
+  }
+  return null;
+}
+
 /** True for fields whose control is itself another form (object/array/map/
  * polymorphic) rather than a single scalar input. These get a full-width,
  * label-above row instead of the two-column layout (issue #94 follow-up):
  * squeezing a nested form (e.g. each `InstrumentConfig` in a list) into a
  * col-sm-8 leaves it very little room, especially once nested again inside
  * its own two-column rows. Mirrors buildControl's own dispatch below so the
- * row layout always matches what actually gets rendered. */
-function isStructuralField(resolved, defs) {
-  if (resolved["x-pyobs-polymorphic"]) return true;
+ * row layout always matches what actually gets rendered.
+ *
+ * `value` (optional) only matters for a polymorphic field with a scalar alternative (e.g.
+ * `exposure_time: float | ExposureTimeProvider`): its row starts two-column/compact -- the
+ * "Fixed value" dropdown option plus a plain number input fit fine next to a label, same as
+ * any other scalar field -- unless the stored value is already a concrete provider instance
+ * (`{class: ..., ...}`), which needs the full-width nested-form treatment from the start. Once
+ * built, the control itself flips its own row between the two layouts as the user switches
+ * between "Fixed value" and a candidate class (see the "pyobs:field-structural-change" listener
+ * in SchemaForm._build()) -- this only decides where it starts. */
+function isStructuralField(resolved, defs, value) {
+  if (resolved["x-pyobs-polymorphic"]) {
+    if (!scalarBranchFor(resolved, defs)) return true;
+    return value !== undefined && value !== null && typeof value === "object" && value.class !== undefined;
+  }
   if (resolved.anyOf) {
     const nonNull = resolved.anyOf.filter((o) => o.type !== "null");
     if (nonNull.find((o) => resolveSchema(o, defs).format === "date-time")) return false;
-    if (nonNull.length === 1) return isStructuralField(resolveSchema(nonNull[0], defs), defs);
+    if (nonNull.length === 1) return isStructuralField(resolveSchema(nonNull[0], defs), defs, value);
     return false; // ambiguous union -> a single raw-YAML textarea, not a nested form
   }
   if (resolved.enum || resolved.format === "date-time") return false;
   return resolved.type === "array" || resolved.type === "object";
+}
+
+/** Set a field row's layout classes -- shared between SchemaForm._build()'s initial render
+ * and its "pyobs:field-structural-change" listener, which re-applies this when a polymorphic
+ * field with a scalar alternative switches between its compact and full-width states (see
+ * isStructuralField() and buildPolymorphicControl()). */
+function applyRowLayout(row, label, content, structural) {
+  row.className = structural ? "mb-2" : "row mb-2";
+  label.className = structural
+    ? "form-label small text-secondary mb-1"
+    : "col-sm-4 col-form-label col-form-label-sm small text-secondary mb-1 mb-sm-0";
+  content.className = structural ? "" : "col-sm-8";
 }
 
 const LABEL_OVERRIDES = { ra: "RA" };
@@ -160,17 +199,13 @@ class SchemaForm {
         this.polymorphic,
         this.moduleRefs
       );
-      const structural = isStructuralField(resolved, this.defs);
+      const structural = isStructuralField(resolved, this.defs, value);
 
       // Two columns (label | field) on wide screens, stacked on narrow/mobile,
       // for scalar fields (issue #94); structural fields (object/array/map/
       // polymorphic) instead get a full-width row -- see isStructuralField().
       const row = document.createElement("div");
-      row.className = structural ? "mb-2" : "row mb-2";
       const label = document.createElement("label");
-      label.className = structural
-        ? "form-label small text-secondary mb-1"
-        : "col-sm-4 col-form-label col-form-label-sm small text-secondary mb-1 mb-sm-0";
       label.textContent = prettyLabel(name, resolved);
       if (required.has(name)) {
         const star = document.createElement("span");
@@ -181,8 +216,16 @@ class SchemaForm {
       }
       row.appendChild(label);
       const content = document.createElement("div");
-      if (!structural) content.className = "col-sm-8";
+      applyRowLayout(row, label, content, structural);
       content.appendChild(control);
+      // A polymorphic field with a scalar alternative (buildPolymorphicControl,
+      // scalarSchema) starts compact but switches its own row full-width the moment a
+      // concrete provider class is picked -- a nested form needs the room a col-sm-8
+      // can't spare, same reasoning isStructuralField already applies up front for a
+      // field whose *stored* value is already a class instance.
+      content.addEventListener("pyobs:field-structural-change", (e) => {
+        applyRowLayout(row, label, content, e.detail.structural);
+      });
       if (resolved.description) {
         const help = document.createElement("div");
         help.className = "form-text small mt-1";
@@ -255,7 +298,15 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
   // schema node is often itself an anyOf (e.g. `float | ExposureTimeProvider`)
   // or a bare $ref (e.g. `Script`).
   if (resolved["x-pyobs-polymorphic"]) {
-    return buildPolymorphicControl(resolved["x-pyobs-polymorphic"], defs, value, ignored, polymorphic, moduleRefs);
+    return buildPolymorphicControl(
+      resolved["x-pyobs-polymorphic"],
+      defs,
+      value,
+      ignored,
+      polymorphic,
+      moduleRefs,
+      scalarBranchFor(resolved, defs)
+    );
   }
 
   // Module-name field (backend-annotated, issue #98) -- same reasoning as
@@ -677,14 +728,24 @@ function buildMapControl(resolved, defs, value, ignored, polymorphic, moduleRefs
   };
 }
 
+const POLYMORPHIC_SCALAR_OPTION = "__pyobs_scalar__";
+
 /**
  * Polymorphic field (`x-pyobs-polymorphic` marker): a class-selector dropdown
  * (grouped by module path for Script candidates) plus a nested SchemaForm for
  * whichever class is currently selected. `getValue()` always returns
  * `{"class": "<fqcn>", ...fields}` (or `null` for an unset optional field) --
  * never a class-less dict.
+ *
+ * `scalarSchema` (from `scalarBranchFor()`) is non-null for a field whose union mixes a plain
+ * scalar with its polymorphic base (e.g. `exposure_time: float | ExposureTimeProvider`) -- adds
+ * a "Fixed value" option alongside the class candidates, rendering `scalarSchema`'s own control
+ * (a plain number input here) instead of a nested form. Without this, a field carrying a bare
+ * scalar value (never a `{class: ...}` dict) would silently be treated as "no existing value"
+ * and default to whichever candidate class happens to be first, discarding the real value on
+ * every save without so much as a checkbox to enter a plain number.
  */
-function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, moduleRefs) {
+function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, moduleRefs, scalarSchema) {
   const candidates = (polymorphic && polymorphic[marker.base]) || [];
   const isOptional = marker.container === "optional";
   // `value.class` presence, not just "value is an object", is what
@@ -704,16 +765,41 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
   }
 
   const wrap = document.createElement("div");
-  wrap.className = "d-flex flex-column gap-2";
+
+  // A field with a scalar alternative lays the dropdown and its "Fixed value" control out on
+  // one line (matches its row's compact, two-column layout -- see isStructuralField()); picking
+  // a candidate class instead needs the room a nested form takes, so that goes back to stacked,
+  // full width. A field with no scalar alternative (e.g. Script | None) is always structural
+  // and always stacked -- isCompactMode() is never consulted for it below.
+  function isCompactMode(mode) {
+    return mode === POLYMORPHIC_SCALAR_OPTION || mode === "";
+  }
+  function applyWrapLayout(mode) {
+    wrap.className = scalarSchema && isCompactMode(mode) ? "d-flex flex-row gap-2 align-items-start" : "d-flex flex-column gap-2";
+  }
 
   const select = document.createElement("select");
   select.className = "form-select form-select-sm";
+  if (scalarSchema) {
+    // .form-select's own width: 100% would otherwise become this flex item's resolved
+    // flex-basis (flex-basis: auto takes its value from width when one is set), so the
+    // select claims the whole row regardless of flex-grow/shrink -- override both explicitly.
+    select.style.flex = "0 0 auto";
+    select.style.width = "auto";
+  }
 
   if (isOptional) {
     const none = document.createElement("option");
     none.value = "";
     none.textContent = "(none)";
     select.appendChild(none);
+  }
+
+  if (scalarSchema) {
+    const scalarOption = document.createElement("option");
+    scalarOption.value = POLYMORPHIC_SCALAR_OPTION;
+    scalarOption.textContent = "Fixed value";
+    select.appendChild(scalarOption);
   }
 
   const groups = new Map(); // groupLabel ("" = ungrouped) -> candidates
@@ -739,44 +825,70 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
   wrap.appendChild(select);
 
   const nestedWrap = document.createElement("div");
+  if (scalarSchema) nestedWrap.className = "flex-grow-1";
   wrap.appendChild(nestedWrap);
-  let currentForm = null;
+  let current = null; // { getValue, resolvePath? } for whatever's currently rendered below
 
-  function renderNested(cls, data) {
+  function renderNested(mode, data) {
     nestedWrap.innerHTML = "";
-    currentForm = null;
-    const candidate = candidates.find((c) => c.class === cls);
+    current = null;
+    applyWrapLayout(mode);
+    if (mode === POLYMORPHIC_SCALAR_OPTION) {
+      const built = buildControl(scalarSchema, defs, data, ignored, polymorphic, moduleRefs);
+      nestedWrap.appendChild(built.control);
+      current = built;
+      return;
+    }
+    const candidate = candidates.find((c) => c.class === mode);
     if (!candidate) return;
     const card = document.createElement("div");
     card.className = "border rounded p-2 border-secondary-subtle";
-    currentForm = new SchemaForm(candidate.schema || {}, defs, data || {}, {
+    const form = new SchemaForm(candidate.schema || {}, defs, data || {}, {
       ignoredFields: ignored,
       polymorphic,
       moduleRefs,
     });
-    card.appendChild(currentForm.element);
+    card.appendChild(form.element);
     nestedWrap.appendChild(card);
+    current = { getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
   }
 
-  const initialClass = hasExisting ? value.class : isOptional ? "" : candidates[0].class;
-  select.value = initialClass;
-  renderNested(initialClass, hasExisting ? value : undefined);
+  const initialMode = hasExisting
+    ? value.class
+    : scalarSchema && !hasClass
+      ? POLYMORPHIC_SCALAR_OPTION
+      : isOptional
+        ? ""
+        : candidates[0].class;
+  select.value = initialMode;
+  renderNested(initialMode, initialMode === POLYMORPHIC_SCALAR_OPTION || hasExisting ? value : undefined);
 
   select.addEventListener("change", () => {
     renderNested(select.value, undefined);
+    if (scalarSchema) {
+      wrap.dispatchEvent(
+        new CustomEvent("pyobs:field-structural-change", {
+          bubbles: true,
+          detail: { structural: !isCompactMode(select.value) },
+        })
+      );
+    }
   });
 
   return {
     control: wrap,
     getValue: () => {
       if (!select.value) return null;
-      return { class: select.value, ...(currentForm ? currentForm.getData() : {}) };
+      if (select.value === POLYMORPHIC_SCALAR_OPTION) return current ? current.getValue() : undefined;
+      return { class: select.value, ...(current ? current.getValue() : {}) };
     },
     // issue #102: PolymorphicBaseModel's deserialization validator resolves
     // the concrete class and validates *that* model directly, so a loc path
     // continues straight into the concrete class's own fields with no
     // "class"-selection segment of its own -- delegate as-is, not loc.slice(1).
-    resolvePath: (loc) => (currentForm ? currentForm.resolveFieldPath(loc) : null),
+    // The scalar branch has no sub-fields of its own to resolve into, so this
+    // naturally returns null there (current.resolvePath is undefined).
+    resolvePath: (loc) => (current && current.resolvePath ? current.resolvePath(loc) : null),
   };
 }
 
