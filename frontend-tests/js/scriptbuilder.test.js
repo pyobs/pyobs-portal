@@ -207,6 +207,52 @@ describe("ScriptBuilder: tree/editor pane exclusivity (issue #95)", () => {
     expect(builder.editorPane.classList.contains("d-none")).toBe(true);
     expect(builder.getData()).toEqual({});
   });
+
+  it("after Delete, picking a different type starts a clean form (no leftover state)", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+    const input = container.querySelector("input[type=text]");
+    input.value = "in progress";
+    input.dispatchEvent(new Event("input"));
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    container.querySelector(".script-builder-editor .btn-outline-danger").click();
+    selectByText(container, "SequentialRunner");
+
+    expect(builder.treePane.classList.contains("d-none")).toBe(true);
+    expect(builder.editorPane.classList.contains("d-none")).toBe(false);
+    expect(builder.getData()).toEqual({ class: "pkg.control.sequential.SequentialRunner", scripts: [] });
+  });
+});
+
+describe("ScriptBuilder: status bar while no type is picked", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("shows no status for a fresh empty script, rather than validate_script/'s \"no script class selected\"", async () => {
+    const builder = new ScriptBuilder(makeContainer(), TREE, {});
+    await builder._validate();
+    expect(builder.statusEl.textContent).toBe("");
+    expect(builder.statusEl.className).toBe("small");
+  });
+
+  it("Delete clears any stale status rather than leaving a red error behind", async () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE, {});
+    selectByText(container, "LogScript");
+    // Simulate a prior successful validation before deleting.
+    builder.statusEl.textContent = "✓ Valid";
+    builder.statusEl.className = "small text-success";
+
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    container.querySelector(".script-builder-editor .btn-outline-danger").click();
+    await builder._validate();
+
+    expect(builder.statusEl.textContent).toBe("");
+    expect(builder.statusEl.className).toBe("small");
+  });
 });
 
 describe("ScriptBuilder: class invariant", () => {

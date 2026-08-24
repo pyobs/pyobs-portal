@@ -275,7 +275,7 @@ class ScriptBuilder {
    * type picker. Destructive enough (an entire configured script, possibly
    * with nested polymorphic children) to warrant a confirmation. */
   _deleteScript() {
-    if (!confirm("Delete this script and start fresh? This clears all configured parameters.")) return;
+    if (!confirm("Delete this script and start fresh? This clears all configured parameters and the script YAML.")) return;
     this.warningEl.classList.add("d-none");
     this._showPicker();
     this._setSourceText({});
@@ -391,6 +391,15 @@ class ScriptBuilder {
   }
 
   async _validate() {
+    if (this.mode === "builder" && !this.rootClass) {
+      // No type picked yet (fresh empty script, or just back from Delete) --
+      // clear the status rather than running validate_script/ against {},
+      // which would show "no script class selected" as a red error for a
+      // state the user hasn't done anything wrong to reach.
+      this.statusEl.textContent = "";
+      this.statusEl.className = "small";
+      return;
+    }
     if (this.mode === "source" && this._parseSource() === undefined) {
       // getData() flattens invalid YAML into {}, which validate_script/
       // would report as "no script class selected" -- misleading when the

@@ -4,6 +4,15 @@ Tracks pyobs/pyobs-robotic-backend#81.
 Repos: pyobs-robotic-backend, pyobs-core.
 Status: implemented (pyobs/pyobs-robotic-backend#90, #91, #93)
 
+**Update (2026-08-24, pyobs/pyobs-robotic-backend#95 / #99):** the always-visible
+two-pane tree/editor layout described below (§4.7–8, §14, the mobile drawer in §7 item 8,
+and the mobile acceptance criterion) was replaced with mutually-exclusive panes: the type
+tree is shown only until a class is picked, then hides in favor of a full-width editor; a
+"Delete script" action (with confirmation) clears the form and brings the tree back. This
+was a deliberate follow-up (picking a type mid-edit was too easy and silently discarded
+in-progress state) and also removed the mobile drawer/toggle entirely, since only one pane
+is ever visible on any viewport. The sections below are left as written for history.
+
 ## Decisions (locked 2026-08-20)
 - `validate_script/` **is tightened** at the backend (reject class-less / unknown-class payloads).
 - **Minimal vitest setup is added** for frontend unit tests (polymorphic + map controls).
