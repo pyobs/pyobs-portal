@@ -678,6 +678,25 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         self.assertIn("schema", entry)
         self.assertIn("$polymorphic", self.tree)
 
+    def test_aliases_map_reexported_short_path_to_canonical(self):
+        # Every pyobs-core script subpackage (calibration, control, imaging, utils) re-exports
+        # its classes from its own __init__.py, so both "pyobs.robotic.scripts.imaging.
+        # TransitImagingScript" (the re-exported path some hand-written/legacy task YAML uses)
+        # and the canonical "...imaging.transitimaging.TransitImagingScript" this tree is keyed
+        # by are valid, equivalent imports -- see schema_module._reexport_aliases.
+        aliases = self.tree["$aliases"]
+        self.assertEqual(
+            aliases["pyobs.robotic.scripts.imaging.TransitImagingScript"],
+            "pyobs.robotic.scripts.imaging.transitimaging.TransitImagingScript",
+        )
+        canonical = aliases["pyobs.robotic.scripts.calibration.DarkBiasScript"]
+        self.assertEqual(canonical, "pyobs.robotic.scripts.calibration.darkbias.DarkBiasScript")
+        # The alias's target must itself be a real, known script -- otherwise a resolved
+        # "unknown class" would just become a different unknown class.
+        self.assertEqual(
+            self.tree["calibration"]["darkbias"]["DarkBiasScript"]["class"], canonical
+        )
+
     def test_polymorphic_registry_has_no_abstract_candidates(self):
         script_entry = self.tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]
         self.assertGreater(len(script_entry["candidates"]), 0)
@@ -692,7 +711,7 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         # strings don't round-trip through get_class_from_string either. Re-scan with
         # the same mechanism _polymorphic_registry uses instead.
         for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
-            candidates = schema_module._scan_concrete_subclasses(package, base)
+            candidates, _ = schema_module._scan_concrete_subclasses(package, base)
             self.assertGreater(len(candidates), 0, base)
             for cls in candidates:
                 self.assertFalse(inspect.isabstract(cls), cls)
@@ -725,7 +744,8 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         skipped = {"ArchiveSkyflatPriorities"}
         seen = set()
         for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
-            for cls in schema_module._scan_concrete_subclasses(package, base):
+            candidates, _ = schema_module._scan_concrete_subclasses(package, base)
+            for cls in candidates:
                 if cls.__name__ in skipped:
                     continue
                 seen.add(cls.__name__)
