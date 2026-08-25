@@ -147,6 +147,25 @@ docker compose up -d
 No `--mount=type=ssh`/SSH agent forwarding is needed if your extra package is public — drop that
 `RUN` block's SSH setup and just `uv pip install` the package directly.
 
+### Extension packages (site-specific scripts and providers)
+
+The script builder's class lists (`/api/schema/scripts/`) aren't limited to what pyobs-core
+ships. Any **installed** top-level package named `pyobs_<something>` (e.g. `pyobs_iagvt`, built
+into your site-specific image as above) is scanned automatically for the same
+`pyobs.robotic.*` submodules pyobs-core itself uses:
+
+- `<package>.scripts` — scanned exactly like `pyobs.robotic.scripts`, for `Script` subclasses
+- `<package>.utils.exptime` — for `ExposureTimeProvider` subclasses
+- `<package>.utils.skyflats.pointing` — for `SkyFlatsBasePointing` subclasses
+- `<package>.utils.skyflats.priorities` — for `SkyflatPriorities` subclasses
+
+A package missing one of these submodules is skipped for that one, not an error. There is no
+setting or environment variable to enable this — it's purely by installed-package naming
+convention, so a package just needs to be `pip install`ed (e.g. via the derived-image approach
+above) and the process restarted for its scripts/providers to appear in the builder. See
+`pyobs_portal/api/schema.py` (`_installed_extension_packages`, `_relative_to_robotic`) for the
+scan implementation.
+
 ## API Overview
 
 Authentication is via token (`Authorization: Token <token>`), Django session cookie, or a Keycloak Bearer token (if configured). Obtain a static token at `/api-token-auth/`.
