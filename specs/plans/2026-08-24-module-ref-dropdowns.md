@@ -114,7 +114,7 @@ flat/optional pair, with a comment in the same style:
 WEBADMIN_URL = os.environ.get("WEBADMIN_URL", "")
 WEBADMIN_TOKEN = os.environ.get("WEBADMIN_TOKEN", "")
 ```
-One robotic-backend per web-admin (per the issue's own framing), so this is flat, not
+One portal per web-admin (per the issue's own framing), so this is flat, not
 per-`Project`.
 
 **2. `pyobs_portal/api/webadmin.py`** (new) — mirrors `api/archive.py`'s shape and

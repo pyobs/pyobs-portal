@@ -10,7 +10,7 @@ beforeAll(() => {
   };
 });
 
-await import("../../pyobs_robotic_backend/frontend/static/frontend/js/schemaform.js");
+await import("../../pyobs_portal/frontend/static/frontend/js/schemaform.js");
 const { SchemaForm, buildControl, resolvePolymorphicCandidates } = window;
 
 // Trimmed fixture mirroring the real script_tree() response shape (see
