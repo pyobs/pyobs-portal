@@ -383,7 +383,7 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
 # a de-duplication window, not a real staleness tolerance (module code doesn't change without a
 # process restart anyway), so it's kept short. LocMemCache pickles values on set/get, so the
 # cached tree is never the same object a caller could accidentally mutate.
-_SCRIPT_TREE_CACHE_KEY = "pyobs_robotic_backend.api.schema.script_tree"
+_SCRIPT_TREE_CACHE_KEY = "pyobs_portal.api.schema.script_tree"
 _SCRIPT_TREE_CACHE_TTL = 5  # seconds
 
 

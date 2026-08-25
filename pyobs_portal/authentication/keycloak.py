@@ -1,4 +1,4 @@
-"""pyobs-auth USER_RESOLVER for robotic-backend.
+"""pyobs-auth USER_RESOLVER for pyobs-portal.
 
 Mirrors pyobs-archive's resolver: Keycloak's `sub` claim is the join key (see pyobs-core's
 shared-auth design doc), stored on KeycloakIdentity. First Keycloak login for an existing local
@@ -14,7 +14,7 @@ from typing import Any
 
 from django.contrib.auth.models import User
 
-from pyobs_robotic_backend.authentication.models import KeycloakIdentity
+from pyobs_portal.authentication.models import KeycloakIdentity
 
 
 def resolve_user(claims: dict[str, Any]) -> User | None:

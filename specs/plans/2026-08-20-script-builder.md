@@ -1,10 +1,10 @@
 # Plan: Full script builder for the task editor
 
-Tracks pyobs/pyobs-robotic-backend#81.
-Repos: pyobs-robotic-backend, pyobs-core.
-Status: implemented (pyobs/pyobs-robotic-backend#90, #91, #93)
+Tracks pyobs/pyobs-portal#81.
+Repos: pyobs-portal, pyobs-core.
+Status: implemented (pyobs/pyobs-portal#90, #91, #93)
 
-**Update (2026-08-24, pyobs/pyobs-robotic-backend#95 / #99):** the always-visible
+**Update (2026-08-24, pyobs/pyobs-portal#95 / #99):** the always-visible
 two-pane tree/editor layout described below (§4.7–8, §14, the mobile drawer in §7 item 8,
 and the mobile acceptance criterion) was replaced with mutually-exclusive panes: the type
 tree is shown only until a class is picked, then hides in favor of a full-width editor; a
@@ -40,7 +40,7 @@ fields**, get live validation + duration estimates, and serialize back to the ta
 - `POST /api/validate_script/` → `{"valid": bool, "error": str?}` via `Script.model_validate`.
 - `POST /api/estimate_duration/` → `{"duration": s}`; takes the **full task payload** so
   e.g. `TransitImagingScript` finds its `TransitMerit`.
-- `pyobs_robotic_backend/api/tests.py` exists → backend changes can be unit-tested.
+- `pyobs_portal/api/tests.py` exists → backend changes can be unit-tested.
 
 ### Frontend
 - `schemaform.js` (`SchemaForm` + `buildControl`) already renders objects, arrays of
@@ -249,7 +249,7 @@ works for every polymorphic base (`Script`, `ExposureTimeProvider`,
     calls (`load`/`dump` for `jsyaml`; the editor constructor + `getValue`/`setValue` for
     `CodeMirror`).
   - CI: **`.github/workflows/test.yml` now exists** (added 2026-08-23, follow-up to
-    pyobs/pyobs-robotic-backend#89) — runs `manage.py check` + `manage.py test` via `uv` on
+    pyobs/pyobs-portal#89) — runs `manage.py check` + `manage.py test` via `uv` on
     push/PR to `main`/`develop`. Add an `npm ci && npm test` step (or a separate job) to that
     same workflow for vitest, rather than deciding from scratch whether tests run in CI.
   - `.gitignore`: add `node_modules/`.

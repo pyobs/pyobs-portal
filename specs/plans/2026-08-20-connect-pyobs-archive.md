@@ -1,9 +1,9 @@
-# Plan: Connect pyobs-robotic-backend to pyobs-archive (observations → data links)
+# Plan: Connect pyobs-portal to pyobs-archive (observations → data links)
 
-Tracks pyobs/pyobs-robotic-backend#82.
-Repos: pyobs-robotic-backend only — the archive's existing frontend and API need no changes
+Tracks pyobs/pyobs-portal#82.
+Repos: pyobs-portal only — the archive's existing frontend and API need no changes
 (verified below), and there is no pyobs-core dependency.
-Status: implemented (pyobs/pyobs-robotic-backend#89)
+Status: implemented (pyobs/pyobs-portal#89)
 
 ## Problem
 
@@ -16,7 +16,7 @@ to open the archive separately and search for the frames manually. Every observa
 ## What exists today
 
 - `Observation.obsnum` (`CharField(32)`, nullable) plus `start`/`end` — the join key needs no
-  schema change (`pyobs_robotic_backend/api/models.py`).
+  schema change (`pyobs_portal/api/models.py`).
 - **The archive's own frontend already deep-links from URL query params — verified in code.**
   `pyobs_archive/frontend/static/js/app.js:329-343`: on page load it reads
   `URLSearchParams(window.location.search)`, pre-fills the search form from `OBSNUM`, `REQNUM`,
@@ -119,7 +119,7 @@ pipeline attaches the following morning). Reconsidered because:
       / no links), `ARCHIVE_TOKEN` (optional; unset → `archive_url` still works, data-status
       always reports `"unavailable"`).
 
-### 2. `archive_url` — `pyobs_robotic_backend/api/serializers.py`
+### 2. `archive_url` — `pyobs_portal/api/serializers.py`
 
 - [x] `ObservationSerializer`: add a computed `archive_url` field (`SerializerMethodField`),
       `None` when `settings.ARCHIVE_URL` is unset or the observation isn't in a
@@ -129,7 +129,7 @@ pipeline attaches the following morning). Reconsidered because:
 - [x] Unit test: field present/absent per state and per `ARCHIVE_URL` config; `OBSNUM` included
       only when set; values URL-encoded.
 
-### 3. Data-status endpoint — `pyobs_robotic_backend/api/{views,urls}.py`
+### 3. Data-status endpoint — `pyobs_portal/api/{views,urls}.py`
 
 - [x] `GET /api/observations/<id>/frames/` (`ObservationDataStatus`, `IsAuthenticated`, same
       access-scoped queryset as `ObservationDetail`): builds the archive query params from
@@ -168,7 +168,7 @@ pipeline attaches the following morning). Reconsidered because:
 
 ## Tests
 
-Following this repo's convention (`pyobs_robotic_backend/api/tests.py`: one flat file, one
+Following this repo's convention (`pyobs_portal/api/tests.py`: one flat file, one
 `TestCase` per unit — see `ProjectPublicApiTests`, `UpdateMarkerApiTests`):
 
 - `ArchiveUrlSerializerTests`: `archive_url` present/absent per state, per `ARCHIVE_URL` config,

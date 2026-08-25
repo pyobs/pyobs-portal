@@ -33,9 +33,9 @@ beforeAll(() => {
   window.CodeMirror = FakeCodeMirror;
 });
 
-await import("../../pyobs_robotic_backend/frontend/static/frontend/js/schemaform.js");
-await import("../../pyobs_robotic_backend/frontend/static/frontend/js/taskeditor.js");
-await import("../../pyobs_robotic_backend/frontend/static/frontend/js/scriptbuilder.js");
+await import("../../pyobs_portal/frontend/static/frontend/js/schemaform.js");
+await import("../../pyobs_portal/frontend/static/frontend/js/taskeditor.js");
+await import("../../pyobs_portal/frontend/static/frontend/js/scriptbuilder.js");
 const { ScriptBuilder } = window;
 
 // Trimmed fixture mirroring the real script_tree() response shape (see
