@@ -1,5 +1,5 @@
 """
-WSGI config for pyobs_robotic_backend project.
+WSGI config for pyobs_portal project.
 
 It exposes the WSGI callable as a module-level variable named ``application``.
 
@@ -11,6 +11,6 @@ import os
 
 from django.core.wsgi import get_wsgi_application
 
-os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pyobs_robotic_backend.settings")
+os.environ.setdefault("DJANGO_SETTINGS_MODULE", "pyobs_portal.settings")
 
 application = get_wsgi_application()

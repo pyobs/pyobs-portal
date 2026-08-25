@@ -1,5 +1,5 @@
 """
-URL configuration for pyobs_robotic_backend project.
+URL configuration for pyobs_portal project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/6.0/topics/http/urls/
@@ -19,7 +19,7 @@ from django.contrib import admin
 from django.urls import path
 from rest_framework.urlpatterns import format_suffix_patterns
 
-from pyobs_robotic_backend.api import views
+from pyobs_portal.api import views
 
 urlpatterns = [
     path("users/", views.UserList.as_view()),

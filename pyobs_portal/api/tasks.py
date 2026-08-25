@@ -3,7 +3,7 @@ import logging
 from datetime import timedelta
 from django.utils import timezone
 
-from pyobs_robotic_backend.api.models import Observation
+from pyobs_portal.api.models import Observation
 
 logger = logging.getLogger(__name__)
 
