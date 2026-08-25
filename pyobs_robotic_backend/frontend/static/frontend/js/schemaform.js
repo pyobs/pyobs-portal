@@ -866,7 +866,7 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
       if (!candidate) return;
       const card = document.createElement("div");
       card.className = "border rounded p-2 border-secondary-subtle";
-      const form = new SchemaForm(candidate.schema || {}, defs, data || {}, {
+      const form = new SchemaForm(candidate.schema || {}, { ...defs, ...(candidate.schema && candidate.schema.$defs) }, data || {}, {
         ignoredFields: ignored,
         polymorphic,
         moduleRefs,
@@ -924,7 +924,7 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
     if (!candidate) return; // "" (none), for a field that's somehow both optional and scalar-alternative
     const card = document.createElement("div");
     card.className = "border rounded p-2 border-secondary-subtle";
-    const form = new SchemaForm(candidate.schema || {}, defs, data || {}, {
+    const form = new SchemaForm(candidate.schema || {}, { ...defs, ...(candidate.schema && candidate.schema.$defs) }, data || {}, {
       ignoredFields: ignored,
       polymorphic,
       moduleRefs,

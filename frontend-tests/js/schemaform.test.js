@@ -43,6 +43,31 @@ const TREE = {
       },
     },
   },
+  imaging: {
+    imaging: {
+      // Mirrors ImagingScript: a top-level candidate whose own `configuration` field
+      // is a $ref into a $defs entry that only exists on *this* candidate's own schema
+      // (Configuration isn't a polymorphic field itself, so it never appears in the
+      // outer SCRIPT_DEFS a nesting form like ParallelRunner.scripts uses).
+      ImagingScript: {
+        class: "pkg.imaging.imaging.ImagingScript",
+        schema: {
+          title: "ImagingScript",
+          type: "object",
+          properties: {
+            configuration: { $ref: "#/$defs/Configuration" },
+          },
+          $defs: {
+            Configuration: {
+              title: "Configuration",
+              type: "object",
+              properties: { repeats: { type: "integer", default: 1, title: "Repeats" } },
+            },
+          },
+        },
+      },
+    },
+  },
   $polymorphic: {
     "pkg.script.Script": {
       candidates: [
@@ -52,6 +77,7 @@ const TREE = {
           path: "control/sequential/SequentialRunner",
           title: "SequentialRunner",
         },
+        { class: "pkg.imaging.imaging.ImagingScript", path: "imaging/imaging/ImagingScript", title: "ImagingScript" },
       ],
     },
     "pkg.exptime.ExposureTimeProvider": {
@@ -81,7 +107,7 @@ function scriptFieldSchema(container) {
 describe("resolvePolymorphicCandidates", () => {
   it("resolves Script candidates' path references against the tree", () => {
     const scriptCandidates = POLYMORPHIC["pkg.script.Script"];
-    expect(scriptCandidates).toHaveLength(2);
+    expect(scriptCandidates).toHaveLength(3);
     const seq = scriptCandidates.find((c) => c.class === "pkg.control.sequential.SequentialRunner");
     expect(seq.schema).toEqual(TREE.control.sequential.SequentialRunner.schema);
   });
@@ -336,6 +362,28 @@ describe("array of polymorphic scripts (SequentialRunner.scripts-like)", () => {
       ],
     };
     const form = new SchemaForm(SCHEMA, SCRIPT_DEFS, data, { polymorphic: POLYMORPHIC });
+    expect(form.getData()).toEqual(data);
+  });
+});
+
+describe("array of polymorphic scripts: a candidate's own $defs (ParallelRunner.scripts + ImagingScript.configuration-like)", () => {
+  const SCHEMA = {
+    type: "object",
+    properties: {
+      scripts: { type: "array", items: scriptFieldSchema("array"), title: "Scripts" },
+    },
+  };
+
+  it("resolves a nested $ref against the selected candidate's own $defs, not the outer form's", () => {
+    const data = { scripts: [{ class: "pkg.imaging.imaging.ImagingScript", configuration: { repeats: 3 } }] };
+    const form = new SchemaForm(SCHEMA, SCRIPT_DEFS, data, { polymorphic: POLYMORPHIC });
+
+    // Bug: without the candidate's $defs, "Configuration" can't resolve inside SCRIPT_DEFS
+    // (which only has "Script"), so it collapses to {} and falls through to a raw-YAML
+    // textarea -- the getData() round-trip below is what a YAML fallback would still pass,
+    // so also assert a real nested control (a "Repeats" number input) was built.
+    const numberInput = form.element.querySelector('input[type="number"]');
+    expect(numberInput).not.toBeNull();
     expect(form.getData()).toEqual(data);
   });
 });
