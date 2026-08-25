@@ -130,7 +130,7 @@
         <img src="{{ pyobs_logo_dark_url }}" alt="pyobs" class="pyobs-logo-dark" style="height:28px;width:auto;object-fit:contain">
         <div>
           <div class="fw-semibold text-body lh-1">pyobs</div>
-          <div class="text-muted" style="font-size:0.7rem">Portal</div>
+          <div class="text-muted" style="font-size:0.7rem">Portal{% if portal_version %} v{{ portal_version }}{% endif %}</div>
         </div>
       </div>
     </div>
@@ -141,7 +141,7 @@
       <img src="{{ pyobs_logo_dark_url }}" alt="pyobs" class="pyobs-logo-dark" style="height:28px;width:auto;object-fit:contain">
       <div class="me-auto">
         <div class="fw-semibold text-body lh-1">pyobs</div>
-        <div class="text-muted" style="font-size:0.7rem">Portal</div>
+        <div class="text-muted" style="font-size:0.7rem">Portal{% if portal_version %} v{{ portal_version }}{% endif %}</div>
       </div>
       <button class="btn btn-sm btn-outline-secondary" onclick="toggleSidebar()">
         <i class="bi bi-x-lg"></i>
