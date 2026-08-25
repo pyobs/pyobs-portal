@@ -1,5 +1,5 @@
 """
-URL configuration for pyobs_robotic_backend project.
+URL configuration for pyobs_portal project.
 
 The `urlpatterns` list routes URLs to views. For more information please see:
     https://docs.djangoproject.com/en/6.0/topics/http/urls/
@@ -22,12 +22,12 @@ from rest_framework.authtoken import views
 
 urlpatterns = [
     path("admin/", admin.site.urls),
-    path("api/", include("pyobs_robotic_backend.api.urls")),
+    path("api/", include("pyobs_portal.api.urls")),
     path("api-token-auth/", views.obtain_auth_token),
 ]
 
 if settings.FRONTEND_ENABLED:
     urlpatterns += [
-        path("", include("pyobs_robotic_backend.frontend.urls")),
+        path("", include("pyobs_portal.frontend.urls")),
         path("accounts/keycloak/", include("pyobs_auth.urls")),
     ]

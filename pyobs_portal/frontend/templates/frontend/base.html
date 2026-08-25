@@ -228,8 +228,8 @@ function getCsrfToken() {
   // Cookie name must match settings.CSRF_COOKIE_NAME.
   return document.cookie.split(';')
     .map(c => c.trim())
-    .find(c => c.startsWith('robotic_backend_csrftoken='))
-    ?.replace('robotic_backend_csrftoken=', '') || '';
+    .find(c => c.startsWith('portal_csrftoken='))
+    ?.replace('portal_csrftoken=', '') || '';
 }
 
 function toggleSidebar() {

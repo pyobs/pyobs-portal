@@ -1,6 +1,6 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from pyobs_robotic_backend.api.models import Observation
+from pyobs_portal.api.models import Observation
 
 
 class Command(BaseCommand):

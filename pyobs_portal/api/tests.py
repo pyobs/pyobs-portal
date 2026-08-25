@@ -505,7 +505,7 @@ class ObservationDataStatusApiTests(TestCase):
         return resp
 
     @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.views.requests.get")
+    @patch("pyobs_portal.api.views.requests.get")
     def test_normal_case_returns_count_and_reduced(self, mock_get):
         mock_get.side_effect = [self._count_response(5), self._count_response(2)]
 
@@ -519,7 +519,7 @@ class ObservationDataStatusApiTests(TestCase):
         )
 
     @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.views.requests.get")
+    @patch("pyobs_portal.api.views.requests.get")
     def test_raw_only_reports_not_reduced(self, mock_get):
         mock_get.side_effect = [self._count_response(3), self._count_response(3)]
 
@@ -528,7 +528,7 @@ class ObservationDataStatusApiTests(TestCase):
         self.assertFalse(res.data["reduced"])
 
     @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.views.requests.get")
+    @patch("pyobs_portal.api.views.requests.get")
     def test_malformed_2xx_response_reports_unavailable_not_5xx(self, mock_get):
         # A 2xx response whose body isn't the expected {"count": N} shape (misconfigured
         # ARCHIVE_URL, a proxy error page, ...) must degrade the same way a network failure
@@ -552,7 +552,7 @@ class ObservationDataStatusApiTests(TestCase):
                 self.assertEqual(res.data["status"], "unavailable")
 
     @override_settings(ARCHIVE_URL="https://archive.example.org", ARCHIVE_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.views.requests.get")
+    @patch("pyobs_portal.api.views.requests.get")
     def test_response_never_cached(self, mock_get):
         mock_get.side_effect = [self._count_response(5), self._count_response(2)]
         res = self._client(self.alice).get(self._url())
@@ -567,14 +567,14 @@ class ObservationDataStatusApiTests(TestCase):
         ):
             with self.subTest(exc=type(exc).__name__):
                 with patch(
-                    "pyobs_robotic_backend.api.views.requests.get", side_effect=exc
+                    "pyobs_portal.api.views.requests.get", side_effect=exc
                 ):
                     res = self._client(self.alice).get(self._url())
                     self.assertEqual(res.status_code, 200)
                     self.assertEqual(res.data["status"], "unavailable")
 
     def test_unset_archive_config_reports_unavailable_without_request(self):
-        with patch("pyobs_robotic_backend.api.views.requests.get") as mock_get:
+        with patch("pyobs_portal.api.views.requests.get") as mock_get:
             res = self._client(self.alice).get(self._url())
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.data["status"], "unavailable")
@@ -584,7 +584,7 @@ class ObservationDataStatusApiTests(TestCase):
     def test_non_terminal_state_reports_unavailable_without_request(self):
         self.observation.state = ObservationState.PENDING
         self.observation.save()
-        with patch("pyobs_robotic_backend.api.views.requests.get") as mock_get:
+        with patch("pyobs_portal.api.views.requests.get") as mock_get:
             res = self._client(self.alice).get(self._url())
             self.assertEqual(res.status_code, 200)
             self.assertEqual(res.data["status"], "unavailable")
@@ -748,7 +748,7 @@ class ScriptTreeCachingTests(SimpleTestCase):
         first = schema_module.script_tree()
         # If the second call actually rescanned, this would blow up -- proving it didn't.
         with patch(
-            "pyobs_robotic_backend.api.schema.importlib.import_module",
+            "pyobs_portal.api.schema.importlib.import_module",
             side_effect=AssertionError("script_tree() rescanned instead of using the cache"),
         ):
             second = schema_module.script_tree()
@@ -774,18 +774,18 @@ class GetModuleClassesTests(SimpleTestCase):
 
     @override_settings(WEBADMIN_URL="", WEBADMIN_TOKEN="tok")
     def test_no_request_when_url_unset(self):
-        with patch("pyobs_robotic_backend.api.webadmin.requests.get") as mock_get:
+        with patch("pyobs_portal.api.webadmin.requests.get") as mock_get:
             self.assertIsNone(webadmin.get_module_classes())
             mock_get.assert_not_called()
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="")
     def test_no_request_when_token_unset(self):
-        with patch("pyobs_robotic_backend.api.webadmin.requests.get") as mock_get:
+        with patch("pyobs_portal.api.webadmin.requests.get") as mock_get:
             self.assertIsNone(webadmin.get_module_classes())
             mock_get.assert_not_called()
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_success_returns_dict(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
@@ -801,7 +801,7 @@ class GetModuleClassesTests(SimpleTestCase):
         self.assertEqual(kwargs["timeout"], 5)
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_second_call_within_ttl_reuses_cached_result_success(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
@@ -815,7 +815,7 @@ class GetModuleClassesTests(SimpleTestCase):
         mock_get.assert_called_once()
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_second_call_within_ttl_reuses_cached_result_failure(self, mock_get):
         # A down-but-configured web-admin must not cost the full request timeout again on the
         # very next call -- the None result itself is cached too, not just successes.
@@ -826,7 +826,7 @@ class GetModuleClassesTests(SimpleTestCase):
         mock_get.assert_called_once()
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org/", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_trailing_slash_on_url_normalized(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
@@ -838,13 +838,13 @@ class GetModuleClassesTests(SimpleTestCase):
         self.assertEqual(mock_get.call_args[0][0], "https://webadmin.example.org/api/modules/classes/")
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_request_exception_returns_none(self, mock_get):
         mock_get.side_effect = requests.ConnectionError("refused")
         self.assertIsNone(webadmin.get_module_classes())
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_non_2xx_returns_none(self, mock_get):
         resp = Mock(status_code=401)
         resp.raise_for_status = Mock(side_effect=requests.HTTPError("401"))
@@ -852,7 +852,7 @@ class GetModuleClassesTests(SimpleTestCase):
         self.assertIsNone(webadmin.get_module_classes())
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
-    @patch("pyobs_robotic_backend.api.webadmin.requests.get")
+    @patch("pyobs_portal.api.webadmin.requests.get")
     def test_malformed_body_returns_none(self, mock_get):
         for body in (["not", "a", "dict"], {"cam1": 123}, "just a string"):
             cache.clear()  # each iteration must hit requests.get again, not a cached prior result
@@ -944,13 +944,13 @@ class ModuleRefOptionsTests(SimpleTestCase):
     def test_no_interfaces_referenced_short_circuits(self):
         self.assertEqual(schema_module.module_ref_options(tree={}), {"available": True, "options": {}})
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_webadmin_unavailable_is_flagged_unavailable(self, mock_get_classes):
         mock_get_classes.return_value = None
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
         self.assertEqual(result, {"available": False, "options": {"ICamera": []}})
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_filters_by_interface(self, mock_get_classes):
         mock_get_classes.return_value = {
             "cam1": "pyobs.modules.camera.DummyCamera",
@@ -959,7 +959,7 @@ class ModuleRefOptionsTests(SimpleTestCase):
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
         self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_unresolvable_class_is_skipped_not_fatal(self, mock_get_classes):
         mock_get_classes.return_value = {
             "cam1": "pyobs.modules.camera.DummyCamera",
@@ -983,7 +983,7 @@ class SchemaModulesApiTests(TestCase):
     def test_requires_authentication(self):
         self.assertEqual(APIClient().get("/api/schema/modules/").status_code, 401)
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_authenticated_returns_options(self, mock_get_classes):
         mock_get_classes.return_value = None
         res = self._client().get("/api/schema/modules/")
@@ -1162,7 +1162,7 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
     def _payload(self, camera):
         return {"class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript", "camera": camera}
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_unknown_module_is_rejected(self, mock_get_classes):
         mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
         result = schema_module.validate_script(self._payload("not_a_real_module"))
@@ -1178,13 +1178,13 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
             ],
         )
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_known_module_implementing_all_required_interfaces_is_accepted(self, mock_get_classes):
         mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
         result = schema_module.validate_script(self._payload("cam1"))
         self.assertEqual(result, {"valid": True})
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_module_missing_a_required_interface_is_rejected(self, mock_get_classes):
         # A telescope implements neither ICamera nor the other four interfaces ImagingScript's
         # camera field requires.
@@ -1192,13 +1192,13 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
         result = schema_module.validate_script(self._payload("tel1"))
         self.assertFalse(result["valid"])
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_webadmin_unavailable_never_blocks_saving(self, mock_get_classes):
         mock_get_classes.return_value = None
         result = schema_module.validate_script(self._payload("whatever-not-configured-anywhere"))
         self.assertEqual(result, {"valid": True})
 
-    @patch("pyobs_robotic_backend.api.schema.webadmin.get_module_classes")
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_empty_value_on_a_required_field_is_rejected_like_pydantic_would(self, mock_get_classes):
         # The builder's <select> always submits the key (empty string for its blank placeholder,
         # never an absent key), so pydantic's own "Field required" check never fires for this --
