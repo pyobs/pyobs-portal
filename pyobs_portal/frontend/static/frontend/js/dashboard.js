@@ -179,6 +179,11 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
     const height = Math.max(80, Math.min(320, desiredGroups.length * 38 + 44));
 
     if (!timeline) {
+      // #schedule-timeline is display:none until this first render -- vis.Timeline
+      // measures its container at construction time to lay out its panels, and gets
+      // it wrong (extra space above the item rows) if that container has zero size.
+      // Make it visible first so construction sees real dimensions.
+      showTimeline();
       timelineItems = new vis.DataSet(desiredItems);
       timelineGroups = new vis.DataSet(desiredGroups);
       timeline = new vis.Timeline(
