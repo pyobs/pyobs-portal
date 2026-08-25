@@ -1843,7 +1843,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.0.0.dev72"
+version = "2.0.0.dev95"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1873,14 +1873,14 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/d7/25/ac1a0571461eb87655374a38a4a21983db407f7239d60adce009e4ba8438/pyobs_core-2.0.0.dev72.tar.gz", hash = "sha256:b9ac8679bb9a72d1180ba60a97ad08b1878b1bc6b21158754d1f7fc7033231ee", size = 354347, upload-time = "2026-08-10T11:31:59.746Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/ab/54/4d928490db70feba24e788eca6a8397d8e6440f9bec5d56441f6bbd5b4f1/pyobs_core-2.0.0.dev95.tar.gz", hash = "sha256:8ab888a45b62f91abfb76d917fc63d57b0abbe186d3d396d960614ede7379a2d", size = 372729, upload-time = "2026-08-25T07:35:46.627Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/8e/6a/570856f6149a611d7e4858e980faa1e23c5ddedda22327808f8e3eb5b413/pyobs_core-2.0.0.dev72-py3-none-any.whl", hash = "sha256:321f6b80f2fb8703e3cbf2f62cea2333cb475b1a50f58d8900176644fe6ca6b2", size = 576647, upload-time = "2026-08-10T11:31:57.813Z" },
+    { url = "https://files.pythonhosted.org/packages/8d/f5/3cebc27543dbc3d7a1acc47be01b875f2ef0ab0c0532520b623d834dd8c3/pyobs_core-2.0.0.dev95-py3-none-any.whl", hash = "sha256:1e92f522e037056424d425e3f18069c0cb4d2b7d2c34ecf06c2768f86d9c05e6", size = 596243, upload-time = "2026-08-25T07:35:44.705Z" },
 ]
 
 [[package]]
-name = "pyobs-robotic-backend"
-version = "2.0.0.dev8"
+name = "pyobs-portal"
+version = "2.0.0.dev10"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -1896,6 +1896,7 @@ dependencies = [
     { name = "psycopg2-binary" },
     { name = "pyobs-auth" },
     { name = "pyobs-core" },
+    { name = "requests" },
     { name = "unicorn" },
 ]
 
@@ -1920,7 +1921,8 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.0.0.dev9" },
-    { name = "pyobs-core", specifier = ">=2.0.0.dev71" },
+    { name = "pyobs-core", specifier = ">=2.0.0.dev95" },
+    { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
 
