@@ -17,209 +17,25 @@ Backend service for the [pyobs](https://www.pyobs.org) robotic telescope system.
 - PostgreSQL (production) or SQLite (development)
 - A Celery-compatible message broker (e.g. RabbitMQ)
 
-## Installation
+## Documentation
+
+Full installation (Docker Compose, including site-specific hardware-driver images), configuration
+(every environment variable), architecture (how this fits into the rest of the pyobs fleet, and
+how the script-builder extension mechanism works), REST API reference, and web frontend guide: see
+[`docs/source/`](docs/source/) (built with Sphinx — `cd docs && uv run --group dev make html`).
+
+## Development
 
 ```bash
-# Using uv (recommended)
+git clone https://github.com/pyobs/pyobs-portal.git
+cd pyobs-portal
 uv sync
-
-# Or pip
-pip install -e .
+uv run python manage.py migrate
+uv run python manage.py createsuperuser
+uv run python manage.py runserver
 ```
 
-## Configuration
-
-All settings are controlled by environment variables. Copy `pyobs_portal/local_settings.example.py` to `pyobs_portal/local_settings.py` for local overrides, or set the following in your environment / Docker compose file:
-
-| Variable | Default | Description |
-|---|---|---|
-| `SECRET_KEY` | `foo` | Django secret key — **change in production** |
-| `DEBUG` | `1` | Set to `0` in production |
-| `DJANGO_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated list of allowed hosts |
-| `CSRF_TRUSTED_ORIGINS` | `http://localhost` | Comma-separated list of trusted origins |
-| `CORS_ALLOWED_ORIGINS` | (empty) | Comma-separated list of origins allowed to make cross-origin requests to the API |
-| `SECURE_CROSS_ORIGIN_OPENER_POLICY` | `same-origin` | Set to `none` to disable the `Cross-Origin-Opener-Policy` header (needed for HTTP-only deployments, since browsers warn/ignore it off HTTPS) |
-| `SQL_ENGINE` | `django.db.backends.sqlite3` | Database backend |
-| `SQL_DATABASE` | `db.sqlite3` | Database name / path |
-| `SQL_USER` | `user` | Database user |
-| `SQL_PASSWORD` | `password` | Database password |
-| `SQL_HOST` | `localhost` | Database host |
-| `SQL_PORT` | `5432` | Database port |
-| `CELERY_BROKER_URL` | `amqp://` | Celery broker URL |
-| `CELERY_RESULT_BACKEND` | `rpc://` | Celery result backend |
-| `STATIC_ROOT` | `static/` | Directory for collected static files |
-| `ENABLE_FRONTEND` | `0` | Set to `1` to enable the web frontend |
-| `SITE_LATITUDE` | — | Observatory latitude in decimal degrees |
-| `SITE_LONGITUDE` | — | Observatory longitude in decimal degrees |
-| `SITE_ELEVATION` | — | Observatory elevation in metres |
-| `DEFAULT_CONSTRAINTS` | `[]` | JSON array of constraint objects pre-filled on new tasks |
-| `DEFAULT_MERITS` | `[]` | JSON array of merit objects pre-filled on new tasks |
-| `KEYCLOAK_SERVER_URL` | (empty) | Keycloak login (optional addon on top of local Django username/password and Token auth; unset disables it) |
-| `KEYCLOAK_REALM` | `pyobs` | Keycloak realm |
-| `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `portal` / (empty) | This service's Keycloak client credentials |
-| `KEYCLOAK_REDIRECT_URI` | (empty) | Must match the redirect URI registered for this client in Keycloak |
-| `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
-| `KEYCLOAK_IDP_HINT` / `KEYCLOAK_IDP_LABEL` | (empty) | Optional one-click IdP login: hint passed to Keycloak as `kc_idp_hint` (skips its login/IdP-selection page) and the label for the login page's IdP button, e.g. `gwdg` / `GWDG` |
-| `ADMIN_USERNAME` / `ADMIN_PASSWORD_HASH` | (empty) | Settings-configured superuser, synced after every `migrate`; leave unset to use `createsuperuser` instead |
-| `ARCHIVE_URL` | (empty) | Base URL of a [pyobs-archive](https://github.com/pyobs/pyobs-archive) instance; unset disables `archive_url` links entirely |
-| `ARCHIVE_TOKEN` | (empty) | Service token for the archive's `frames_view` API; unset makes the on-demand frame-count/reduction check always report `"unavailable"` (links still work) |
-
-## Running
-
-### Development
-
-```bash
-python manage.py migrate
-python manage.py createsuperuser
-python manage.py runserver
-```
-
-The API is served at `http://localhost:8000/api/`. If the frontend is enabled, the UI is available at `http://localhost:8000/`.
-
-Setting `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` (generate the hash with
-`uv run python -c "from django.contrib.auth.hashers import make_password; print(make_password('yourpassword'))"`)
-syncs a matching superuser automatically after every `migrate`, skipping the interactive
-`createsuperuser` step above.
-
-### Docker Compose
-
-A production-ready setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). The application image is pulled from `ghcr.io/pyobs/pyobs-portal:latest`. Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
-
-The UI is served by nginx on port **8097**.
-
-Then start everything with:
-
-```bash
-docker compose up -d
-```
-
-Migrations and static file collection run automatically on startup. To create a superuser:
-
-```bash
-docker compose run --rm web uv run python manage.py createsuperuser
-```
-
-Or set `ADMIN_USERNAME`/`ADMIN_PASSWORD_HASH` in `.env` to skip this — a matching superuser is
-synced automatically as part of the migration step above.
-
-### Building a site-specific image
-
-The published image only ships `pyobs-core`. Some features need more than that to work fully at
-a given site: in particular, the script builder's module-name dropdowns (`WEBADMIN_URL`, see
-`.env.example`) resolve real module classes with `issubclass()` against `pyobs.interfaces` to
-filter them, which means each configured module's class has to actually *import* in this
-process. If your modules use a hardware-specific driver package (`pyobs-iagvt`, `pyobs-fli`,
-`pyobs-brot`, ...), that package needs to be installed on top of the base image — and since it's
-site-specific (and often private), it doesn't belong in this repo or its published image. Build
-a thin derived image instead, in your own deployment config repo, alongside your `docker-compose.yml`:
-
-```dockerfile
-# deploy/Dockerfile
-FROM ghcr.io/pyobs/pyobs-portal:latest
-
-# Only needed for a private git dependency, forwarding your SSH agent instead of baking in a key:
-RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \
-    && rm -rf /var/lib/apt/lists/*
-
-RUN --mount=type=ssh \
-    mkdir -p -m 0700 ~/.ssh && ssh-keyscan gitlab.example.org >> ~/.ssh/known_hosts && \
-    uv pip install git+ssh://git@gitlab.example.org/your-org/pyobs-yoursite.git
-```
-
-Then point every service in your `docker-compose.yml` that runs this image (`web`, `celery`,
-`task_scheduler`) at that Dockerfile instead, replacing each `image: ghcr.io/...` line with:
-
-```yaml
-    build:
-      context: ./deploy
-      ssh:
-        - default
-```
-
-Build and run with your SSH agent forwarded (`--ssh default` picks up `$SSH_AUTH_SOCK`; make
-sure the key that can clone your private repo is loaded first, e.g. `ssh-add ~/.ssh/id_ed25519`):
-
-```bash
-DOCKER_BUILDKIT=1 docker compose build --ssh default
-docker compose up -d
-```
-
-No `--mount=type=ssh`/SSH agent forwarding is needed if your extra package is public — drop that
-`RUN` block's SSH setup and just `uv pip install` the package directly.
-
-### Extension packages (site-specific scripts and providers)
-
-The script builder's class lists (`/api/schema/scripts/`) aren't limited to what pyobs-core
-ships. Any **installed** top-level package named `pyobs_<something>` (e.g. `pyobs_iagvt`, built
-into your site-specific image as above) is scanned automatically for the same
-`pyobs.robotic.*` submodules pyobs-core itself uses:
-
-- `<package>.scripts` — scanned exactly like `pyobs.robotic.scripts`, for `Script` subclasses
-- `<package>.utils.exptime` — for `ExposureTimeProvider` subclasses
-- `<package>.utils.skyflats.pointing` — for `SkyFlatsBasePointing` subclasses
-- `<package>.utils.skyflats.priorities` — for `SkyflatPriorities` subclasses
-
-A package missing one of these submodules is skipped for that one, not an error. There is no
-setting or environment variable to enable this — it's purely by installed-package naming
-convention, so a package just needs to be `pip install`ed (e.g. via the derived-image approach
-above) and the process restarted for its scripts/providers to appear in the builder. See
-`pyobs_portal/api/schema.py` (`_installed_extension_packages`, `_relative_to_robotic`) for the
-scan implementation.
-
-A package's `__init__.py` (core or extension) commonly re-exports its classes for a shorter
-public import path — e.g. a `scripts/__init__.py` doing `from .myscript import MyScript`, so
-both `<package>.scripts.MyScript` and `<package>.scripts.myscript.MyScript` are equally valid,
-working imports of the same class. Since the tree above is keyed by the latter (canonical)
-form, a task whose script YAML was written against the former would otherwise show as an
-"Unknown script class" in the builder. `script_tree()` also returns a `$aliases` map (short
-path → canonical path, collected at every package level it scans) that the builder consults
-before giving up on a class it doesn't recognize by exact match.
-
-In the script builder's type picker, each extension package's scripts appear under their own
-top-level branch labeled with the package's distribution name (e.g. `pyobs-iagvt`), rather than
-merged into pyobs-core's own folders — so it's clear which package a given script came from.
-Provider dropdowns (`ExposureTimeProvider` etc.) are unaffected and list core and extension
-candidates together.
-
-## API Overview
-
-Authentication is via token (`Authorization: Token <token>`), Django session cookie, or a Keycloak Bearer token (if configured). Obtain a static token at `/api-token-auth/`.
-
-| Method | Endpoint | Description |
-|---|---|---|
-| GET/POST | `/api/users/` | List / create users (admin only) |
-| GET/PATCH | `/api/users/<id>/` | Retrieve / update user (admin only) |
-| GET/POST | `/api/projects/` | List projects (resolved per user: public + memberships) / create (admin only); projects carry a `public` flag |
-| GET/PATCH | `/api/projects/<code>/` | Retrieve / update project (admin only) |
-| GET/POST | `/api/projects/<code>/tasks/` | List / create tasks for an accessible project |
-| GET | `/api/tasks/` | List tasks (filtered to accessible projects: public + memberships) |
-| GET/PUT/PATCH | `/api/tasks/<code>/` | Retrieve / update task (PATCH for partial updates) |
-| GET/POST | `/api/observations/` | List / create observations (list filtered to accessible projects); includes `archive_url` when `ARCHIVE_URL` is set |
-| GET/PATCH | `/api/observations/<id>/` | Retrieve / update observation (filtered to accessible projects) |
-| GET | `/api/observations/<id>/frames/` | On-demand frame count / reduction status from pyobs-archive (`{"archive_url", "count", "reduced"}`, or `{"archive_url", "status": "unavailable"}`) |
-| GET | `/api/me/` | Current user info |
-| GET | `/api/last_task_update/` | Timestamp of last task change |
-| GET | `/api/last_observation_update/` | Timestamp of last observation change |
-| GET | `/api/schema/constraints/` | JSON Schema for all Constraint subclasses |
-| GET | `/api/schema/merits/` | JSON Schema for all Merit subclasses |
-| GET | `/api/schema/targets/` | JSON Schema for all Target subclasses |
-| GET | `/api/schema/scripts/` | Script class tree with schemas |
-| POST | `/api/validate_script/` | Validate a script dict against pyobs-core |
-| POST | `/api/estimate_duration/` | Estimate script duration in seconds |
-
-## Web Frontend
-
-The browser UI is mounted at `/` and requires a login. Features:
-
-- **Sidebar** — task list grouped by project; click a task to open it. Upload icon imports a task from YAML; `+` creates a new task.
-- **Task overview** — tabular view of all tasks grouped by project with bulk activate/deactivate via checkboxes.
-- **Task editor** — tabbed view with **Task** (general fields, target, constraints, merits), **Script** (YAML editor with live validation and template insertion), **Schedule** (upcoming observations), and **Observations** (completed/cancelled history). Each completed/aborted/failed observation links straight to its archived data in the archive’s own UI, with an on-demand frame count/reduction-status check.
-  - **Sidereal target** — RA/Dec fields accept decimal degrees or hms/dms (e.g. `15:52:56.12` / `+12:54:44`). A Simbad name-search button resolves object names and populates the coordinates. An [Aladin Lite](https://aladin.cds.unistra.fr/AladinLite/) DSS sky view is shown below the target form and pans live as coordinates change.
-  - **Duration estimation** — stopwatch button calls `/api/estimate_duration/` on the current script.
-  - **Clone** — copies the current task to a new code, opening a pre-filled editor without saving.
-  - **Export YAML** — downloads the current form state as a `.yaml` file.
-  - **Import YAML** — available in the sidebar and task overview; opens a pre-filled editor from a `.yaml` file without saving.
-- **Default constraints/merits** — set `DEFAULT_CONSTRAINTS` / `DEFAULT_MERITS` to pre-fill new tasks with site-specific defaults.
-- **Admin panel** — superusers can manage users (including password changes) and projects at `/admin-panel/`.
-
-All data is fetched client-side from the same `/api/` endpoints that [pyobs-task-editor](https://github.com/pyobs/pyobs-task-editor) uses.
+See [`docs/source/development.rst`](docs/source/development.rst) for the full local-dev flow
+(including the frontend's Vitest suite), and
+[`docs/source/installation.rst`](docs/source/installation.rst) for the Docker Compose production
+setup.
