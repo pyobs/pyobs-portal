@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import importlib
+import importlib.metadata
 import inspect
 import pkgutil
 import types
@@ -46,6 +47,36 @@ _PROVIDER_SCAN_PACKAGES: dict[type[PolymorphicBaseModel], ModuleType] = {
     SkyFlatsBasePointing: skyflats_pointing_module,
     SkyflatPriorities: skyflats_priorities_module,
 }
+
+# Observatory-specific extension packages (e.g. pyobs_iagvt) are discovered by
+# naming convention, not configuration: any *installed* top-level package
+# prefixed "pyobs_" is scanned for the same pyobs.robotic.* submodules as
+# pyobs-core itself -- "scripts" for Script subclasses, and the relative path
+# of each entry in _PROVIDER_SCAN_PACKAGES (e.g. "utils.exptime") for provider
+# subclasses. A package that doesn't ship a matching submodule is simply
+# skipped. This means installing an extension package and restarting is
+# enough for its scripts/providers to show up in the builder -- no env var,
+# settings entry, or entry-point declaration required. See README.md
+# "Extension packages" for the operator-facing version of this.
+_ROBOTIC_PREFIX = "pyobs.robotic."
+
+
+def _relative_to_robotic(module: ModuleType) -> str:
+    return module.__name__.removeprefix(_ROBOTIC_PREFIX)
+
+
+def _installed_extension_packages() -> list[str]:
+    # packages_distributions() maps top-level import name -> owning distribution(s),
+    # built from each package's RECORD/metadata rather than the legacy (and, for
+    # modern build backends like hatchling/uv, frequently absent) top_level.txt.
+    return sorted(name for name in importlib.metadata.packages_distributions() if name.startswith("pyobs_"))
+
+
+def _extension_submodule(package_name: str, relative: str) -> ModuleType | None:
+    try:
+        return importlib.import_module(f"{package_name}.{relative}")
+    except Exception:
+        return None
 
 
 def _strip_ignored(schema: dict[str, Any]) -> dict[str, Any]:
@@ -361,8 +392,15 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
     registry[_fqcn(Script)] = {"candidates": script_candidates}
 
     for base, package in _PROVIDER_SCAN_PACKAGES.items():
+        classes = _scan_concrete_subclasses(package, base)
+        relative = _relative_to_robotic(package)
+        for pkg_name in _installed_extension_packages():
+            ext_package = _extension_submodule(pkg_name, relative)
+            if ext_package is not None:
+                classes += _scan_concrete_subclasses(ext_package, base)
+
         candidates = []
-        for cls in _scan_concrete_subclasses(package, base):
+        for cls in classes:
             s = _schema_for(cls)
             if s is None:
                 continue
@@ -425,7 +463,21 @@ def script_tree() -> dict[str, Any]:
                     results[name] = classes
         return results
 
+    def _merge(dst: dict[str, Any], src: dict[str, Any]) -> None:
+        for key, value in src.items():
+            existing = dst.get(key)
+            if isinstance(existing, dict) and isinstance(value, dict) and "class" not in value:
+                _merge(existing, value)
+            else:
+                dst[key] = value
+
     tree = _scan(scripts_module)
+    scripts_relative = _relative_to_robotic(scripts_module)
+    for pkg_name in _installed_extension_packages():
+        ext_scripts = _extension_submodule(pkg_name, scripts_relative)
+        if ext_scripts is not None:
+            _merge(tree, _scan(ext_scripts))
+
     tree["$polymorphic"] = _polymorphic_registry(tree)
     cache.set(_SCRIPT_TREE_CACHE_KEY, tree, _SCRIPT_TREE_CACHE_TTL)
     return tree
