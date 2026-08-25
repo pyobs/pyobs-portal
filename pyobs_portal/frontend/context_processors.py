@@ -1,5 +1,29 @@
+import tomllib
+
 from django.conf import settings
 from django.templatetags.static import static
+
+
+# Cached for the life of the process: this app isn't installed as a distribution (no
+# [build-system] in pyproject.toml, run straight from source via uv), so there's no
+# importlib.metadata entry to read -- pyproject.toml itself is the only source of truth,
+# and it can't change without a redeploy that restarts the process anyway.
+_portal_version_cache: str | None = None
+
+
+def _portal_version() -> str | None:
+    global _portal_version_cache
+    if _portal_version_cache is None:
+        try:
+            data = tomllib.loads((settings.BASE_DIR / "pyproject.toml").read_text())
+            _portal_version_cache = data.get("project", {}).get("version", "") or ""
+        except OSError:
+            _portal_version_cache = ""
+    return _portal_version_cache or None
+
+
+def portal_version(request):
+    return {"portal_version": _portal_version()}
 
 
 def keycloak(request):
