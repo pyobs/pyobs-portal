@@ -693,6 +693,7 @@ async function initTaskEditor(taskId) {
       document.title = "New task — pyobs Robotic";
     }
     els.code.value = task.id;
+    els.code.disabled = false;
     els.project.value = task.project;
   }
 
@@ -700,6 +701,20 @@ async function initTaskEditor(taskId) {
   els.duration.value = task.duration ?? 0;
   els.priority.value = task.priority ?? 1.0;
   els.active.checked = !!task.active;
+
+  // All fields above are now populated from `task` -- safe to let the user touch them.
+  // Re-enabling here (rather than only once every editor/listener below is fully wired,
+  // several lines down but still in the same synchronous block since nothing awaits in
+  // between) is enough: the browser can't dispatch a click on a still-disabled button
+  // until this function yields, which it doesn't again before Save/Export get their
+  // listeners attached below.
+  els.project.disabled = false;
+  els.name.disabled = false;
+  els.priority.disabled = false;
+  els.active.disabled = false;
+  els.exportBtn.disabled = false;
+  els.saveBtn.disabled = false;
+  document.getElementById("task-form-loading")?.remove();
 
   // Initialise visibility plots before TargetEditor so window.updateVisibilityPlots
   // exists when the editor fires _updateAladin() during construction.
