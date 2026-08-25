@@ -331,7 +331,20 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
       return buildDateTimeControl(value);
     }
     if (nonNull.length === 1) {
-      return buildControl(resolveSchema(nonNull[0], defs), defs, value, ignored, polymorphic, moduleRefs);
+      const branch = resolveSchema(nonNull[0], defs);
+      // Any nullable field (e.g. InstrumentConfig.window: tuple[...] | None, optical_filter: str |
+      // None, or a plain Optional[SomeConfig]) needs its own control: collapsing straight into
+      // buildControl(branch) below would lose the null/unset state entirely -- e.g. a brand-new or
+      // previously-null tuple has no array to read, so every element falls back to 0, and
+      // (0,0,0,0) is indistinguishable from an explicit zero-origin/zero-size value even though it
+      // means something very different downstream (None -> full frame for `window`). Same defect
+      // for a plain string (falls back to ""), enum (falls back to its first option), object
+      // (renders with every sub-field defaulted) -- see buildOptionalControl.
+      const isNullable = nonNull.length !== resolved.anyOf.length;
+      if (isNullable) {
+        return buildOptionalControl(branch, defs, value, ignored, polymorphic, moduleRefs);
+      }
+      return buildControl(branch, defs, value, ignored, polymorphic, moduleRefs);
     }
     // Ambiguous union (e.g. float | SomeProvider) -> raw YAML fallback.
     return buildYamlControl(value);
@@ -601,6 +614,45 @@ function buildTupleControl(resolved, defs, value, ignored, polymorphic, moduleRe
       if (!item) return null;
       return rest.length && item.resolvePath ? item.resolvePath(rest) : null;
     },
+  };
+}
+
+/** Any nullable field whose non-null branch has its own "empty" value that isn't None -- a
+ * fixed-length tuple (`window: tuple[int,int,int,int] | None`, where None means "full frame"
+ * downstream, not a zero-origin/zero-size window), a plain string (`optical_filter: str | None`,
+ * where None differs from ""), an enum, a number/bool, or a plain nested object. A checkbox
+ * tracks the set/unset state explicitly instead of inferring it from the branch control's value,
+ * so a brand-new or previously-null field round-trips as `null` rather than silently becoming
+ * that branch's zero-ish default. */
+function buildOptionalControl(branchSchema, defs, value, ignored, polymorphic, moduleRefs) {
+  const isSet = value !== undefined && value !== null;
+
+  const wrap = document.createElement("div");
+  wrap.className = "d-flex flex-row align-items-start gap-2";
+
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.className = "form-check-input mt-1 flex-shrink-0";
+  checkbox.checked = isSet;
+
+  const area = document.createElement("div");
+  area.className = "flex-grow-1";
+  area.style.display = checkbox.checked ? "" : "none";
+
+  const built = buildControl(branchSchema, defs, isSet ? value : undefined, ignored, polymorphic, moduleRefs);
+  area.appendChild(built.control);
+
+  checkbox.addEventListener("change", () => {
+    area.style.display = checkbox.checked ? "" : "none";
+  });
+
+  wrap.appendChild(checkbox);
+  wrap.appendChild(area);
+
+  return {
+    control: wrap,
+    getValue: () => (checkbox.checked ? built.getValue() : null),
+    resolvePath: (loc) => (checkbox.checked && built.resolvePath ? built.resolvePath(loc) : null),
   };
 }
 

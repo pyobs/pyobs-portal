@@ -511,6 +511,96 @@ describe("buildControl: fixed-length tuple (prefixItems, e.g. ImaginScript's bin
   });
 });
 
+describe("buildControl: any nullable field gets an explicit set/unset checkbox (e.g. InstrumentConfig.window)", () => {
+  const windowSchema = {
+    anyOf: [
+      {
+        type: "array",
+        prefixItems: [{ type: "integer" }, { type: "integer" }, { type: "integer" }, { type: "integer" }],
+        minItems: 4,
+        maxItems: 4,
+      },
+      { type: "null" },
+    ],
+    default: null,
+    title: "Window",
+  };
+
+  it("a null value renders unchecked and stays null, not [0, 0, 0, 0]", () => {
+    const { control, getValue } = buildControl(windowSchema, {}, null, new Set(), POLYMORPHIC);
+    const checkbox = control.querySelector('input[type="checkbox"]');
+    expect(checkbox.checked).toBe(false);
+    expect(getValue()).toBeNull();
+  });
+
+  it("an undefined (brand-new) value also renders unchecked and stays null", () => {
+    const { control, getValue } = buildControl(windowSchema, {}, undefined, new Set(), POLYMORPHIC);
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(false);
+    expect(getValue()).toBeNull();
+  });
+
+  it("an existing tuple value renders checked and round-trips", () => {
+    const { control, getValue } = buildControl(windowSchema, {}, [10, 20, 512, 512], new Set(), POLYMORPHIC);
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(true);
+    expect(getValue()).toEqual([10, 20, 512, 512]);
+  });
+
+  it("checking the box switches from null to a real tuple value", () => {
+    const { control, getValue } = buildControl(windowSchema, {}, null, new Set(), POLYMORPHIC);
+    const checkbox = control.querySelector('input[type="checkbox"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(getValue()).toEqual([0, 0, 0, 0]);
+  });
+
+  it("unchecking the box switches a real tuple value back to null", () => {
+    const { control, getValue } = buildControl(windowSchema, {}, [10, 20, 512, 512], new Set(), POLYMORPHIC);
+    const checkbox = control.querySelector('input[type="checkbox"]');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(getValue()).toBeNull();
+  });
+
+  it("round-trips null through a full InstrumentConfig-like form (issue: prefilled to [0,0,0,0])", () => {
+    const schema = { type: "object", properties: { window: windowSchema } };
+    const form = new SchemaForm(schema, {}, { window: null }, { polymorphic: POLYMORPHIC });
+    expect(form.getData()).toEqual({ window: null });
+  });
+
+  it("generalizes to a plain optional string (e.g. optical_filter: str | None): null stays null, not ''", () => {
+    const resolved = { anyOf: [{ type: "string" }, { type: "null" }], default: null, title: "Optical Filter" };
+    const { control, getValue } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(false);
+    expect(getValue()).toBeNull();
+  });
+
+  it("generalizes to an optional number: null stays null, not 0", () => {
+    const resolved = { anyOf: [{ type: "number" }, { type: "null" }], default: null, title: "Value" };
+    const { control, getValue } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(false);
+    expect(getValue()).toBeNull();
+  });
+
+  it("generalizes to a plain optional nested object: null stays null, not a fully-defaulted object", () => {
+    const resolved = {
+      anyOf: [
+        { type: "object", properties: { enabled: { type: "boolean", default: true } } },
+        { type: "null" },
+      ],
+      default: null,
+      title: "Config",
+    };
+    const { control, getValue } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(false);
+    expect(getValue()).toBeNull();
+
+    const checkbox = control.querySelector('input[type="checkbox"]');
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(getValue()).toEqual({ enabled: true });
+  });
+});
+
 describe("buildControl: invalid primitive values fall back to raw YAML (issue #101)", () => {
   it("number: a wrong-type stored value (string) is flagged and preserved, not sanitized to 0", () => {
     const { control, getValue } = buildControl({ type: "number" }, {}, "not a number", new Set(), POLYMORPHIC);
@@ -555,10 +645,12 @@ describe("buildControl: invalid primitive values fall back to raw YAML (issue #1
     expect(getValue()).toBe("b");
   });
 
-  it("enum: null isn't flagged -- it's a legitimately unset Optional[...] field", () => {
+  it("enum: null isn't flagged -- it's a legitimately unset Optional[...] field, and stays null (not the first enum member)", () => {
     const resolved = { anyOf: [{ type: "string", enum: ["a", "b"] }, { type: "null" }] };
-    const { control } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
-    expect(control.tagName).toBe("SELECT");
+    const { control, getValue } = buildControl(resolved, {}, null, new Set(), POLYMORPHIC);
+    expect(control.querySelector("select")).not.toBeNull();
+    expect(control.querySelector('input[type="checkbox"]').checked).toBe(false);
+    expect(getValue()).toBeNull();
   });
 
   it("enum: a brand-new array item defaults to the first enum member, not the invalid-value fallback", () => {
