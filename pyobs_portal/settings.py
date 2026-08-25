@@ -110,6 +110,7 @@ TEMPLATES = [
                 "django.contrib.messages.context_processors.messages",
                 "pyobs_portal.frontend.context_processors.pyobs_logo",
                 "pyobs_portal.frontend.context_processors.keycloak",
+                "pyobs_portal.frontend.context_processors.portal_version",
             ],
         },
     },
