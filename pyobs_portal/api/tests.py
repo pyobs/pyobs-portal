@@ -1,4 +1,9 @@
+import importlib
 import inspect
+import os
+import shutil
+import sys
+import tempfile
 from datetime import timedelta
 from typing import Annotated
 from unittest.mock import Mock, patch
@@ -760,6 +765,77 @@ class ScriptTreeCachingTests(SimpleTestCase):
         # No patch/assertion-raising here -- this must succeed by actually rescanning.
         second = schema_module.script_tree()
         self.assertIn("$polymorphic", second)
+
+
+class ExtensionPackageDiscoveryTests(SimpleTestCase):
+    """Third-party packages (e.g. pyobs_iagvt, issue #112) are discovered by naming
+    convention -- any installed top-level "pyobs_*" package is scanned for the same
+    pyobs.robotic.* submodules pyobs-core itself uses -- not by any env var/setting.
+    Simulates an installed extension package via sys.path + a stubbed
+    `_installed_extension_packages()`, rather than fabricating dist-info metadata.
+    """
+
+    def setUp(self):
+        cache.clear()
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sys.path.insert(0, self.tmpdir)
+        self.addCleanup(sys.path.remove, self.tmpdir)
+        self.addCleanup(cache.clear)
+
+    def _write(self, relpath, content=""):
+        path = os.path.join(self.tmpdir, *relpath.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        self.addCleanup(sys.modules.pop, relpath.split("/")[0], None)
+
+    def test_extension_script_merged_into_tree_and_polymorphic_registry(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/scripts/__init__.py")
+        self._write(
+            "pyobs_fakeext/scripts/myscript.py",
+            "from pyobs.robotic.scripts.script import Script\n\n\nclass FakeExtScript(Script):\n    pass\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        self.assertEqual(
+            tree["myscript"]["FakeExtScript"]["class"], "pyobs_fakeext.scripts.myscript.FakeExtScript"
+        )
+        classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
+        self.assertIn("pyobs_fakeext.scripts.myscript.FakeExtScript", classes)
+        # Core's own scripts are still there -- this is additive, not a replacement.
+        self.assertIn("calibration", tree)
+
+    def test_extension_provider_merged_into_polymorphic_registry(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/utils/__init__.py")
+        self._write("pyobs_fakeext/utils/exptime/__init__.py")
+        self._write(
+            "pyobs_fakeext/utils/exptime/myprovider.py",
+            "from pyobs.robotic.utils.exptime import ExposureTimeProvider\n\n\n"
+            "class FakeExtExptime(ExposureTimeProvider):\n    def __call__(self) -> float:\n        return 1.0\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        from pyobs.robotic.utils.exptime import ExposureTimeProvider
+
+        classes = {c["class"] for c in tree["$polymorphic"][schema_module._fqcn(ExposureTimeProvider)]["candidates"]}
+        self.assertIn("pyobs_fakeext.utils.exptime.myprovider.FakeExtExptime", classes)
+
+    def test_package_without_matching_submodule_is_skipped_not_an_error(self):
+        # No pyobs_fakeext package created at all -- import will fail and must be
+        # swallowed, same as any other installed pyobs_* package without a
+        # matching "scripts"/provider submodule (e.g. pyobs_auth).
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()  # must not raise
+        self.assertIn("calibration", tree)
 
 
 class GetModuleClassesTests(SimpleTestCase):
