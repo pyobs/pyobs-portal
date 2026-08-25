@@ -153,7 +153,7 @@ class ScriptBuilder {
 
     const walk = (node, prefix, container) => {
       for (const [name, value] of Object.entries(node)) {
-        if (name === "$polymorphic") continue;
+        if (name === "$polymorphic" || name === "$aliases") continue;
         const isLeafGroup =
           value && typeof value === "object" &&
           Object.values(value).every((v) => v && typeof v === "object" && "class" in v && "schema" in v);
@@ -305,6 +305,17 @@ class ScriptBuilder {
 
   // ── Content / mode ───────────────────────────────────────────────────
 
+  /** Resolve a script class string to one `_leafByClass` actually has an entry for.
+   * A task's stored class may be a package's short re-exported path rather than the
+   * canonical module.ClassName the tree is keyed by (both are valid, working imports --
+   * see schema.py's `_reexport_aliases`); `tree.$aliases` maps the former to the latter.
+   * Returns the input unchanged if it's already known or no alias applies. */
+  _resolveClass(cls) {
+    if (this._leafByClass.has(cls)) return cls;
+    const aliased = this.tree.$aliases && this.tree.$aliases[cls];
+    return aliased && this._leafByClass.has(aliased) ? aliased : cls;
+  }
+
   /** Restore builder state from `data` (the task's `script` JSON), opening
    * in source view with a warning if it isn't mappable (§4.12: imported
    * YAML from another pyobs version, an uninstalled script package, or a
@@ -321,10 +332,10 @@ class ScriptBuilder {
       return;
     }
 
-    const cls = data.class;
+    const cls = data.class && this._resolveClass(data.class);
     if (!cls || !this._leafByClass.has(cls)) {
-      this.warningEl.textContent = cls
-        ? `Unknown script class "${cls}" -- opened as raw YAML so nothing is lost. Install the script package or fix the class name to use the builder.`
+      this.warningEl.textContent = data.class
+        ? `Unknown script class "${data.class}" -- opened as raw YAML so nothing is lost. Install the script package or fix the class name to use the builder.`
         : `This script has no "class" set -- opened as raw YAML so nothing is lost.`;
       this.warningEl.classList.remove("d-none");
       this._setSourceText(data);
@@ -351,13 +362,14 @@ class ScriptBuilder {
       return;
     }
     const isEmpty = !parsed || typeof parsed !== "object" || Object.keys(parsed).length === 0;
-    const cls = isEmpty ? undefined : parsed.class;
+    const rawCls = isEmpty ? undefined : parsed.class;
+    const cls = rawCls && this._resolveClass(rawCls);
 
     if (isEmpty) {
       this._showPicker();
     } else if (!cls || !this._leafByClass.has(cls)) {
-      this.warningEl.textContent = cls
-        ? `Unknown script class "${cls}" -- can't switch to the builder view without dropping data. Fix the class name or install the script package first.`
+      this.warningEl.textContent = rawCls
+        ? `Unknown script class "${rawCls}" -- can't switch to the builder view without dropping data. Fix the class name or install the script package first.`
         : `No "class" set -- can't switch to the builder view without dropping data.`;
       this.warningEl.classList.remove("d-none");
       return;

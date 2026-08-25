@@ -350,6 +350,42 @@ describe("ScriptBuilder: unmappable data (§4.12)", () => {
   });
 });
 
+describe("ScriptBuilder: $aliases resolves re-exported short class paths", () => {
+  // Mirrors schema.py's _reexport_aliases: a package's __init__.py commonly re-exports
+  // its classes under a shorter path than the module they're actually defined in, so a
+  // task's stored class string can legitimately be either form.
+  const TREE_WITH_ALIASES = {
+    ...TREE,
+    $aliases: { "pkg.utils.LogScript": "pkg.utils.log.LogScript" },
+  };
+
+  it("an aliased class resolves straight to builder view, not the unmappable fallback", () => {
+    const data = { class: "pkg.utils.LogScript", expression: "existing" };
+    const builder = new ScriptBuilder(makeContainer(), TREE_WITH_ALIASES, data);
+    expect(builder.mode).toBe("builder");
+    expect(builder.warningEl.classList.contains("d-none")).toBe(true);
+    expect(builder.rootClass).toBe("pkg.utils.log.LogScript");
+  });
+
+  it("an unknown class with no alias entry still falls back to source, unchanged", () => {
+    const data = { class: "pkg.utils.NoSuchScript", expression: "existing" };
+    const builder = new ScriptBuilder(makeContainer(), TREE_WITH_ALIASES, data);
+    expect(builder.mode).toBe("source");
+    expect(builder.getData()).toEqual(data);
+  });
+
+  it("_switchToBuilder also resolves an aliased class typed into the source view", () => {
+    const data = { class: "pkg.uninstalled.GoneScript", x: 1 };
+    const builder = new ScriptBuilder(makeContainer(), TREE_WITH_ALIASES, data);
+    builder.sourceEditor.editor.setValue(JSON.stringify({ class: "pkg.utils.LogScript", expression: "x" }));
+
+    builder.builderModeBtn.click();
+
+    expect(builder.mode).toBe("builder");
+    expect(builder.rootClass).toBe("pkg.utils.log.LogScript");
+  });
+});
+
 describe("ScriptBuilder: no general-purpose Builder/Source toggle (issue #97)", () => {
   it("a normal, mappable script has no Source button to switch away to", () => {
     const container = makeContainer();

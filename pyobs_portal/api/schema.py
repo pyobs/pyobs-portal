@@ -48,16 +48,15 @@ _PROVIDER_SCAN_PACKAGES: dict[type[PolymorphicBaseModel], ModuleType] = {
     SkyflatPriorities: skyflats_priorities_module,
 }
 
-# Observatory-specific extension packages (e.g. pyobs_iagvt) are discovered by
-# naming convention, not configuration: any *installed* top-level package
-# prefixed "pyobs_" is scanned for the same pyobs.robotic.* submodules as
-# pyobs-core itself -- "scripts" for Script subclasses, and the relative path
-# of each entry in _PROVIDER_SCAN_PACKAGES (e.g. "utils.exptime") for provider
-# subclasses. A package that doesn't ship a matching submodule is simply
-# skipped. This means installing an extension package and restarting is
-# enough for its scripts/providers to show up in the builder -- no env var,
-# settings entry, or entry-point declaration required. See README.md
-# "Extension packages" for the operator-facing version of this.
+# Observatory-specific extension packages are discovered by naming convention, not
+# configuration: any *installed* top-level package prefixed "pyobs_" is scanned for the
+# same pyobs.robotic.* submodules as pyobs-core itself -- "scripts" for Script
+# subclasses, and the relative path of each entry in _PROVIDER_SCAN_PACKAGES (e.g.
+# "utils.exptime") for provider subclasses. A package that doesn't ship a matching
+# submodule is simply skipped. This means installing an extension package and
+# restarting is enough for its scripts/providers to show up in the builder -- no env
+# var, settings entry, or entry-point declaration required. See README.md "Extension
+# packages" for the operator-facing version of this.
 _ROBOTIC_PREFIX = "pyobs.robotic."
 
 
@@ -90,6 +89,29 @@ def _extension_submodule(package_name: str, relative: str) -> ModuleType | None:
         return importlib.import_module(f"{package_name}.{relative}")
     except Exception:
         return None
+
+
+def _reexport_aliases(package: ModuleType, base: type) -> dict[str, str]:
+    """Map a package's own re-exported class names to their canonical `module.ClassName`.
+
+    A package's `__init__.py` commonly re-exports its concrete classes for a shorter public
+    import path (e.g. an extension package's `scripts/__init__.py` doing `from .myscript import
+    MyScript`, so both `<package>.scripts.MyScript` and `<package>.scripts.myscript.MyScript`
+    import the same class). `script_tree()`/`_polymorphic_registry()` key everything by the
+    canonical `cls.__module__.cls.__name__` (from walking submodules), so a task whose stored
+    script YAML was written against the short re-exported path -- a legitimate, working import
+    -- would otherwise show as an unrecognized class in the builder even though pyobs-core/the
+    extension package resolves it fine. Only returns entries where the short form actually
+    differs from the canonical one.
+    """
+    aliases: dict[str, str] = {}
+    for name, obj in inspect.getmembers(package):
+        if inspect.isclass(obj) and issubclass(obj, base) and obj is not base:
+            short = f"{package.__name__}.{name}"
+            canonical = _fqcn(obj)
+            if short != canonical:
+                aliases[short] = canonical
+    return aliases
 
 
 def _strip_ignored(schema: dict[str, Any]) -> dict[str, Any]:
@@ -357,15 +379,20 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
     return {"available": True, "options": options}
 
 
-def _scan_concrete_subclasses(package: ModuleType, base: type[PolymorphicBaseModel]) -> list[type[PolymorphicBaseModel]]:
-    """Recursively scan `package` (and subpackages) for concrete subclasses of `base`.
+def _scan_concrete_subclasses(
+    package: ModuleType, base: type[PolymorphicBaseModel]
+) -> tuple[list[type[PolymorphicBaseModel]], dict[str, str]]:
+    """Recursively scan `package` (and subpackages) for concrete subclasses of `base`, plus
+    any re-export aliases found along the way (see `_reexport_aliases`).
 
     Dedupes by class identity rather than `cls.__module__`, since some pyobs-core
     polymorphic classes override `__module__` to a shorter (sometimes stale) path.
     """
     found: dict[int, type[PolymorphicBaseModel]] = {}
+    aliases: dict[str, str] = {}
 
     def _scan(pkg: ModuleType) -> None:
+        aliases.update(_reexport_aliases(pkg, base))
         for _, name, ispkg in pkgutil.iter_modules(pkg.__path__):
             full_name = f"{pkg.__name__}.{name}"
             try:
@@ -384,11 +411,12 @@ def _scan_concrete_subclasses(package: ModuleType, base: type[PolymorphicBaseMod
                     found[id(obj)] = obj
 
     _scan(package)
-    return list(found.values())
+    return list(found.values()), aliases
 
 
-def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
+def _polymorphic_registry(tree: dict[str, Any]) -> tuple[dict[str, Any], dict[str, str]]:
     registry: dict[str, Any] = {}
+    aliases: dict[str, str] = {}
 
     script_candidates: list[dict[str, Any]] = []
 
@@ -405,12 +433,15 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
     registry[_fqcn(Script)] = {"candidates": script_candidates}
 
     for base, package in _PROVIDER_SCAN_PACKAGES.items():
-        classes = _scan_concrete_subclasses(package, base)
+        classes, base_aliases = _scan_concrete_subclasses(package, base)
+        aliases.update(base_aliases)
         relative = _relative_to_robotic(package)
         for pkg_name in _installed_extension_packages():
             ext_package = _extension_submodule(pkg_name, relative)
             if ext_package is not None:
-                classes += _scan_concrete_subclasses(ext_package, base)
+                ext_classes, ext_aliases = _scan_concrete_subclasses(ext_package, base)
+                classes += ext_classes
+                aliases.update(ext_aliases)
 
         candidates = []
         for cls in classes:
@@ -425,7 +456,7 @@ def _polymorphic_registry(tree: dict[str, Any]) -> dict[str, Any]:
             candidates.append({"class": _fqcn(cls), "title": cls.__name__, "schema": s})
         registry[_fqcn(base)] = {"candidates": candidates}
 
-    return registry
+    return registry, aliases
 
 
 # A single task-editor page load fires /api/schema/scripts/ and /api/schema/modules/ (issue
@@ -443,7 +474,14 @@ def script_tree() -> dict[str, Any]:
     if cached is not None:
         return cached
 
+    aliases: dict[str, str] = {}
+
     def _scan(package: ModuleType) -> dict[str, Any]:
+        # Re-exports (see _reexport_aliases) can happen at *any* nesting level -- a
+        # subpackage's own __init__.py re-exporting its submodules' classes just as
+        # readily as the top-level package -- so this is checked at every package
+        # _scan() recurses into, not just once at the root.
+        aliases.update(_reexport_aliases(package, Script))
         results: dict[str, Any] = {}
         for _, name, ispkg in pkgutil.iter_modules(package.__path__):
             full_name = f"{package.__name__}.{name}"
@@ -490,7 +528,15 @@ def script_tree() -> dict[str, Any]:
             # "Extension packages".
             tree[_extension_package_label(pkg_name)] = ext_tree
 
-    tree["$polymorphic"] = _polymorphic_registry(tree)
+    registry, provider_aliases = _polymorphic_registry(tree)
+    tree["$polymorphic"] = registry
+    aliases.update(provider_aliases)
+    # A task's stored script class may have been written against a package's short
+    # re-exported path rather than the canonical module.ClassName the tree above uses
+    # (see _reexport_aliases) -- the builder resolves an unrecognized class against this
+    # table before giving up on it.
+    tree["$aliases"] = aliases
+
     cache.set(_SCRIPT_TREE_CACHE_KEY, tree, _SCRIPT_TREE_CACHE_TTL)
     return tree
 
