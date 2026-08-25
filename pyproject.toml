@@ -17,7 +17,7 @@ dependencies = [
     "gunicorn>=26.0.0",
     "psycopg2-binary>=2.9.12",
     "pyobs-auth>=2.0.0.dev9",
-    "pyobs-core>=2.0.0.dev95",
+    "pyobs-core>=2.0.0.dev97",
     "requests>=2.32.0",
     "unicorn>=2.1.4",
 ]
