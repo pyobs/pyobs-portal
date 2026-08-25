@@ -678,6 +678,25 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         self.assertIn("schema", entry)
         self.assertIn("$polymorphic", self.tree)
 
+    def test_aliases_map_reexported_short_path_to_canonical(self):
+        # Every pyobs-core script subpackage (calibration, control, imaging, utils) re-exports
+        # its classes from its own __init__.py, so both "pyobs.robotic.scripts.imaging.
+        # TransitImagingScript" (the re-exported path some hand-written/legacy task YAML uses)
+        # and the canonical "...imaging.transitimaging.TransitImagingScript" this tree is keyed
+        # by are valid, equivalent imports -- see schema_module._reexport_aliases.
+        aliases = self.tree["$aliases"]
+        self.assertEqual(
+            aliases["pyobs.robotic.scripts.imaging.TransitImagingScript"],
+            "pyobs.robotic.scripts.imaging.transitimaging.TransitImagingScript",
+        )
+        canonical = aliases["pyobs.robotic.scripts.calibration.DarkBiasScript"]
+        self.assertEqual(canonical, "pyobs.robotic.scripts.calibration.darkbias.DarkBiasScript")
+        # The alias's target must itself be a real, known script -- otherwise a resolved
+        # "unknown class" would just become a different unknown class.
+        self.assertEqual(
+            self.tree["calibration"]["darkbias"]["DarkBiasScript"]["class"], canonical
+        )
+
     def test_polymorphic_registry_has_no_abstract_candidates(self):
         script_entry = self.tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]
         self.assertGreater(len(script_entry["candidates"]), 0)
@@ -692,7 +711,7 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         # strings don't round-trip through get_class_from_string either. Re-scan with
         # the same mechanism _polymorphic_registry uses instead.
         for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
-            candidates = schema_module._scan_concrete_subclasses(package, base)
+            candidates, _ = schema_module._scan_concrete_subclasses(package, base)
             self.assertGreater(len(candidates), 0, base)
             for cls in candidates:
                 self.assertFalse(inspect.isabstract(cls), cls)
@@ -725,7 +744,8 @@ class ScriptTreePolymorphicTests(SimpleTestCase):
         skipped = {"ArchiveSkyflatPriorities"}
         seen = set()
         for base, package in schema_module._PROVIDER_SCAN_PACKAGES.items():
-            for cls in schema_module._scan_concrete_subclasses(package, base):
+            candidates, _ = schema_module._scan_concrete_subclasses(package, base)
+            for cls in candidates:
                 if cls.__name__ in skipped:
                     continue
                 seen.add(cls.__name__)
@@ -802,8 +822,13 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
         with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
             tree = schema_module.script_tree()
 
+        # Nested under its own package-labeled branch (falls back to the import name here
+        # since this fake package has no real dist-info metadata), not merged flat into
+        # pyobs-core's own module-path folders -- so the picker tree can show which
+        # package each extension script came from.
         self.assertEqual(
-            tree["myscript"]["FakeExtScript"]["class"], "pyobs_fakeext.scripts.myscript.FakeExtScript"
+            tree["pyobs_fakeext"]["myscript"]["FakeExtScript"]["class"],
+            "pyobs_fakeext.scripts.myscript.FakeExtScript",
         )
         classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
         self.assertIn("pyobs_fakeext.scripts.myscript.FakeExtScript", classes)
@@ -828,6 +853,18 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
 
         classes = {c["class"] for c in tree["$polymorphic"][schema_module._fqcn(ExposureTimeProvider)]["candidates"]}
         self.assertIn("pyobs_fakeext.utils.exptime.myprovider.FakeExtExptime", classes)
+
+    def test_extension_package_label_uses_dist_name_when_available(self):
+        with patch.object(
+            schema_module.importlib.metadata,
+            "packages_distributions",
+            return_value={"pyobs_iagvt": ["pyobs-iagvt"]},
+        ):
+            self.assertEqual(schema_module._extension_package_label("pyobs_iagvt"), "pyobs-iagvt")
+
+    def test_extension_package_label_falls_back_to_import_name(self):
+        with patch.object(schema_module.importlib.metadata, "packages_distributions", return_value={}):
+            self.assertEqual(schema_module._extension_package_label("pyobs_fakeext"), "pyobs_fakeext")
 
     def test_package_without_matching_submodule_is_skipped_not_an_error(self):
         # No pyobs_fakeext package created at all -- import will fail and must be

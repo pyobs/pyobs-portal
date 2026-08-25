@@ -166,6 +166,21 @@ above) and the process restarted for its scripts/providers to appear in the buil
 `pyobs_portal/api/schema.py` (`_installed_extension_packages`, `_relative_to_robotic`) for the
 scan implementation.
 
+A package's `__init__.py` (core or extension) commonly re-exports its classes for a shorter
+public import path — e.g. a `scripts/__init__.py` doing `from .myscript import MyScript`, so
+both `<package>.scripts.MyScript` and `<package>.scripts.myscript.MyScript` are equally valid,
+working imports of the same class. Since the tree above is keyed by the latter (canonical)
+form, a task whose script YAML was written against the former would otherwise show as an
+"Unknown script class" in the builder. `script_tree()` also returns a `$aliases` map (short
+path → canonical path, collected at every package level it scans) that the builder consults
+before giving up on a class it doesn't recognize by exact match.
+
+In the script builder's type picker, each extension package's scripts appear under their own
+top-level branch labeled with the package's distribution name (e.g. `pyobs-iagvt`), rather than
+merged into pyobs-core's own folders — so it's clear which package a given script came from.
+Provider dropdowns (`ExposureTimeProvider` etc.) are unaffected and list core and extension
+candidates together.
+
 ## API Overview
 
 Authentication is via token (`Authorization: Token <token>`), Django session cookie, or a Keycloak Bearer token (if configured). Obtain a static token at `/api-token-auth/`.
