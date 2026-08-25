@@ -802,8 +802,13 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
         with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
             tree = schema_module.script_tree()
 
+        # Nested under its own package-labeled branch (falls back to the import name here
+        # since this fake package has no real dist-info metadata), not merged flat into
+        # pyobs-core's own module-path folders -- so the picker tree can show which
+        # package each extension script came from.
         self.assertEqual(
-            tree["myscript"]["FakeExtScript"]["class"], "pyobs_fakeext.scripts.myscript.FakeExtScript"
+            tree["pyobs_fakeext"]["myscript"]["FakeExtScript"]["class"],
+            "pyobs_fakeext.scripts.myscript.FakeExtScript",
         )
         classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
         self.assertIn("pyobs_fakeext.scripts.myscript.FakeExtScript", classes)
@@ -828,6 +833,18 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
 
         classes = {c["class"] for c in tree["$polymorphic"][schema_module._fqcn(ExposureTimeProvider)]["candidates"]}
         self.assertIn("pyobs_fakeext.utils.exptime.myprovider.FakeExtExptime", classes)
+
+    def test_extension_package_label_uses_dist_name_when_available(self):
+        with patch.object(
+            schema_module.importlib.metadata,
+            "packages_distributions",
+            return_value={"pyobs_iagvt": ["pyobs-iagvt"]},
+        ):
+            self.assertEqual(schema_module._extension_package_label("pyobs_iagvt"), "pyobs-iagvt")
+
+    def test_extension_package_label_falls_back_to_import_name(self):
+        with patch.object(schema_module.importlib.metadata, "packages_distributions", return_value={}):
+            self.assertEqual(schema_module._extension_package_label("pyobs_fakeext"), "pyobs_fakeext")
 
     def test_package_without_matching_submodule_is_skipped_not_an_error(self):
         # No pyobs_fakeext package created at all -- import will fail and must be

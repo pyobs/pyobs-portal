@@ -72,6 +72,19 @@ def _installed_extension_packages() -> list[str]:
     return sorted(name for name in importlib.metadata.packages_distributions() if name.startswith("pyobs_"))
 
 
+def _extension_package_label(package_name: str) -> str:
+    """Distribution name for an extension package's import name, e.g. "pyobs-iagvt" for
+    "pyobs_iagvt" -- used as the script tree's top-level branch label so it reads as the
+    package name a user would `pip install`, not the Python import name. Falls back to the
+    import name itself if dist-info metadata isn't available (e.g. a package added to
+    sys.path directly, as in tests)."""
+    try:
+        dists = importlib.metadata.packages_distributions().get(package_name)
+    except Exception:
+        dists = None
+    return dists[0] if dists else package_name
+
+
 def _extension_submodule(package_name: str, relative: str) -> ModuleType | None:
     try:
         return importlib.import_module(f"{package_name}.{relative}")
@@ -463,20 +476,19 @@ def script_tree() -> dict[str, Any]:
                     results[name] = classes
         return results
 
-    def _merge(dst: dict[str, Any], src: dict[str, Any]) -> None:
-        for key, value in src.items():
-            existing = dst.get(key)
-            if isinstance(existing, dict) and isinstance(value, dict) and "class" not in value:
-                _merge(existing, value)
-            else:
-                dst[key] = value
-
     tree = _scan(scripts_module)
     scripts_relative = _relative_to_robotic(scripts_module)
     for pkg_name in _installed_extension_packages():
         ext_scripts = _extension_submodule(pkg_name, scripts_relative)
-        if ext_scripts is not None:
-            _merge(tree, _scan(ext_scripts))
+        if ext_scripts is None:
+            continue
+        ext_tree = _scan(ext_scripts)
+        if ext_tree:
+            # Kept under its own top-level branch, labeled with the owning package (rather
+            # than merged into pyobs-core's own module-path folders) so the script picker
+            # tree shows which package each extension script came from -- see README.md
+            # "Extension packages".
+            tree[_extension_package_label(pkg_name)] = ext_tree
 
     tree["$polymorphic"] = _polymorphic_registry(tree)
     cache.set(_SCRIPT_TREE_CACHE_KEY, tree, _SCRIPT_TREE_CACHE_TTL)
