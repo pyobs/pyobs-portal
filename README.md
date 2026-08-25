@@ -1,4 +1,4 @@
-# pyobs-robotic-backend
+# pyobs-portal
 
 Backend service for the [pyobs](https://www.pyobs.org) robotic telescope system. It stores and serves the task queue (observations to be scheduled), projects, and observation history consumed by the pyobs scheduler and related tools.
 
@@ -29,7 +29,7 @@ pip install -e .
 
 ## Configuration
 
-All settings are controlled by environment variables. Copy `pyobs_robotic_backend/local_settings.example.py` to `pyobs_robotic_backend/local_settings.py` for local overrides, or set the following in your environment / Docker compose file:
+All settings are controlled by environment variables. Copy `pyobs_portal/local_settings.example.py` to `pyobs_portal/local_settings.py` for local overrides, or set the following in your environment / Docker compose file:
 
 | Variable | Default | Description |
 |---|---|---|
@@ -56,7 +56,7 @@ All settings are controlled by environment variables. Copy `pyobs_robotic_backen
 | `DEFAULT_MERITS` | `[]` | JSON array of merit objects pre-filled on new tasks |
 | `KEYCLOAK_SERVER_URL` | (empty) | Keycloak login (optional addon on top of local Django username/password and Token auth; unset disables it) |
 | `KEYCLOAK_REALM` | `pyobs` | Keycloak realm |
-| `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `robotic-backend` / (empty) | This service's Keycloak client credentials |
+| `KEYCLOAK_CLIENT_ID` / `KEYCLOAK_CLIENT_SECRET` | `portal` / (empty) | This service's Keycloak client credentials |
 | `KEYCLOAK_REDIRECT_URI` | (empty) | Must match the redirect URI registered for this client in Keycloak |
 | `KEYCLOAK_POST_LOGOUT_REDIRECT_URI` | (empty) | Must match a "Valid post logout redirect URI" registered for this client in Keycloak |
 | `KEYCLOAK_IDP_HINT` / `KEYCLOAK_IDP_LABEL` | (empty) | Optional one-click IdP login: hint passed to Keycloak as `kc_idp_hint` (skips its login/IdP-selection page) and the label for the login page's IdP button, e.g. `gwdg` / `GWDG` |
@@ -83,7 +83,7 @@ syncs a matching superuser automatically after every `migrate`, skipping the int
 
 ### Docker Compose
 
-A production-ready setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). The application image is pulled from `ghcr.io/pyobs/pyobs-robotic-backend:latest`. Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
+A production-ready setup with PostgreSQL, RabbitMQ, a Celery worker, and nginx is provided in [`docker-compose.yml`](docker-compose.yml). The application image is pulled from `ghcr.io/pyobs/pyobs-portal:latest`. Copy [`.env.example`](.env.example) to `.env` and [`nginx.conf.example`](nginx.conf.example) to `nginx.conf`, then adjust the values.
 
 The UI is served by nginx on port **8097**.
 
@@ -115,7 +115,7 @@ a thin derived image instead, in your own deployment config repo, alongside your
 
 ```dockerfile
 # deploy/Dockerfile
-FROM ghcr.io/pyobs/pyobs-robotic-backend:latest
+FROM ghcr.io/pyobs/pyobs-portal:latest
 
 # Only needed for a private git dependency, forwarding your SSH agent instead of baking in a key:
 RUN apt-get update && apt-get install -y --no-install-recommends git openssh-client \

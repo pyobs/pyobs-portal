@@ -1879,7 +1879,7 @@ wheels = [
 ]
 
 [[package]]
-name = "pyobs-robotic-backend"
+name = "pyobs-portal"
 version = "2.0.0.dev8"
 source = { virtual = "." }
 dependencies = [

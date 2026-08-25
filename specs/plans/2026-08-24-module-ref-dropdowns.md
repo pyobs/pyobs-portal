@@ -1,8 +1,8 @@
 # Plan: Module-name fields render as dropdowns fed by pyobs-web-admin
 
-Tracks pyobs/pyobs-robotic-backend#98.
+Tracks pyobs/pyobs-portal#98.
 Depended on pyobs/pyobs-core#808 (interface tagging on script fields).
-Repos: pyobs-core (see #808/PR #809) + pyobs-robotic-backend. The pyobs-web-admin side is already
+Repos: pyobs-core (see #808/PR #809) + pyobs-portal. The pyobs-web-admin side is already
 merged (see below).
 Status: **fully implemented and live.** pyobs-core#808 shipped in pyobs-core 2.0.0.dev94
 (released 2026-08-24); the pin here is bumped to `>=2.0.0.dev94` and `uv.lock` updated.
@@ -33,14 +33,14 @@ inputs, so a typo in a module name produces a script that only fails at runtime.
   `settings.HUB_CLIENTS` (`[{"name": str, "token": str}, ...]`) by `HubTokenMiddleware`
   (`modules/middleware.py`) using `hmac.compare_digest` — enforced globally by middleware, not a
   per-view decorator, so no new auth code is needed anywhere.
-- `pyobs_robotic_backend/api/schema.py` already does the template pattern this feature reuses:
+- `pyobs_portal/api/schema.py` already does the template pattern this feature reuses:
   `_annotate_polymorphic(schema, cls)` (L176-224) mutates a model's generated JSON Schema in
   place, keyed off real Python-level type introspection of `field_info.annotation` (not off
   `Field(json_schema_extra=...)`), called from `script_tree()`'s recursive `pkgutil`/`importlib`
   scan over `pyobs.robotic.scripts` (L291-326) right after `_schema_for(cls)`.
   `_check_no_classless_nodes` (L403) shows the existing FQCN-string → class → `issubclass`
   pattern via `pyobs.object.get_class_from_string`.
-- `pyobs_robotic_backend/api/views.py` has the outbound-HTTP-to-external-service precedent:
+- `pyobs_portal/api/views.py` has the outbound-HTTP-to-external-service precedent:
   `ObservationDataStatus.get()` (L191-227) — `requests.get(url, headers=..., timeout=5)` +
   `.raise_for_status()`, wrapped in `except (requests.RequestException, KeyError, ValueError,
   TypeError)` that degrades to a soft "unavailable" response rather than a 5xx. Settings
@@ -102,9 +102,9 @@ synchronously at construction" design intact — there is currently no async-fet
 anywhere in that file — and decouples the already-heavy recursive `schema_scripts` scan from an
 external call to web-admin on every request.
 
-### Backend (pyobs-robotic-backend)
+### Backend (pyobs-portal)
 
-**1. `pyobs_robotic_backend/settings.py`** — after `ARCHIVE_URL`/`ARCHIVE_TOKEN`, add the same
+**1. `pyobs_portal/settings.py`** — after `ARCHIVE_URL`/`ARCHIVE_TOKEN`, add the same
 flat/optional pair, with a comment in the same style:
 ```python
 # pyobs-web-admin integration (issue #98): WEBADMIN_URL/WEBADMIN_TOKEN back the module-name
@@ -117,7 +117,7 @@ WEBADMIN_TOKEN = os.environ.get("WEBADMIN_TOKEN", "")
 One robotic-backend per web-admin (per the issue's own framing), so this is flat, not
 per-`Project`.
 
-**2. `pyobs_robotic_backend/api/webadmin.py`** (new) — mirrors `api/archive.py`'s shape and
+**2. `pyobs_portal/api/webadmin.py`** (new) — mirrors `api/archive.py`'s shape and
 `ObservationDataStatus.get()`'s request pattern:
 ```python
 def get_module_classes() -> dict[str, str] | None:
@@ -131,7 +131,7 @@ Short-circuit before the request if either setting is missing:
 `X-Hub-Token` would just round-trip a guaranteed 401 from web-admin's `HubTokenMiddleware`, so
 skip it rather than making a pointless request.
 
-**3. `pyobs_robotic_backend/api/schema.py`** — two additions, following the precedent of
+**3. `pyobs_portal/api/schema.py`** — two additions, following the precedent of
 `_annotate_polymorphic` and `script_tree()`:
 
 - `_annotate_module_refs(schema, cls)`: walks `cls.model_fields`, and for each field whose
@@ -167,7 +167,7 @@ skip it rather than making a pointless request.
   multi-interface fields happens on the frontend (cheap, small N, and keeps the payload reusable
   across fields sharing an interface).
 
-**4. `pyobs_robotic_backend/api/views.py`** — new view beside `schema_scripts` (locate by
+**4. `pyobs_portal/api/views.py`** — new view beside `schema_scripts` (locate by
 function name, not line number below — this file changes independently of this plan), same
 style:
 ```python
@@ -177,7 +177,7 @@ def schema_modules(request):
     return Response(schema.module_ref_options())
 ```
 
-**5. `pyobs_robotic_backend/api/urls.py`** — add alongside the other schema routes (L40-44):
+**5. `pyobs_portal/api/urls.py`** — add alongside the other schema routes (L40-44):
 ```python
 path("schema/modules/", views.schema_modules),
 ```
@@ -269,7 +269,7 @@ can be merged and deployed here without breaking anything, ahead of the pyobs-co
 
 ## Verification
 
-- `python manage.py test pyobs_robotic_backend.api` for the new backend tests.
+- `python manage.py test pyobs_portal.api` for the new backend tests.
 - Frontend test runner for the new `schemaform.test.js` cases.
 - Manual: run the app with `WEBADMIN_URL` unset — confirm the script builder's camera/telescope
   fields behave exactly as today (plain text input, no regression). Then, once pyobs-core#808 is
@@ -290,7 +290,7 @@ can be merged and deployed here without breaking anything, ahead of the pyobs-co
 3. ~~Backend steps 1-6 above.~~ **done** — `api/webadmin.py`, `api/schema.py`
    (`_annotate_module_refs`, `module_ref_options`), `api/views.py` (`schema_modules`),
    `api/urls.py` (`schema/modules/`), `settings.py` (`WEBADMIN_URL`/`WEBADMIN_TOKEN`). 20
-   backend tests (16 original + 4 caching), full `pyobs_robotic_backend.api` suite (81 tests)
+   backend tests (16 original + 4 caching), full `pyobs_portal.api` suite (81 tests)
    green against the real pyobs-core release.
 4. ~~Frontend steps 7-9 above.~~ **done** — `schemaform.js` (`buildModuleRefControl` +
    `moduleRefs` threaded through `buildControl`/`SchemaForm`/array/object/map/polymorphic

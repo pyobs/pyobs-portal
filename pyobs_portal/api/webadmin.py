@@ -20,7 +20,7 @@ log = logging.getLogger(__name__)
 # an *unreachable* one costs the full request timeout on every single page load. Short enough
 # that a newly-configured/recovered web-admin shows up quickly; long enough to absorb repeated
 # page loads within the same browsing session.
-_CACHE_KEY = "pyobs_robotic_backend.api.webadmin.module_classes"
+_CACHE_KEY = "pyobs_portal.api.webadmin.module_classes"
 _CACHE_TTL = 30  # seconds
 _UNCACHED = object()
 

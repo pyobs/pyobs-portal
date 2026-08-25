@@ -1,9 +1,9 @@
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 
-from pyobs_robotic_backend.authentication.admin_sync import sync_admin_user
-from pyobs_robotic_backend.authentication.keycloak import resolve_user
-from pyobs_robotic_backend.authentication.models import KeycloakIdentity
+from pyobs_portal.authentication.admin_sync import sync_admin_user
+from pyobs_portal.authentication.keycloak import resolve_user
+from pyobs_portal.authentication.models import KeycloakIdentity
 
 # A distinct, unlikely-to-collide username -- not "admin", since a real local_settings.py
 # (e.g. a developer's own ADMIN_USERNAME="admin") would already have synced an "admin" User via
