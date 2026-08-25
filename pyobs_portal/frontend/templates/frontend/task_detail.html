@@ -56,6 +56,9 @@
 <div class="d-flex justify-content-between align-items-center mb-3">
   <h4 class="mb-0" id="page-title">Task</h4>
   <div class="d-flex align-items-center">
+    <span id="task-form-loading" class="small ms-2 text-secondary">
+      <span class="spinner-border spinner-border-sm me-1" role="status" aria-hidden="true"></span>Loading…
+    </span>
     <span id="save-status" class="small ms-2"></span>
     {% if task_id %}
     <div class="d-flex align-items-center ms-2" id="clone-ui">
@@ -69,10 +72,10 @@
       </div>
     </div>
     {% endif %}
-    <button class="btn btn-sm btn-outline-secondary ms-2" id="btn-export">
+    <button class="btn btn-sm btn-outline-secondary ms-2" id="btn-export" disabled>
       <i class="bi bi-download"></i> Export YAML
     </button>
-    <button class="btn btn-sm btn-primary ms-2" id="btn-save">
+    <button class="btn btn-sm btn-primary ms-2" id="btn-save" disabled>
       <i class="bi bi-save"></i> Save
     </button>
   </div>
@@ -107,15 +110,15 @@
             <div class="row g-2">
               <div class="col-6">
                 <label class="form-label small text-secondary mb-1">Code</label>
-                <input type="text" class="form-control form-control-sm" id="field-code">
+                <input type="text" class="form-control form-control-sm" id="field-code" disabled>
               </div>
               <div class="col-6">
                 <label class="form-label small text-secondary mb-1">Project</label>
-                <select class="form-select form-select-sm" id="field-project"></select>
+                <select class="form-select form-select-sm" id="field-project" disabled></select>
               </div>
               <div class="col-12">
                 <label class="form-label small text-secondary mb-1">Name</label>
-                <input type="text" class="form-control form-control-sm" id="field-name">
+                <input type="text" class="form-control form-control-sm" id="field-name" disabled>
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Duration (s)</label>
@@ -123,11 +126,11 @@
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Priority</label>
-                <input type="number" step="any" class="form-control form-control-sm" id="field-priority">
+                <input type="number" step="any" class="form-control form-control-sm" id="field-priority" disabled>
               </div>
               <div class="col-4 d-flex align-items-end">
                 <div class="form-check">
-                  <input class="form-check-input" type="checkbox" id="field-active">
+                  <input class="form-check-input" type="checkbox" id="field-active" disabled>
                   <label class="form-check-label small" for="field-active">Active</label>
                 </div>
               </div>

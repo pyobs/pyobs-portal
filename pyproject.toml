@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-portal"
-version = "2.0.0.dev14"
+version = "2.0.0.dev15"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -27,4 +27,6 @@ dev = [
     "black>=26.5.1",
     "celery-types>=0.26.0",
     "djangorestframework-stubs>=3.17.0",
+    "Sphinx",
+    "sphinx-rtd-theme",
 ]
