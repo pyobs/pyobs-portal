@@ -1047,6 +1047,39 @@ class AnnotateModuleRefsTests(SimpleTestCase):
         )
 
 
+class ModulesImplementingTests(SimpleTestCase):
+    """`schema._modules_implementing()` (issue #119): a module name qualifies if *any* single row
+    with that name implements every required interface at once -- interfaces must never be
+    satisfied by mixing capabilities across two different rows/hosts that happen to share a
+    name, since those are genuinely different modules."""
+
+    def test_row_must_satisfy_all_interfaces_at_once_not_mixed_across_rows(self):
+        # "dev1" on h1 is camera-only (ICamera et al., no ITelescope); "dev1" on h2 is
+        # telescope-only (ITelescope, no ICamera). Neither row alone implements both, so
+        # requiring [ICamera, ITelescope] together must reject "dev1" even though the name
+        # "has" both interfaces when the two rows are considered separately.
+        classes = [
+            {"name": "dev1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"},
+            {"name": "dev1", "class": "pyobs.modules.telescope.DummyRaDecTelescope", "host": "h2"},
+        ]
+        self.assertEqual(schema_module._modules_implementing(classes, [ICamera, ITelescope]), set())
+
+    def test_row_satisfying_all_interfaces_alone_qualifies(self):
+        classes = [{"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"}]
+        self.assertEqual(schema_module._modules_implementing(classes, [ICamera, IBinning]), {"cam1"})
+
+    def test_same_name_qualifies_if_any_row_alone_satisfies_all_interfaces(self):
+        classes = [
+            {"name": "cam1", "class": "pyobs.modules.telescope.DummyRaDecTelescope", "host": "h1"},
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h2"},
+        ]
+        self.assertEqual(schema_module._modules_implementing(classes, [ICamera, IBinning]), {"cam1"})
+
+    def test_unresolvable_class_is_skipped_not_fatal(self):
+        classes = [{"name": "broken", "class": "pyobs.does.not.exist.NoSuchClass", "host": "h1"}]
+        self.assertEqual(schema_module._modules_implementing(classes, [ICamera]), set())
+
+
 class ModuleRefOptionsTests(SimpleTestCase):
     """`schema.module_ref_options()` (issue #98): {"available": bool, "options": {interface:
     [module_name, ...]}}, filtered by real `issubclass` checks against classes resolved from
@@ -1096,12 +1129,26 @@ class ModuleRefOptionsTests(SimpleTestCase):
         self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
-    def test_same_name_on_two_hosts_is_deduped_first_occurrence_wins(self, mock_get_classes):
+    def test_same_name_on_two_hosts_with_same_class_is_listed_once(self, mock_get_classes):
         # Fleet aggregation (issue #119) can return the same module name once per host; a bare
-        # name in the option list can't disambiguate them, so the first entry wins rather than
-        # listing "cam1" twice or silently dropping it.
+        # name in the option list can't disambiguate them, so it's listed once rather than twice.
         mock_get_classes.return_value = [
             {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"},
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h2"},
+        ]
+        result = schema_module.module_ref_options(tree=self._tree("ICamera"))
+        self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
+
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
+    def test_same_name_on_two_hosts_still_qualifies_if_any_row_implements_the_interface(
+        self, mock_get_classes
+    ):
+        # Regression for issue #119 PR review: a name must not be dropped from an interface's
+        # options just because the first-seen row for that name doesn't implement it -- here
+        # host1's "cam1" is a telescope (implements ITelescope, not ICamera) but host2's "cam1"
+        # is a camera, so "cam1" must still appear in ICamera's options.
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.telescope.DummyRaDecTelescope", "host": "h1"},
             {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h2"},
         ]
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
@@ -1336,6 +1383,18 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
         ]
         result = schema_module.validate_script(self._payload("tel1"))
         self.assertFalse(result["valid"])
+
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
+    def test_same_name_on_two_hosts_still_accepted_if_any_row_qualifies(self, mock_get_classes):
+        # Regression for issue #119 PR review: "cam1" naming a telescope on host1 must not
+        # falsely reject a script if "cam1" on host2 is a qualifying camera -- otherwise fleet
+        # aggregation could make a previously-valid script un-savable depending on host order.
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.telescope.DummyRaDecTelescope", "host": "h1"},
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h2"},
+        ]
+        result = schema_module.validate_script(self._payload("cam1"))
+        self.assertEqual(result, {"valid": True})
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_webadmin_unavailable_never_blocks_saving(self, mock_get_classes):
