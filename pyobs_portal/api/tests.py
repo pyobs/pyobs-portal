@@ -899,15 +899,20 @@ class GetModuleClassesTests(SimpleTestCase):
 
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
     @patch("pyobs_portal.api.webadmin.requests.get")
-    def test_success_returns_dict(self, mock_get):
+    def test_success_returns_list(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
-        resp.json.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        resp.json.return_value = {
+            "modules": [{"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "localhost"}],
+            "unreachable_hosts": [],
+        }
         mock_get.return_value = resp
 
         result = webadmin.get_module_classes()
 
-        self.assertEqual(result, {"cam1": "pyobs.modules.camera.DummyCamera"})
+        self.assertEqual(
+            result, [{"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "localhost"}]
+        )
         args, kwargs = mock_get.call_args
         self.assertEqual(args[0], "https://webadmin.example.org/api/modules/classes/")
         self.assertEqual(kwargs["headers"], {"X-Hub-Token": "tok"})
@@ -918,7 +923,9 @@ class GetModuleClassesTests(SimpleTestCase):
     def test_second_call_within_ttl_reuses_cached_result_success(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
-        resp.json.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        resp.json.return_value = {
+            "modules": [{"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "localhost"}]
+        }
         mock_get.return_value = resp
 
         first = webadmin.get_module_classes()
@@ -943,7 +950,7 @@ class GetModuleClassesTests(SimpleTestCase):
     def test_trailing_slash_on_url_normalized(self, mock_get):
         resp = Mock(status_code=200)
         resp.raise_for_status = Mock()
-        resp.json.return_value = {}
+        resp.json.return_value = {"modules": []}
         mock_get.return_value = resp
 
         webadmin.get_module_classes()
@@ -967,7 +974,14 @@ class GetModuleClassesTests(SimpleTestCase):
     @override_settings(WEBADMIN_URL="https://webadmin.example.org", WEBADMIN_TOKEN="tok")
     @patch("pyobs_portal.api.webadmin.requests.get")
     def test_malformed_body_returns_none(self, mock_get):
-        for body in (["not", "a", "dict"], {"cam1": 123}, "just a string"):
+        for body in (
+            ["not", "a", "dict"],
+            "just a string",
+            {},  # no "modules" key
+            {"modules": "not-a-list"},
+            {"modules": [{"name": "cam1", "class": 123, "host": "localhost"}]},
+            {"modules": [{"name": "cam1", "class": "pyobs.modules.camera.DummyCamera"}]},  # missing host
+        ):
             cache.clear()  # each iteration must hit requests.get again, not a cached prior result
             resp = Mock(status_code=200)
             resp.raise_for_status = Mock()
@@ -1065,19 +1079,31 @@ class ModuleRefOptionsTests(SimpleTestCase):
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_filters_by_interface(self, mock_get_classes):
-        mock_get_classes.return_value = {
-            "cam1": "pyobs.modules.camera.DummyCamera",
-            "tel1": "pyobs.modules.telescope.DummyTelescope",
-        }
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"},
+            {"name": "tel1", "class": "pyobs.modules.telescope.DummyTelescope", "host": "h1"},
+        ]
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
         self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_unresolvable_class_is_skipped_not_fatal(self, mock_get_classes):
-        mock_get_classes.return_value = {
-            "cam1": "pyobs.modules.camera.DummyCamera",
-            "broken": "pyobs.does.not.exist.NoSuchClass",
-        }
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"},
+            {"name": "broken", "class": "pyobs.does.not.exist.NoSuchClass", "host": "h1"},
+        ]
+        result = schema_module.module_ref_options(tree=self._tree("ICamera"))
+        self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
+
+    @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
+    def test_same_name_on_two_hosts_is_deduped_first_occurrence_wins(self, mock_get_classes):
+        # Fleet aggregation (issue #119) can return the same module name once per host; a bare
+        # name in the option list can't disambiguate them, so the first entry wins rather than
+        # listing "cam1" twice or silently dropping it.
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"},
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h2"},
+        ]
         result = schema_module.module_ref_options(tree=self._tree("ICamera"))
         self.assertEqual(result, {"available": True, "options": {"ICamera": ["cam1"]}})
 
@@ -1277,7 +1303,9 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_unknown_module_is_rejected(self, mock_get_classes):
-        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"}
+        ]
         result = schema_module.validate_script(self._payload("not_a_real_module"))
         self.assertFalse(result["valid"])
         self.assertEqual(
@@ -1293,7 +1321,9 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
 
     @patch("pyobs_portal.api.schema.webadmin.get_module_classes")
     def test_known_module_implementing_all_required_interfaces_is_accepted(self, mock_get_classes):
-        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"}
+        ]
         result = schema_module.validate_script(self._payload("cam1"))
         self.assertEqual(result, {"valid": True})
 
@@ -1301,7 +1331,9 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
     def test_module_missing_a_required_interface_is_rejected(self, mock_get_classes):
         # A telescope implements neither ICamera nor the other four interfaces ImagingScript's
         # camera field requires.
-        mock_get_classes.return_value = {"tel1": "pyobs.modules.telescope.DummyTelescope"}
+        mock_get_classes.return_value = [
+            {"name": "tel1", "class": "pyobs.modules.telescope.DummyTelescope", "host": "h1"}
+        ]
         result = schema_module.validate_script(self._payload("tel1"))
         self.assertFalse(result["valid"])
 
@@ -1316,7 +1348,9 @@ class ValidateScriptModuleRefTests(SimpleTestCase):
         # The builder's <select> always submits the key (empty string for its blank placeholder,
         # never an absent key), so pydantic's own "Field required" check never fires for this --
         # module-ref's own check has to catch it instead.
-        mock_get_classes.return_value = {"cam1": "pyobs.modules.camera.DummyCamera"}
+        mock_get_classes.return_value = [
+            {"name": "cam1", "class": "pyobs.modules.camera.DummyCamera", "host": "h1"}
+        ]
         result = schema_module.validate_script(self._payload(""))
         self.assertEqual(result, {"valid": False, "error": "Field required", "errors": [{"loc": ["camera"], "msg": "Field required"}]})
 

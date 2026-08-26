@@ -328,6 +328,21 @@ def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
     return schema
 
 
+def _dedupe_module_classes(classes: list[dict[str, str]]) -> dict[str, str]:
+    """{module_name: class_fqcn}, first-occurrence-wins, from `webadmin.get_module_classes()`'s
+    fleet-aggregated list (issue #119).
+
+    A module name can appear more than once (one entry per host) once web-admin aggregates a
+    fleet; downstream module-ref matching (module_ref_options(), validate_script()) still keys
+    by plain module name, so collisions are resolved here rather than disambiguating by host --
+    per issue #119, fully surfacing per-host identity is a follow-up, not required yet.
+    """
+    result: dict[str, str] = {}
+    for entry in classes:
+        result.setdefault(entry["name"], entry["class"])
+    return result
+
+
 def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
     """{"available": bool, "options": {interface_name: [module_name, ...]}} for every
     `x-pyobs-module-ref` interface referenced anywhere in `tree` (a `script_tree()` result;
@@ -361,9 +376,10 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
     if not interface_names:
         return {"available": True, "options": options}
 
-    classes = webadmin.get_module_classes()
-    if classes is None:
+    fleet_classes = webadmin.get_module_classes()
+    if fleet_classes is None:
         return {"available": False, "options": options}
+    classes = _dedupe_module_classes(fleet_classes)
 
     interfaces = {name: get_registered_interface(name) for name in interface_names}
     for module_name, fqcn in classes.items():
@@ -720,8 +736,9 @@ def validate_script(data: Any) -> dict[str, Any]:
     except Exception as e:
         return {"valid": False, "error": str(e)}
 
-    classes = webadmin.get_module_classes()
-    if classes is not None:
+    fleet_classes = webadmin.get_module_classes()
+    if fleet_classes is not None:
+        classes = _dedupe_module_classes(fleet_classes)
         module_ref_errors: list[dict[str, Any]] = []
         _collect_module_ref_errors(script, [], classes, module_ref_errors)
         if module_ref_errors:
