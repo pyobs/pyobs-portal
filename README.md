@@ -2,6 +2,8 @@
 
 Backend service for the [pyobs](https://www.pyobs.org) robotic telescope system. It stores and serves the task queue (observations to be scheduled), projects, and observation history consumed by the pyobs scheduler and related tools.
 
+![Task editor showing target fields and a Constraints panel with Airmass, Moon Separation, and Solar Elevation constraints](docs/source/_static/screenshots/task-editor.jpg)
+
 ## Features
 
 - **REST API** — Token- and session-authenticated DRF endpoints for tasks, projects, observations, users, and constraints/merits/targets.
