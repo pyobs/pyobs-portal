@@ -4,6 +4,35 @@ Web Frontend
 Enabled with ``ENABLE_FRONTEND=1`` (see :doc:`configuration`); the REST API is always available
 regardless. The browser UI is mounted at ``/`` and requires a login.
 
+Screenshots
+===========
+
+Dashboard, with per-project stats and tonight's schedule:
+
+.. image:: _static/screenshots/dashboard.jpg
+   :alt: Dashboard showing project/active-task/observation counts and a nightly schedule timeline.
+   :width: 100%
+
+Task editor, with dynamic schema-driven constraint forms:
+
+.. image:: _static/screenshots/task-editor.jpg
+   :alt: Task editor General tab showing target fields and a Constraints panel with Airmass, Moon
+         Separation, and Solar Elevation constraints.
+   :width: 100%
+
+The script builder, introspecting a script class's fields with live validation:
+
+.. image:: _static/screenshots/script-builder.jpg
+   :alt: Script tab showing a Valid TransitImagingScript with AcquisitionConfig and GuidingConfig
+         sections.
+   :width: 100%
+
+The same task as live-validated YAML:
+
+.. image:: _static/screenshots/yaml-editor.jpg
+   :alt: YAML tab showing the task's full YAML representation with syntax highlighting.
+   :width: 100%
+
 - **Sidebar** — task list grouped by project; click a task to open it. Upload icon imports a task
   from YAML; ``+`` creates a new task.
 - **Task overview** — tabular view of all tasks grouped by project with bulk activate/deactivate
