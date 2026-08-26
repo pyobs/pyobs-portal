@@ -25,13 +25,21 @@ _CACHE_TTL = 30  # seconds
 _UNCACHED = object()
 
 
-def get_module_classes() -> dict[str, str] | None:
-    """{module_name: class_fqcn} for every module configured on WEBADMIN_URL, or None.
+def get_module_classes() -> list[dict[str, str]] | None:
+    """[{"name": module_name, "class": class_fqcn, "host": host}, ...] for every module
+    configured on WEBADMIN_URL, or None.
+
+    web-admin's `/api/modules/classes/` is fleet-aggregating (issue #119): the same module name
+    can legitimately appear more than once here, once per host, with a different class each time
+    -- callers matching by name (schema.module_ref_options() et al.) must treat every row with a
+    given name as a candidate rather than assuming the name maps to a single class.
+    `unreachable_hosts` in the response is otherwise ignored -- a host web-admin couldn't reach
+    just contributes no modules, same as if it weren't fleet-configured at all.
 
     None whenever the result can't be trusted: WEBADMIN_URL/WEBADMIN_TOKEN unset (no request
-    made), the request fails, a non-2xx response, or a body that isn't a dict of strings. Never
-    raises. Both outcomes -- success and None -- are cached briefly (see _CACHE_TTL above), so a
-    down web-admin doesn't cost a fresh timeout on every request.
+    made), the request fails, a non-2xx response, or a body that isn't in the expected shape.
+    Never raises. Both outcomes -- success and None -- are cached briefly (see _CACHE_TTL above),
+    so a down web-admin doesn't cost a fresh timeout on every request.
     """
     if not settings.WEBADMIN_URL or not settings.WEBADMIN_TOKEN:
         return None
@@ -46,11 +54,15 @@ def get_module_classes() -> dict[str, str] | None:
     try:
         response = requests.get(url, headers=headers, timeout=5)
         response.raise_for_status()
-        data = response.json()
-        if not isinstance(data, dict) or not all(
-            isinstance(k, str) and isinstance(v, str) for k, v in data.items()
-        ):
-            raise ValueError(f"unexpected module-classes response shape: {data!r}")
+        body = response.json()
+        modules = body.get("modules") if isinstance(body, dict) else None
+
+        def _is_valid_entry(m: object) -> bool:
+            return isinstance(m, dict) and all(isinstance(m.get(k), str) for k in ("name", "class", "host"))
+
+        if not isinstance(modules, list) or not all(_is_valid_entry(m) for m in modules):
+            raise ValueError(f"unexpected module-classes response shape: {body!r}")
+        data = modules
     except (requests.RequestException, ValueError) as exc:
         log.warning("Module-classes lookup at %s failed: %s", url, exc)
         data = None
