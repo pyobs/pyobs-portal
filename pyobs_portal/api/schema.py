@@ -343,6 +343,12 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
     unlike the `available: False` case, where an empty list means "we don't know" and nothing
     should be rejected. A module whose class fails to resolve/import is skipped rather than
     failing the whole lookup, same defensive style as `_scan_concrete_subclasses`.
+
+    A module name can appear more than once in `webadmin.get_module_classes()`'s fleet-aggregated
+    list (once per host, issue #119): a name is included for an interface if *any* of its rows
+    implements that interface (deduping the name itself, not the rows), so a name isn't dropped
+    from an interface's options just because one host's copy happens to come first and doesn't
+    implement it.
     """
     interface_names: set[str] = set()
 
@@ -366,15 +372,16 @@ def module_ref_options(tree: dict[str, Any] | None = None) -> dict[str, Any]:
         return {"available": False, "options": options}
 
     interfaces = {name: get_registered_interface(name) for name in interface_names}
-    for module_name, fqcn in classes.items():
+    for entry in classes:
         try:
-            cls = get_class_from_string(fqcn)
+            cls = get_class_from_string(entry["class"])
         except Exception:
             continue
         if not inspect.isclass(cls):
             continue
+        module_name = entry["name"]
         for name, iface in interfaces.items():
-            if iface is not None and issubclass(cls, iface):
+            if iface is not None and issubclass(cls, iface) and module_name not in options[name]:
                 options[name].append(module_name)
     return {"available": True, "options": options}
 
@@ -640,27 +647,31 @@ def _summarize_validation_error(e: ValidationError) -> tuple[str, list[dict[str,
     return summary, errors
 
 
-def _modules_implementing(classes: dict[str, str], interfaces: list[type[Interface]]) -> set[str]:
-    """Module names in `classes` (module_name -> class fqcn, from `webadmin.get_module_classes()`)
-    whose resolved class implements every interface in `interfaces` (AND semantics, mirroring the
-    frontend's own intersection in schemaform.js's buildModuleRefControl for fields that need more
-    than one interface at once, e.g. DarkBiasScript.camera)."""
-    allowed: set[str] | None = None
-    for iface in interfaces:
-        matching: set[str] = set()
-        for module_name, fqcn in classes.items():
-            try:
-                cls = get_class_from_string(fqcn)
-            except Exception:
-                continue
-            if inspect.isclass(cls) and issubclass(cls, iface):
-                matching.add(module_name)
-        allowed = matching if allowed is None else allowed & matching
-    return allowed or set()
+def _modules_implementing(classes: list[dict[str, str]], interfaces: list[type[Interface]]) -> set[str]:
+    """Module names among `classes` (`webadmin.get_module_classes()`'s fleet-aggregated list, issue
+    #119) that have at least one row whose resolved class implements every interface in
+    `interfaces` at once (AND semantics per row, mirroring the frontend's own intersection in
+    schemaform.js's buildModuleRefControl for fields that need more than one interface at once,
+    e.g. DarkBiasScript.camera).
+
+    A module name can appear once per host; a name qualifies if *any* of its rows satisfies all
+    required interfaces together (OR across rows) -- checking per-interface across different rows
+    instead would let two different hosts' distinct capabilities be mixed together as if they
+    belonged to one module, which they don't.
+    """
+    allowed: set[str] = set()
+    for entry in classes:
+        try:
+            cls = get_class_from_string(entry["class"])
+        except Exception:
+            continue
+        if inspect.isclass(cls) and all(issubclass(cls, iface) for iface in interfaces):
+            allowed.add(entry["name"])
+    return allowed
 
 
 def _collect_module_ref_errors(
-    obj: Any, loc: list[Any], classes: dict[str, str], errors: list[dict[str, Any]]
+    obj: Any, loc: list[Any], classes: list[dict[str, str]], errors: list[dict[str, Any]]
 ) -> None:
     """Recursively walk a validated `Script` instance tree, flagging every module-ref field
     (`Annotated[str, SomeInterface]`, issue #98) whose value isn't a module `classes` says
@@ -676,7 +687,7 @@ def _collect_module_ref_errors(
 
     Only ever called with a non-None `classes` -- an unreachable/unconfigured web-admin must
     never block saving a script (module_ref_options() degrades to a free-text input in that
-    case; passing an empty dict here would instead reject every module-ref value outright).
+    case; passing an empty list here would instead reject every module-ref value outright).
     """
     if isinstance(obj, BaseModel):
         for field_name, field_info in type(obj).model_fields.items():
