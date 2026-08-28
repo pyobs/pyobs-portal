@@ -26,3 +26,6 @@ migration + serializer changes needed here).
   alternatives and the full rename surface (repo, package, Docker image, Keycloak client,
   cross-repo references); execution checklist:
   `../../pyobs-core/specs/plans/2026-08-24-rename-robotic-backend-to-portal.md`.
+- `../../pyobs-core/specs/design/shared-authz-keycloak.md` — proposed: centralized authorization
+  via Keycloak groups/roles; replaces this repo's per-service `is_active` activation and syncs
+  `is_superuser` from a `portal-admin` client role (issue #823).
