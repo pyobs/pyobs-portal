@@ -1,3 +1,4 @@
+from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 from django.test import TestCase, override_settings
 
@@ -65,6 +66,17 @@ class ResolveUserTests(TestCase):
         self.assertEqual(first.pk, second.pk)
         self.assertFalse(User.objects.get(pk=first.pk).is_superuser)
 
+    def test_locally_promoted_superuser_is_demoted_without_the_keycloak_role(self):
+        """By design: Keycloak is the source of truth for is_superuser once a user has a linked
+        Keycloak identity, even if they were promoted locally (createsuperuser, Django admin)."""
+        local_admin = User.objects.create(username="local-admin", is_superuser=True)
+        KeycloakIdentity.objects.create(user=local_admin, keycloak_sub="sub-2g")
+
+        resolved = resolve_user({"sub": "sub-2g", "email": "local-admin@example.org"})
+
+        self.assertEqual(resolved.pk, local_admin.pk)
+        self.assertFalse(User.objects.get(pk=local_admin.pk).is_superuser)
+
     def test_portal_admin_role_is_scoped_to_the_portal_client(self):
         # a client role on some other client's resource_access entry must not count
         user = resolve_user(
@@ -75,6 +87,23 @@ class ResolveUserTests(TestCase):
             }
         )
         self.assertFalse(user.is_superuser)
+
+    def test_portal_admin_role_lookup_uses_the_configured_client_id_not_a_hardcoded_one(self):
+        # resource_access is keyed by whatever Keycloak client id this deployment actually uses
+        # (PYOBS_AUTH['CLIENT_ID']/KEYCLOAK_CLIENT_ID) - e.g. monet's real deployment uses
+        # "monets-observe", not the settings.py default of "portal". A hardcoded "portal" lookup
+        # key would silently never match here.
+        with override_settings(
+            PYOBS_AUTH={**django_settings.PYOBS_AUTH, "CLIENT_ID": "monets-observe"}
+        ):
+            user = resolve_user(
+                {
+                    "sub": "sub-2f",
+                    "email": "monet-admin@example.org",
+                    "resource_access": {"monets-observe": {"roles": ["portal-admin"]}},
+                }
+            )
+        self.assertTrue(user.is_superuser)
 
     def test_same_sub_resolves_to_the_same_user_on_a_later_login(self):
         first = resolve_user({"sub": "sub-3", "email": "person@example.org"})
