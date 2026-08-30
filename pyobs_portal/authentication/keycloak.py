@@ -16,12 +16,18 @@ NOT synced: `is_staff` - that's the separate flag that unlocks the raw Django ad
 superuser checks. The settings-configured ADMIN_USERNAME account (admin_sync.py) sets both
 together on purpose (it's a local password account meant to be a full admin, not a Keycloak
 user) - this resolver must not copy that pattern for Keycloak-derived users.
+
+Sharp edge, by design: since `is_superuser` is unconditionally re-derived from the role on every
+resolve, a locally-promoted superuser (`createsuperuser`, Django admin) who also has a linked
+Keycloak identity gets demoted at their next login/refresh if they don't hold `portal-admin` in
+Keycloak - Keycloak is the source of truth here, not whichever flag happened to be set locally.
 """
 
 from __future__ import annotations
 
 from typing import Any
 
+from django.conf import settings as django_settings
 from django.contrib.auth.models import User
 
 from pyobs_portal.authentication.models import KeycloakIdentity
@@ -30,8 +36,16 @@ PORTAL_ADMIN_CLIENT_ROLE = "portal-admin"
 
 
 def _has_portal_admin_role(claims: dict[str, Any]) -> bool:
+    # resource_access is keyed by this deployment's own Keycloak client id (PYOBS_AUTH['CLIENT_ID']
+    # / KEYCLOAK_CLIENT_ID) - not a fixed name. A hardcoded "portal" key would only ever match the
+    # settings.py default and silently never fire for any real deployment using its own client id
+    # (e.g. monet's "monets-observe"). Read PYOBS_AUTH['CLIENT_ID'] directly rather than going
+    # through pyobs_auth.settings.get_settings(), which also requires SERVER_URL/REALM to be set -
+    # this resolver only needs the one key and shouldn't fail if those aren't configured (e.g. in
+    # a unit test that calls resolve_user() directly, without a full Keycloak setup).
     resource_access = claims.get("resource_access") or {}
-    roles = (resource_access.get("portal") or {}).get("roles") or []
+    client_id = django_settings.PYOBS_AUTH.get("CLIENT_ID", "")
+    roles = (resource_access.get(client_id) or {}).get("roles") or []
     return PORTAL_ADMIN_CLIENT_ROLE in roles
 
 
