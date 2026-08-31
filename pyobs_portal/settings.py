@@ -192,6 +192,11 @@ PYOBS_AUTH = {
     "REQUIRED_GROUPS": [
         g for g in [os.environ.get("KEYCLOAK_REQUIRED_GROUP", "/pyobs-portal")] if g
     ],
+    # Keycloak-independent kill switch, layered on top of REQUIRED_GROUPS above: an admin can
+    # deactivate a specific local User (Django admin) regardless of their Keycloak group
+    # membership. True preserves this service's pre-2.1 behavior, where is_active was always
+    # the gate.
+    "ENFORCE_LOCAL_ACTIVE": os.environ.get("KEYCLOAK_ENFORCE_LOCAL_ACTIVE", "True"),
 }
 
 # Settings-configured admin account (optional): synced to a real superuser after every
