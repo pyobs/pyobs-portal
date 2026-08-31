@@ -34,3 +34,13 @@ jobs:
             ghcr.io/${{ github.repository }}:latest
           build-args: |
             ENVIRONMENT=production
+
+      - name: Trigger downstream deployment rebuild
+        # Optional: only fires if a deployment has configured these secrets. Generic by
+        # design - this repo doesn't know or care which deployment(s) consume it, or how
+        # they build/deploy their own image on top of this one. URL and token both live
+        # only in repo secrets, never in this file, so no deployment-specific infrastructure
+        # detail (which CI system, which project) is visible here.
+        if: ${{ secrets.DEPLOY_TRIGGER_URL != '' }}
+        run: |
+          curl -sf -X POST -F token="${{ secrets.DEPLOY_TRIGGER_TOKEN }}" -F ref=master "${{ secrets.DEPLOY_TRIGGER_URL }}"
