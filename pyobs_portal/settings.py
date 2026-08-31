@@ -87,14 +87,13 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # after AuthenticationMiddleware (needs request.user) - re-checks a Keycloak-backed session's
+    # authorization once its access token expires, instead of only at next login. See pyobs-auth's
+    # docs/source/configuration.rst, "Authorization: claims vs. local is_active".
+    "pyobs_auth.middleware.KeycloakSessionRefreshMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
-# TODO(#823): once pyobs-auth >=2.1 (pyobs/pyobs-auth#15) is released and this repo's dependency
-# is bumped, add "pyobs_auth.middleware.KeycloakSessionRefreshMiddleware" here, right after
-# AuthenticationMiddleware - it doesn't exist in pyobs-auth 2.0.0, and referencing it before the
-# upgrade breaks every test that makes a request (Django imports MIDDLEWARE entries lazily, on
-# first request, not at manage.py check).
 
 ROOT_URLCONF = "pyobs_portal.urls"
 
