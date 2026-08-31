@@ -87,6 +87,10 @@ MIDDLEWARE = [
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
     "django.contrib.auth.middleware.AuthenticationMiddleware",
+    # after AuthenticationMiddleware (needs request.user) - re-checks a Keycloak-backed session's
+    # authorization once its access token expires, instead of only at next login. See pyobs-auth's
+    # docs/source/configuration.rst, "Authorization: claims vs. local is_active".
+    "pyobs_auth.middleware.KeycloakSessionRefreshMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
@@ -179,6 +183,19 @@ PYOBS_AUTH = {
     "IDP_HINT": os.environ.get("KEYCLOAK_IDP_HINT", ""),
     "IDP_LABEL": os.environ.get("KEYCLOAK_IDP_LABEL", ""),
     "USER_RESOLVER": "pyobs_portal.authentication.keycloak.resolve_user",
+    # Claims-based authorization gate (pyobs-auth >=2.1): membership in this Keycloak group is
+    # now what authorizes a user to use portal at all, replacing the old is_active activation
+    # gate - see pyobs-core's specs/design/shared-authz-keycloak.md. Fail-closed default: empty
+    # (via KEYCLOAK_REQUIRED_GROUP=) disables the gate entirely, so leave it set unless every
+    # Keycloak login should be authorized regardless of group membership.
+    "REQUIRED_GROUPS": [
+        g for g in [os.environ.get("KEYCLOAK_REQUIRED_GROUP", "/pyobs-portal")] if g
+    ],
+    # Keycloak-independent kill switch, layered on top of REQUIRED_GROUPS above: an admin can
+    # deactivate a specific local User (Django admin) regardless of their Keycloak group
+    # membership. True preserves this service's pre-2.1 behavior, where is_active was always
+    # the gate.
+    "ENFORCE_LOCAL_ACTIVE": os.environ.get("KEYCLOAK_ENFORCE_LOCAL_ACTIVE", "True"),
 }
 
 # Settings-configured admin account (optional): synced to a real superuser after every
