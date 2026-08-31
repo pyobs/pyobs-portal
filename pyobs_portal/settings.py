@@ -90,6 +90,11 @@ MIDDLEWARE = [
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
+# TODO(#823): once pyobs-auth >=2.1 (pyobs/pyobs-auth#15) is released and this repo's dependency
+# is bumped, add "pyobs_auth.middleware.KeycloakSessionRefreshMiddleware" here, right after
+# AuthenticationMiddleware - it doesn't exist in pyobs-auth 2.0.0, and referencing it before the
+# upgrade breaks every test that makes a request (Django imports MIDDLEWARE entries lazily, on
+# first request, not at manage.py check).
 
 ROOT_URLCONF = "pyobs_portal.urls"
 
@@ -179,6 +184,14 @@ PYOBS_AUTH = {
     "IDP_HINT": os.environ.get("KEYCLOAK_IDP_HINT", ""),
     "IDP_LABEL": os.environ.get("KEYCLOAK_IDP_LABEL", ""),
     "USER_RESOLVER": "pyobs_portal.authentication.keycloak.resolve_user",
+    # Claims-based authorization gate (pyobs-auth >=2.1): membership in this Keycloak group is
+    # now what authorizes a user to use portal at all, replacing the old is_active activation
+    # gate - see pyobs-core's specs/design/shared-authz-keycloak.md. Fail-closed default: empty
+    # (via KEYCLOAK_REQUIRED_GROUP=) disables the gate entirely, so leave it set unless every
+    # Keycloak login should be authorized regardless of group membership.
+    "REQUIRED_GROUPS": [
+        g for g in [os.environ.get("KEYCLOAK_REQUIRED_GROUP", "/pyobs-portal")] if g
+    ],
 }
 
 # Settings-configured admin account (optional): synced to a real superuser after every
