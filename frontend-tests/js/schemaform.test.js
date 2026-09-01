@@ -601,6 +601,85 @@ describe("buildControl: any nullable field gets an explicit set/unset checkbox (
   });
 });
 
+describe("checkbox controls render their description next to the box, not below it", () => {
+  it("bool: description is an inline form-check-label next to the checkbox, not form-text below", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        flag: { type: "boolean", default: false, description: "Turns the thing on.", title: "Flag" },
+      },
+    };
+    const form = new SchemaForm(schema, {}, {}, { polymorphic: POLYMORPHIC });
+    const control = form.fields.flag.rowEl.children[1];
+    const label = control.querySelector(".form-check-label");
+    expect(label).not.toBeNull();
+    expect(label.textContent).toBe("Turns the thing on.");
+    // Same form-check wrapper as the box itself -- i.e. the text sits right next to it.
+    expect(label.closest(".form-check").querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(control.querySelector(".form-text")).toBeNull();
+  });
+
+  it("bool without a description stays a bare checkbox", () => {
+    const schema = { type: "object", properties: { flag: { type: "boolean", title: "Flag" } } };
+    const form = new SchemaForm(schema, {}, {}, { polymorphic: POLYMORPHIC });
+    const control = form.fields.flag.rowEl.children[1];
+    expect(control.querySelector(".form-check-label")).toBeNull();
+    expect(control.querySelector(".form-text")).toBeNull();
+  });
+
+  it("optional field: description inline next to the checkbox, branch control below, no form-text", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        site: {
+          anyOf: [{ type: "string" }, { type: "null" }],
+          default: null,
+          description: "Site code to query the archive for.",
+          title: "Site",
+        },
+      },
+    };
+    const form = new SchemaForm(schema, {}, { site: "bsh" }, { polymorphic: POLYMORPHIC });
+    const row = form.fields.site.rowEl;
+    const content = row.children[1];
+    const label = content.querySelector(".form-check-label");
+    expect(label).not.toBeNull();
+    expect(label.textContent).toBe("Site code to query the archive for.");
+    // The checkbox + label share a horizontal header row; the branch control sits below it.
+    const head = label.parentElement;
+    expect(head.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(content.querySelector(".form-text")).toBeNull();
+    expect(form.getData()).toEqual({ site: "bsh" });
+  });
+
+  it("optional field without a description keeps the checkbox next to the branch control", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        window: {
+          anyOf: [
+            {
+              type: "array",
+              prefixItems: [{ type: "integer" }, { type: "integer" }],
+              minItems: 2,
+              maxItems: 2,
+            },
+            { type: "null" },
+          ],
+          default: null,
+          title: "Window",
+        },
+      },
+    };
+    const form = new SchemaForm(schema, {}, { window: [1, 1] }, { polymorphic: POLYMORPHIC });
+    const wrap = form.fields.window.rowEl.children[1].firstElementChild;
+    expect(wrap.classList.contains("flex-row")).toBe(true);
+    expect(wrap.querySelector('input[type="checkbox"]')).not.toBeNull();
+    expect(wrap.querySelector(".form-check-label")).toBeNull();
+    expect(form.getData()).toEqual({ window: [1, 1] });
+  });
+});
+
 describe("buildControl: invalid primitive values fall back to raw YAML (issue #101)", () => {
   it("number: a wrong-type stored value (string) is flagged and preserved, not sanitized to 0", () => {
     const { control, getValue } = buildControl({ type: "number" }, {}, "not a number", new Set(), POLYMORPHIC);
@@ -818,6 +897,33 @@ describe("row layout: two-column for scalars, full-width for structural fields",
     const row = form.fields.script.rowEl;
     expect(row.classList.contains("row")).toBe(false);
     expect(row.children[1].classList.contains("col-sm-8")).toBe(false);
+  });
+
+  it("an array of plain scalars (DarkBiasScript.exptimes-like) gets the two-column row", () => {
+    const schema = {
+      type: "object",
+      properties: {
+        exptimes: {
+          anyOf: [{ type: "array", items: { type: "number" } }, { type: "null" }],
+          default: null,
+          title: "Exptimes",
+        },
+      },
+    };
+    const form = new SchemaForm(schema, {}, { exptimes: null }, { polymorphic: POLYMORPHIC });
+    const row = form.fields.exptimes.rowEl;
+    // An optional list of numbers is compact (add/remove number inputs), not a nested form --
+    // it must keep the two-column row instead of stretching (checkbox + description) across
+    // the full width like an array-of-objects field does.
+    expect(row.classList.contains("row")).toBe(true);
+    expect(row.querySelector("label").classList.contains("col-sm-4")).toBe(true);
+    expect(row.children[1].classList.contains("col-sm-8")).toBe(true);
+  });
+
+  it("a plain array of strings is two-column too", () => {
+    const schema = { type: "object", properties: { names: { type: "array", items: { type: "string" } } } };
+    const form = new SchemaForm(schema, {}, { names: ["a"] }, { polymorphic: POLYMORPHIC });
+    expect(form.fields.names.rowEl.classList.contains("row")).toBe(true);
   });
 
   describe("a polymorphic field with a scalar alternative (exposure_time-like)", () => {
