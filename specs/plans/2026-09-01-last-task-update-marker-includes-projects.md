@@ -5,7 +5,12 @@ Status: implemented
 Tracks pyobs-core#848. Repos: pyobs-portal (this plan); the consumer-side half — pyobs-core's
 `Scheduler` currently ignoring project content in its own change-detection even when the archive
 does re-poll — is `pyobs-core/specs/plans/2026-09-01-scheduler-reschedule-on-project-and-task-changes.md`
-(separate repo, separate plan). The two are independently landable, see Out of scope.
+(separate repo, separate plan). **Not independently landable** — see Out of scope: this PR adds
+`updated_at` to every `/api/projects/` response, which pyobs-core's `Project` model must accept
+a round-trip field for or every poll fails with a `ValidationError`. That fix ships in the
+pyobs-core PR (pyobs-core#854); merge order doesn't strictly matter (`extra="forbid"` only bites
+once the portal side actually sends the field), but both must land before this stops being a
+live footgun.
 
 ## Problem
 
@@ -111,3 +116,18 @@ a query change.
 - Same-ID *task* content changes (a task's own priority changing without its ID changing) are
   already covered on the portal side — `Task.updated_at` already exists and is already in the
   marker queryset; that gap is entirely on the pyobs-core consumer side (see the linked plan).
+
+## Post-review addendum
+
+Independent review (verified against PR head `0b270bc`) confirmed the implementation itself —
+migration shape, `max()` combination, M2M deferral — but flagged that **this PR is not
+independently landable as originally claimed**: `ProjectSerializer` is `fields="__all__"`, so
+`updated_at` now appears in every `/api/projects/` response, and pyobs-core's `Project` model
+(`pyobs/robotic/task.py:152`) is a strict `extra="forbid"` pydantic model without that field —
+`PortalTaskArchive._get_projects()` would raise `ValidationError` on every poll once both this
+PR's field and its consumption actually meet in a live deployment. Per the review's own
+recommendation, the fix is a round-trip `updated_at: str | None = None` field on pyobs-core's
+`Project` (mirroring the precedent already shipped for `Task.updated_at`), landed in
+pyobs-core#854 rather than by excluding the field from this payload — the field exists
+precisely to be consumed (by this issue's own `Scheduler` fix, once it also lands). No code
+change was needed on this side; the coupling is documented here and in the PR description.
