@@ -299,8 +299,13 @@ def _accessible_projects(user: User):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def last_task_update(request):
-    queryset = Task.objects.filter(project__in=_accessible_projects(request.user))
-    return Response({"last_task_update": _last_update(queryset).isot})
+    # Projects are included alongside tasks -- a project-only edit (e.g. priority) previously
+    # left this marker untouched, so pyobs-core's PortalTaskArchive never re-polled and the
+    # change never reached the scheduler (pyobs-core#848).
+    accessible_projects = _accessible_projects(request.user)
+    task_queryset = Task.objects.filter(project__in=accessible_projects)
+    marker = max(_last_update(task_queryset), _last_update(accessible_projects))
+    return Response({"last_task_update": marker.isot})
 
 
 @api_view(["GET"])
