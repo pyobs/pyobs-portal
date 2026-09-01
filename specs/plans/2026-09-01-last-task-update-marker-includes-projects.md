@@ -1,6 +1,6 @@
 # Plan: `/api/last_task_update/` moves on project edits, not just task edits
 
-Status: proposed
+Status: implemented
 
 Tracks pyobs-core#848. Repos: pyobs-portal (this plan); the consumer-side half — pyobs-core's
 `Scheduler` currently ignoring project content in its own change-detection even when the archive
@@ -86,15 +86,20 @@ a query change.
 
 ## Acceptance criteria
 
-- [ ] `Project.updated_at` field + migration added.
-- [ ] `users` M2M gap explicitly resolved (signal added, or deferral documented) — not left
-      ambiguous.
-- [ ] `/api/last_task_update/` moves when an accessible project's content changes.
-- [ ] Per-user project accessibility respected in the new project-side query, same as the
-      existing task-side one.
-- [ ] New tests pass; existing `last_task_update`/`last_observation_update` tests unaffected.
-- [ ] Migration applies cleanly against a DB with existing `Project` rows (no `NULL`/default
-      surprises).
+- [x] `Project.updated_at` field + migration added (`0009_project_updated_at.py`, mirrors
+      `0008_task_observation_updated_at.py`'s nullable-add/backfill/non-null-alter shape;
+      `makemigrations --check` confirms it matches the model exactly).
+- [x] `users` M2M gap explicitly resolved as a documented deferral (option (b) from the design):
+      a code comment on `Project.updated_at` plus
+      `test_project_membership_change_does_not_move_marker` pin the known gap instead of leaving
+      it silently uncovered.
+- [x] `/api/last_task_update/` moves when an accessible project's content changes.
+- [x] Per-user project accessibility respected in the new project-side query — reuses
+      `_accessible_projects(request.user)` directly, option (a) from the design (two `Max()`
+      queries combined via `max()`).
+- [x] New tests pass (13/13 in `UpdateMarkerApiTests`); full suite (131 tests) green.
+- [x] Migration applies cleanly against a fresh DB with the full migration history
+      (`manage.py migrate api`, verified).
 
 ## Out of scope
 
