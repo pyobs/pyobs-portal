@@ -31,9 +31,9 @@
 - [plans/2026-09-01-last-task-update-marker-includes-projects.md](plans/2026-09-01-last-task-update-marker-includes-projects.md)
   — `/api/last_task_update/` only tracks `Max(Task.updated_at)`, so a `Project` edit (e.g.
   priority) never moves the marker and pyobs-core's `PortalTaskArchive` never re-polls; adds
-  `Project.updated_at` (new field + migration) and folds it into the marker query. **proposed**
-  (pyobs-core#848; Repos: pyobs-portal; pyobs-core-side consumer fix is a separate plan in
-  pyobs-core)
+  `Project.updated_at` (new field + migration) and folds it into the marker query.
+  **implemented** (pyobs-core#848; PR #134; Repos: pyobs-portal; pyobs-core-side consumer fix
+  pyobs-core#854)
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
