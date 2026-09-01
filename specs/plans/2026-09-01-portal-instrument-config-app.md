@@ -370,11 +370,24 @@ swallowed by that catch-all.
 - Admin: a user in `instrument-config` (without `is_staff` superuser rights) has add/change/delete
   `has_perm()` on `CameraCapability`, `BinningOption`, `FilterWheelCapability`, `Filter`,
   `TelescopeCapability`, and `DomeCapability`, and only add/change (not delete) on `Instrument`.
-  **Implementation note**: as shipped, this is asserted via `has_perm()` rather than an actual
-  admin-site walkthrough (submitting the inline delete checkbox, following the click-through to a
-  child row's own change page) — narrower than what this bullet originally described; a real
-  walkthrough is still worth doing manually before merge/rollout since `has_perm` alone can't catch
-  an admin wiring mistake (e.g. an inline missing from `inlines = [...]`).
+  The test suite asserts this via `has_perm()` rather than a full admin-site walkthrough.
+
+  **Manual walkthrough performed 2026-09-01** (against a throwaway scratch DB, not the dev
+  `db.sqlite3`), as a non-superuser member of `instrument-config`: created an `Instrument` with a
+  `CameraCapability` inline; clicked through `CameraCapability`'s own page to add a `BinningOption`
+  and a `FilterWheelCapability`; clicked through the wheel's own page to add a `Filter`; checked
+  the `BinningOption` row's delete checkbox and saved — the row was removed while the camera,
+  instrument, and filter survived. Confirmed `Instrument`'s delete link is absent from the change
+  page and a direct POST to its `/delete/` URL returns 403. The admin index page for this user
+  shows only the `Instruments` app section — `api`/`auth`/`authtoken` are invisible, matching
+  group scoping rather than just per-model permission checks.
+
+  One tooling note, not an app finding: an early attempt at the same walkthrough via
+  coordinate/ref-based browser automation appeared to silently drop a `BinningOption` save. Traced
+  to the automation targeting Django's hidden inline `empty-form` template row instead of the
+  newly-added visible row (both matched a fuzzy "binning option X/Y input" query) — not a bug in
+  the app. Redone by inspecting the DOM directly (`#binnings-group`, form field names like
+  `binnings-0-x`) and driving the real inputs, which is how the results above were obtained.
 - `updated_at`: editing a nested capability row bumps that row's own `updated_at` but leaves the
   parent `Instrument.updated_at` unchanged (documents the caveat in §2, not just tests it).
 
