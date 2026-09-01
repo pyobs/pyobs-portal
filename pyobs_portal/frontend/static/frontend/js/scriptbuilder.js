@@ -316,6 +316,38 @@ class ScriptBuilder {
     return aliased && this._leafByClass.has(aliased) ? aliased : cls;
   }
 
+  /** Deep-copy `value`, rewriting every polymorphic node's `class` from a
+   * re-exported short path to its canonical form via `tree.$aliases`
+   * (issue #128). `_resolveClass` above only canonicalizes the *root* class;
+   * nested classes -- `SequentialRunner.scripts` items, provider nodes, ... --
+   * are compared against the polymorphic candidates' canonical paths by
+   * schemaform.js's buildPolymorphicControl, so a nested class left in its
+   * short form falls back to a raw-YAML textarea instead of a nested form.
+   *
+   * Only nodes carrying a `class` string that is a key of `$aliases` are
+   * rewritten -- exactly the polymorphic-node shape. Alias keys are full
+   * class paths, and both forms import the same class, so even a collision
+   * with a non-class string field would be semantically inert.
+   * Returns a copy; the input (which may be the caller's live script data or
+   * the parsed YAML) is never mutated. */
+  _canonicalizeClassPaths(value) {
+    const aliases = this.tree.$aliases || {};
+    const walk = (node) => {
+      if (Array.isArray(node)) return node.map(walk);
+      if (!node || typeof node !== "object") return node;
+      const copy = {};
+      for (const [k, v] of Object.entries(node)) {
+        if (k === "class" && typeof v === "string" && Object.prototype.hasOwnProperty.call(aliases, v)) {
+          copy[k] = aliases[v];
+        } else {
+          copy[k] = walk(v);
+        }
+      }
+      return copy;
+    };
+    return walk(value);
+  }
+
   /** Restore builder state from `data` (the task's `script` JSON), opening
    * in source view with a warning if it isn't mappable (§4.12: imported
    * YAML from another pyobs version, an uninstalled script package, or a
@@ -331,6 +363,12 @@ class ScriptBuilder {
       this._scheduleValidate();
       return;
     }
+
+    // Nested script/provider classes get canonicalized here too (issue #128):
+    // buildPolymorphicControl only recognizes a nested value whose `class`
+    // matches a candidate's canonical path, so a short re-exported path left
+    // in place would render that nested script as a raw-YAML textarea.
+    data = this._canonicalizeClassPaths(data);
 
     const cls = data.class && this._resolveClass(data.class);
     if (!cls || !this._leafByClass.has(cls)) {
@@ -355,12 +393,17 @@ class ScriptBuilder {
    * and a different (also non-blocking) warning if it maps but the rebuilt
    * builder state doesn't exactly match what was there. */
   _switchToBuilder() {
-    const parsed = this._parseSource();
+    let parsed = this._parseSource();
     if (parsed === undefined) {
       this.warningEl.textContent = "Invalid YAML -- fix it before switching to the builder view.";
       this.warningEl.classList.remove("d-none");
       return;
     }
+    // Canonicalize nested classes before building AND before the
+    // round-trip comparison below, so a short re-exported path renders as a
+    // nested form rather than a raw-YAML textarea (issue #128) and doesn't
+    // trip the "doesn't exactly match" warning for that normalization alone.
+    parsed = this._canonicalizeClassPaths(parsed);
     const isEmpty = !parsed || typeof parsed !== "object" || Object.keys(parsed).length === 0;
     const rawCls = isEmpty ? undefined : parsed.class;
     const cls = rawCls && this._resolveClass(rawCls);
