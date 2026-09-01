@@ -1963,7 +1963,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.0.0"
+version = "2.2.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1993,14 +1993,14 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a1/35/57654254c92f7264454a527abc317742995189ee7d7a2d9c6c5b32c90fc5/pyobs_core-2.0.0.tar.gz", hash = "sha256:87b77406f907a9fecb4630a45c002e354134e3c8b11a51e436289489bbb18fe6", size = 374158, upload-time = "2026-08-26T11:44:08.181Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7b/77/f145aa80dcc2a3813576609f9a92bd565a9db9d61777f9cc124afb1878cc/pyobs_core-2.2.0.tar.gz", hash = "sha256:adede5c3c12722565e5ccb32f5fe49397dc14e74674c6778482d40f81ca300e1", size = 395720, upload-time = "2026-09-01T11:47:40.797Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/11/e8af2e0f099a16808ef1f42d398af73bc6c3935501f08a83f6628503e679/pyobs_core-2.0.0-py3-none-any.whl", hash = "sha256:3e97cc12d653978c3d963d41b984702a3169914776ef970d0fa21619d5cb3df6", size = 596861, upload-time = "2026-08-26T11:44:06.642Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/84/5cf38ef1f504b0c7e76e38a84d7f721b9b4cdb68f389f1263591c75324fc/pyobs_core-2.2.0-py3-none-any.whl", hash = "sha256:9b14d86efff1360ee00d4cfcbf4a89ab6f8089f9c60de0d7e404a239da7a524d", size = 624091, upload-time = "2026-09-01T11:47:39.082Z" },
 ]
 
 [[package]]
 name = "pyobs-portal"
-version = "2.1.0"
+version = "2.1.1"
 source = { virtual = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -2043,7 +2043,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.1.0" },
-    { name = "pyobs-core", specifier = ">=2.0.0" },
+    { name = "pyobs-core", specifier = ">=2.2.0,<3" },
     { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
 ]
