@@ -91,7 +91,18 @@ function isStructuralField(resolved, defs) {
   // buildTupleControl -- same two-column treatment as any other scalar field, not the full-width
   // add/remove array UI a dynamic-length array gets.
   if (resolved.type === "array" && resolved.prefixItems) return false;
-  return resolved.type === "array" || resolved.type === "object";
+  // A dynamic-length array is full-width only when its items are themselves forms -- nested
+  // objects/polymorphic nodes (e.g. each `InstrumentConfig` in a list, `SequentialRunner`'s
+  // `scripts`), which genuinely need more room than col-sm-8 can spare. An array of plain
+  // scalars (`DarkBiasScript.exptimes: list[float]`) instead renders as compact per-item
+  // inputs via buildArrayControl and keeps the two-column row like any other scalar field --
+  // before this, the whole row (including the optional set/unset checkbox and the description
+  // under it) spanned the full form width. Mirrors buildArrayControl's own dispatch on the
+  // items schema.
+  if (resolved.type === "array") {
+    return isStructuralField(resolveSchema(resolved.items || {}, defs), defs);
+  }
+  return resolved.type === "object";
 }
 
 /** Set a field row's layout classes, given whether isStructuralField() says this field's row is
@@ -195,7 +206,7 @@ class SchemaForm {
       if (this.ignored.has(name)) continue;
       const resolved = resolveSchema(propSchema, this.defs);
       const value = this.data[name];
-      const { control, getValue, resolvePath, extra } = buildControl(
+      const { control, getValue, resolvePath, extra, descriptionHandled } = buildControl(
         resolved,
         this.defs,
         value,
@@ -222,7 +233,10 @@ class SchemaForm {
       const content = document.createElement("div");
       applyRowLayout(row, label, content, structural);
       content.appendChild(control);
-      if (resolved.description) {
+      // Checkbox controls (bool / optional set-unset) consume their description as an inline
+      // label next to the box (see buildBoolControl / buildOptionalControl) and flag it via
+      // `descriptionHandled`; every other control gets the description as help text below.
+      if (resolved.description && !descriptionHandled) {
         const help = document.createElement("div");
         help.className = "form-text small mt-1";
         // pre-wrap (not a plain block) so a multi-line description (e.g. a docstring with
@@ -342,7 +356,7 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
       // (renders with every sub-field defaulted) -- see buildOptionalControl.
       const isNullable = nonNull.length !== resolved.anyOf.length;
       if (isNullable) {
-        return buildOptionalControl(branch, defs, value, ignored, polymorphic, moduleRefs);
+        return buildOptionalControl(branch, defs, value, ignored, polymorphic, moduleRefs, resolved.description);
       }
       return buildControl(branch, defs, value, ignored, polymorphic, moduleRefs);
     }
@@ -394,7 +408,17 @@ function buildBoolControl(resolved, value) {
   input.className = "form-check-input";
   input.checked = value !== undefined && value !== null ? !!value : !!resolved.default;
   wrap.appendChild(input);
-  return { control: wrap, getValue: () => input.checked };
+  if (resolved.description) {
+    // Render the field description as this checkbox's inline label (Bootstrap's standard
+    // form-check pattern, `[x] text`), instead of letting SchemaForm._build() drop it as
+    // help text below the control -- a lone box with its explanatory text stacked under it
+    // read as "the label is below the checkbox" rather than beside it.
+    const label = document.createElement("label");
+    label.className = "form-check-label small text-secondary";
+    label.textContent = resolved.description;
+    wrap.appendChild(label);
+  }
+  return { control: wrap, getValue: () => input.checked, descriptionHandled: true };
 }
 
 function buildNumberControl(resolved, value, isInt) {
@@ -623,12 +647,15 @@ function buildTupleControl(resolved, defs, value, ignored, polymorphic, moduleRe
  * where None differs from ""), an enum, a number/bool, or a plain nested object. A checkbox
  * tracks the set/unset state explicitly instead of inferring it from the branch control's value,
  * so a brand-new or previously-null field round-trips as `null` rather than silently becoming
- * that branch's zero-ish default. */
-function buildOptionalControl(branchSchema, defs, value, ignored, polymorphic, moduleRefs) {
+ * that branch's zero-ish default.
+ *
+ * `description` is the outer field's description (the non-null branch's schema doesn't carry
+ * it): when present, it renders as the checkbox's inline label (same reasoning as
+ * buildBoolControl -- `[x] text`, not text under the box), with the branch control below it on
+ * its own line. Without a description the checkbox and the branch control stay side by side as
+ * before (`[x] [control]`). */
+function buildOptionalControl(branchSchema, defs, value, ignored, polymorphic, moduleRefs, description) {
   const isSet = value !== undefined && value !== null;
-
-  const wrap = document.createElement("div");
-  wrap.className = "d-flex flex-row align-items-start gap-2";
 
   const checkbox = document.createElement("input");
   checkbox.type = "checkbox";
@@ -636,7 +663,6 @@ function buildOptionalControl(branchSchema, defs, value, ignored, polymorphic, m
   checkbox.checked = isSet;
 
   const area = document.createElement("div");
-  area.className = "flex-grow-1";
   area.style.display = checkbox.checked ? "" : "none";
 
   const built = buildControl(branchSchema, defs, isSet ? value : undefined, ignored, polymorphic, moduleRefs);
@@ -646,13 +672,30 @@ function buildOptionalControl(branchSchema, defs, value, ignored, polymorphic, m
     area.style.display = checkbox.checked ? "" : "none";
   });
 
-  wrap.appendChild(checkbox);
-  wrap.appendChild(area);
+  const wrap = document.createElement("div");
+  if (description) {
+    wrap.className = "d-flex flex-column gap-2";
+    const head = document.createElement("div");
+    head.className = "d-flex flex-row align-items-start gap-2";
+    head.appendChild(checkbox);
+    const label = document.createElement("label");
+    label.className = "form-check-label small text-secondary";
+    label.textContent = description;
+    head.appendChild(label);
+    wrap.appendChild(head);
+    wrap.appendChild(area);
+  } else {
+    wrap.className = "d-flex flex-row align-items-start gap-2";
+    wrap.appendChild(checkbox);
+    area.className = "flex-grow-1";
+    wrap.appendChild(area);
+  }
 
   return {
     control: wrap,
     getValue: () => (checkbox.checked ? built.getValue() : null),
     resolvePath: (loc) => (checkbox.checked && built.resolvePath ? built.resolvePath(loc) : null),
+    descriptionHandled: true,
   };
 }
 
