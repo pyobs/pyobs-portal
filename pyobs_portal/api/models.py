@@ -17,6 +17,11 @@ class Project(models.Model):
         help_text="Public projects are accessible to every authenticated user; "
         "private projects only to their members.",
     )
+    # NOTE: auto_now only bumps on a direct save() of this row -- it does NOT fire when `users`
+    # membership changes (that's a through-table write, pyobs-core#848). A project's own content
+    # (priority, public, ...) is covered; a pure membership change to an otherwise-unchanged
+    # project is not reflected here.
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["code"]

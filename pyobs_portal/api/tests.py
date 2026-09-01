@@ -386,6 +386,44 @@ class UpdateMarkerApiTests(TestCase):
             observation_marker,
         )
 
+    def test_project_marker_tracks_save(self):
+        # A project-only edit (e.g. priority) must move last_task_update -- previously it didn't,
+        # since the marker was Max(Task.updated_at) only (pyobs-core#848).
+        project, _ = self._project_and_task()
+        project.priority = 5.0
+        project.save()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(project.updated_at).isot,
+        )
+
+    def test_project_marker_excludes_inaccessible_projects(self):
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+
+        hidden_project, _ = self._project_and_task(code="OTH", member=False)
+        hidden_project.priority = 5.0
+        hidden_project.save()
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+
+    def test_project_membership_change_does_not_move_marker(self):
+        # Known, deliberate gap (see Project.updated_at's docstring note and the linked plan):
+        # `users` is a ManyToManyField, so adding/removing a member writes the through table, not
+        # the Project row -- auto_now does not fire. Documented here rather than left silently
+        # uncovered; a membership-only change is not reflected in this marker.
+        project, _ = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+
+        other = User.objects.create_user("marker-2", "marker-2@example.com", "pw")
+        project.users.add(other)
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+
     def test_markers_include_public_projects(self):
         # Public projects are visible to every authenticated user without
         # membership, so their activity must move the markers.
