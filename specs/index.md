@@ -15,6 +15,11 @@
   `GET /api/modules/classes/`, filtered per-field by required `pyobs.interfaces` tagged in
   pyobs-core via `Annotated[str, ICamera]`-style metadata (pyobs-core#808, shipped in
   2.0.0.dev94).
+- [plans/2026-09-01-portal-instrument-config-app.md](plans/2026-09-01-portal-instrument-config-app.md)
+  — new `instruments` Django app: per-type capability models (camera/telescope/dome/filter
+  wheels), admin-editable via a scoped `instrument-config` group, read-only nested API for the
+  script builder, incl. task-duration-estimate fields (readout, filter-change, slew, dome-rotate
+  times). **proposed** (pyobs/pyobs-portal#116)
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
