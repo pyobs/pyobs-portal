@@ -384,6 +384,48 @@ describe("ScriptBuilder: $aliases resolves re-exported short class paths", () =>
     expect(builder.mode).toBe("builder");
     expect(builder.rootClass).toBe("pkg.utils.log.LogScript");
   });
+
+  it("a nested script stored under an aliased class renders a form, not raw YAML (issue #128)", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE_WITH_ALIASES, {
+      class: "pkg.control.sequential.SequentialRunner",
+      scripts: [{ class: "pkg.utils.LogScript", expression: "1 + 1" }],
+    });
+
+    expect(builder.mode).toBe("builder");
+    // The nested script must be the polymorphic dropdown + form -- the
+    // raw-YAML fallback (buildYamlControl) is a textarea, so any textarea
+    // in the editor pane means the aliased class wasn't recognized.
+    expect(container.querySelectorAll(".script-builder-editor textarea").length).toBe(0);
+    expect(container.querySelector(".script-builder-editor select")).not.toBeNull();
+    expect(container.querySelector(".script-builder-editor input[type=text]").value).toBe("1 + 1");
+    // getData() round-trips it with the canonical class path.
+    expect(builder.getData()).toEqual({
+      class: "pkg.control.sequential.SequentialRunner",
+      scripts: [{ class: "pkg.utils.log.LogScript", expression: "1 + 1" }],
+    });
+  });
+
+  it("_switchToBuilder canonicalizes a nested aliased class without a spurious mismatch warning (issue #128)", () => {
+    const container = makeContainer();
+    const builder = new ScriptBuilder(container, TREE_WITH_ALIASES, { class: "pkg.uninstalled.GoneScript", x: 1 });
+    builder.sourceEditor.editor.setValue(
+      JSON.stringify({
+        class: "pkg.control.sequential.SequentialRunner",
+        scripts: [{ class: "pkg.utils.LogScript", expression: "x" }],
+      })
+    );
+
+    builder.builderModeBtn.click();
+
+    expect(builder.mode).toBe("builder");
+    expect(builder.warningEl.classList.contains("d-none")).toBe(true);
+    expect(container.querySelectorAll(".script-builder-editor textarea").length).toBe(0);
+    expect(builder.getData()).toEqual({
+      class: "pkg.control.sequential.SequentialRunner",
+      scripts: [{ class: "pkg.utils.log.LogScript", expression: "x" }],
+    });
+  });
 });
 
 describe("ScriptBuilder: no general-purpose Builder/Source toggle (issue #97)", () => {
