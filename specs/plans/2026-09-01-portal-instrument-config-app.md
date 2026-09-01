@@ -234,6 +234,26 @@ def create_group(apps, schema_editor):
     group.permissions.add(*instrument_perms, *capability_perms)
 ```
 
+**Implementation correction**: as written above, this migration fails — `Permission` rows for
+`instruments`' own models don't exist yet when `0002` runs, because they're normally created by a
+`post_migrate` signal that fires once after the *entire* `migrate` run finishes, not after each
+individual migration. `Permission.objects.filter(...)` finds nothing and the group ends up with no
+permissions (caught by `test_group_created_with_expected_permissions` in §6). Fix: force-create
+them first via `django.contrib.auth.management.create_permissions` against the *real* app config
+(not the migration's historical `apps`), using the documented `models_module = models_module or
+True` workaround for `create_permissions`' early-return guard:
+
+```python
+from django.apps import apps as global_apps
+from django.contrib.auth.management import create_permissions
+
+def create_group(apps, schema_editor):
+    app_config = global_apps.get_app_config("instruments")
+    app_config.models_module = app_config.models_module or True
+    create_permissions(app_config, verbosity=0)
+    # ...rest as below, using the migration's own `apps` for Group/Permission
+```
+
 `get_or_create` makes this idempotent against re-runs/redeploys. `view_*` isn't granted
 explicitly since Django admin grants view implicitly to anyone with change. The split above
 (delete withheld only on `Instrument`) replaces an earlier draft of this plan that withheld
@@ -278,24 +298,59 @@ class InstrumentSerializer(serializers.ModelSerializer):
                   "cameras", "telescope", "dome"]
 ```
 
-`ReadOnlyModelViewSet` (DRF), `@permission_classes([IsAuthenticated])` matching the existing
-`api` app's views — no write path via this API; all writes go through Django admin per the
-issue. Routed via `DefaultRouter` in `instruments/urls.py`, mounted in the project's top-level
-`pyobs_portal/urls.py`:
+**Implementation correction**: this section originally assumed DRF `ReadOnlyModelViewSet` +
+`DefaultRouter`. Checked against the actual `api` app during implementation — it doesn't use
+routers at all, just `generics.ListAPIView`/`RetrieveAPIView` classes with explicit `path()`
+entries (`api/views.py`/`api/urls.py`). Implemented that way instead, per this plan's own stated
+principle (§ Existing conventions) of mirroring the real `api` app rather than generic DRF
+defaults:
+
+```python
+@permission_classes([IsAuthenticated])
+class InstrumentList(generics.ListAPIView):
+    queryset = Instrument.objects.all()
+    serializer_class = InstrumentSerializer
+
+
+@permission_classes([IsAuthenticated])
+class InstrumentDetail(generics.RetrieveAPIView):
+    queryset = Instrument.objects.all()
+    serializer_class = InstrumentSerializer
+    lookup_field = "module_name"
+
+
+@permission_classes([IsAuthenticated])
+class CameraCapabilityDetail(generics.RetrieveAPIView):
+    queryset = CameraCapability.objects.all()
+    serializer_class = CameraCapabilityWithInstrumentSerializer
+    lookup_field = "code"
+```
+
+(`@permission_classes` from `rest_framework.decorators` works as a class decorator too — it just
+sets a `permission_classes` class attribute, same as the existing `api` app's `UserList` does.)
+
+Mounted in the project's top-level `pyobs_portal/urls.py`:
 
 ```python
 path("api/instruments/", include("pyobs_portal.instruments.urls")),
 ```
 
-giving `GET /api/instruments/` (list) and `GET /api/instruments/<module_name>/` (detail, via
-`lookup_field = "module_name"` on the viewset — the script builder looks instruments up by module
-name, not numeric PK).
+with `instruments/urls.py`:
 
-`CameraCapability.code` is unique fleet-wide (it identifies the physical camera unit and follows
-it if swapped between instruments), so it's also worth a standalone lookup route — a second
-`ReadOnlyModelViewSet` (`lookup_field = "code"`) registered in the same `instruments/urls.py`,
-giving `GET /api/instruments/cameras/<code>/` → that camera's capability row plus its owning
-`instrument` (module name).
+```python
+urlpatterns = [
+    path("", views.InstrumentList.as_view()),
+    path("cameras/<str:code>/", views.CameraCapabilityDetail.as_view()),
+    path("<str:module_name>/", views.InstrumentDetail.as_view()),
+]
+```
+
+giving `GET /api/instruments/` (list, paginated per the project's global
+`DEFAULT_PAGINATION_CLASS`), `GET /api/instruments/<module_name>/` (detail), and
+`GET /api/instruments/cameras/<code>/` (a camera's capability row plus its owning `instrument`
+module name, via `CameraCapabilityWithInstrumentSerializer` — `CameraCapabilitySerializer` plus an
+`instrument_module_name` field). The `cameras/` path is listed before `<module_name>/` so it isn't
+swallowed by that catch-all.
 
 ### 6. Tests (`instruments/tests.py`)
 
