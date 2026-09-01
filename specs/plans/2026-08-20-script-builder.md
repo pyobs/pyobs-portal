@@ -13,6 +13,14 @@ was a deliberate follow-up (picking a type mid-edit was too easy and silently di
 in-progress state) and also removed the mobile drawer/toggle entirely, since only one pane
 is ever visible on any viewport. The sections below are left as written for history.
 
+**Update (2026-09-01, pyobs/pyobs-portal#128 / #129):** the re-exported short-class-path
+alias resolution added in 58e066f (`ScriptBuilder._resolveClass()` against `tree.$aliases`)
+only covered the **root** script class. Nested polymorphic classes (`SequentialRunner.scripts`
+items, `ParallelRunner.scripts`, `ConditionalRunner.true`/`.false`, `CasesRunner.cases`)
+stored under a short alias fell back to the raw-YAML textarea instead of the nested-form
+control. Fixed by canonicalizing every nested class on both load paths (`_setContent`,
+`_switchToBuilder`), not just the root.
+
 ## Decisions (locked 2026-08-20)
 - `validate_script/` **is tightened** at the backend (reject class-less / unknown-class payloads).
 - **Minimal vitest setup is added** for frontend unit tests (polymorphic + map controls).
