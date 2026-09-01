@@ -51,7 +51,7 @@ pyobs_portal/instruments/
 ├── models.py
 ├── admin.py
 ├── serializers.py
-├── views.py            # read-only DRF viewsets
+├── views.py            # read-only DRF views (ListAPIView/RetrieveAPIView, see § 5 correction)
 ├── urls.py
 ├── migrations/
 │   ├── 0001_initial.py
@@ -367,10 +367,14 @@ swallowed by that catch-all.
   row, or a camera with no `filter_wheels`) serializes with `"telescope": null`/`"dome": null`/
   `"filter_wheels": []`, not a 500; `GET /api/instruments/cameras/<code>/` resolves a camera by
   its fleet-wide code, including its nested `filter_wheels`.
-- Admin: a user in `instrument-config` (without `is_staff` superuser rights) can add/change/delete
-  a `CameraCapability`, `BinningOption`, `FilterWheelCapability`, `Filter`, `TelescopeCapability`,
-  or `DomeCapability` via the admin site (including removing an inline row via its delete
-  checkbox), but can only add/change an `Instrument` itself — not delete one.
+- Admin: a user in `instrument-config` (without `is_staff` superuser rights) has add/change/delete
+  `has_perm()` on `CameraCapability`, `BinningOption`, `FilterWheelCapability`, `Filter`,
+  `TelescopeCapability`, and `DomeCapability`, and only add/change (not delete) on `Instrument`.
+  **Implementation note**: as shipped, this is asserted via `has_perm()` rather than an actual
+  admin-site walkthrough (submitting the inline delete checkbox, following the click-through to a
+  child row's own change page) — narrower than what this bullet originally described; a real
+  walkthrough is still worth doing manually before merge/rollout since `has_perm` alone can't catch
+  an admin wiring mistake (e.g. an inline missing from `inlines = [...]`).
 - `updated_at`: editing a nested capability row bumps that row's own `updated_at` but leaves the
   parent `Instrument.updated_at` unchanged (documents the caveat in §2, not just tests it).
 

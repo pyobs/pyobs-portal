@@ -52,6 +52,9 @@ def remove_group(apps, schema_editor):
 class Migration(migrations.Migration):
     dependencies = [
         ("instruments", "0001_initial"),
+        # Queries Group/Permission and calls create_permissions() - make the ordering
+        # explicit instead of relying on auth/contenttypes happening to run first.
+        ("auth", "__first__"),
     ]
 
     operations = [

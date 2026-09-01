@@ -14,13 +14,13 @@ from .models import (
 class FilterSerializer(serializers.ModelSerializer):
     class Meta:
         model = Filter
-        fields = ["name", "position"]
+        fields = ["name", "position", "updated_at"]
 
 
 class BinningOptionSerializer(serializers.ModelSerializer):
     class Meta:
         model = BinningOption
-        fields = ["x", "y", "readout_time_s"]
+        fields = ["x", "y", "readout_time_s", "updated_at"]
 
 
 class FilterWheelCapabilitySerializer(serializers.ModelSerializer):

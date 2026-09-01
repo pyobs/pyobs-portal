@@ -127,6 +127,23 @@ class InstrumentApiTests(TestCase):
         response = self.client.get("/api/instruments/")
         self.assertEqual(response.status_code, 401)
 
+    def test_list_does_not_n_plus_one(self):
+        # a second, fully-populated instrument, so a per-row query would actually show up
+        other_instrument = Instrument.objects.create(module_name="camera2")
+        other_camera = CameraCapability.objects.create(
+            instrument=other_instrument, code="ef02"
+        )
+        BinningOption.objects.create(camera=other_camera, x=2, y=2)
+        other_wheel = FilterWheelCapability.objects.create(camera=other_camera)
+        Filter.objects.create(filter_wheel=other_wheel, name="V")
+        TelescopeCapability.objects.create(instrument=other_instrument)
+        DomeCapability.objects.create(instrument=other_instrument)
+
+        self.client.force_authenticate(self.user)
+        with self.assertNumQueries(6):
+            response = self.client.get("/api/instruments/")
+        self.assertEqual(response.status_code, 200)
+
     def test_list_and_nested_shape(self):
         self.client.force_authenticate(self.user)
         response = self.client.get("/api/instruments/")

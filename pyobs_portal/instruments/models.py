@@ -50,6 +50,7 @@ class BinningOption(models.Model):
     readout_time_s = models.FloatField(
         null=True, blank=True
     )  # readout varies by binning
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["x", "y"]
@@ -82,6 +83,7 @@ class Filter(models.Model):
     )
     name = models.CharField(max_length=255)
     position = models.PositiveSmallIntegerField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["position", "name"]
