@@ -28,6 +28,12 @@
   ORM-backed, TTL-cached `get_instrument_capabilities()` helper plus a `last_instrument_update/`
   endpoint mirroring `last_task_update/`. **proposed** (no issue yet; Repos: pyobs-core,
   pyobs-portal)
+- [plans/2026-09-01-last-task-update-marker-includes-projects.md](plans/2026-09-01-last-task-update-marker-includes-projects.md)
+  — `/api/last_task_update/` only tracks `Max(Task.updated_at)`, so a `Project` edit (e.g.
+  priority) never moves the marker and pyobs-core's `PortalTaskArchive` never re-polls; adds
+  `Project.updated_at` (new field + migration) and folds it into the marker query. **proposed**
+  (pyobs-core#848; Repos: pyobs-portal; pyobs-core-side consumer fix is a separate plan in
+  pyobs-core)
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
