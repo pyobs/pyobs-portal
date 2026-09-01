@@ -21,6 +21,14 @@
   script builder, incl. task-duration-estimate fields (readout, filter-change, slew, dome-rotate
   times). **proposed** (pyobs/pyobs-portal#116)
 
+- `../../pyobs-core/specs/plans/2026-09-01-instrument-capability-duration-estimates.md` —
+  follow-up to `plans/2026-09-01-portal-instrument-config-app.md` above: feeds the `instruments`
+  app's capability data into `Script.estimate_duration()` in pyobs-core (`ImagingScript` + 4
+  others), and into this repo's `estimate_duration/` endpoint (`schema.py`) via a new
+  ORM-backed, TTL-cached `get_instrument_capabilities()` helper plus a `last_instrument_update/`
+  endpoint mirroring `last_task_update/`. **proposed** (no issue yet; Repos: pyobs-core,
+  pyobs-portal)
+
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see
 `../../pyobs-core/specs/design/obsnum_fits_header.md` (#738, `Observation.obsnum`: Django model +
