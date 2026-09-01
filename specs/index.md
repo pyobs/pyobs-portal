@@ -19,7 +19,7 @@
   — new `instruments` Django app: per-type capability models (camera/telescope/dome/filter
   wheels), admin-editable via a scoped `instrument-config` group, read-only nested API for the
   script builder, incl. task-duration-estimate fields (readout, filter-change, slew, dome-rotate
-  times). **proposed** (pyobs/pyobs-portal#116)
+  times). **implemented** (#133, closed #116)
 
 - `../../pyobs-core/specs/plans/2026-09-01-instrument-capability-duration-estimates.md` —
   follow-up to `plans/2026-09-01-portal-instrument-config-app.md` above: feeds the `instruments`
