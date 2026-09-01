@@ -76,6 +76,7 @@ INSTALLED_APPS = [
     "pyobs_auth",
     "pyobs_portal.api",
     "pyobs_portal.authentication",
+    "pyobs_portal.instruments",
 ]
 
 FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
