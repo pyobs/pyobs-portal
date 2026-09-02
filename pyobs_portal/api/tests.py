@@ -26,6 +26,7 @@ from . import schema as schema_module
 from . import webadmin
 from .models import Observation, Project, Target, Task
 from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
+from .signals import cancel_pending_observations
 from .tasks import mark_window_expired
 
 
@@ -440,6 +441,79 @@ class UpdateMarkerApiTests(TestCase):
             self._marker("/api/last_task_update/")["last_task_update"],
             Time(public_task.updated_at).isot,
         )
+
+
+class CascadeTaskDeactivationTests(TestCase):
+    """Deactivating/deleting a task cancels its pending observations (pyobs-portal#135) --
+    otherwise they sit stale, referencing a task the API no longer serves."""
+
+    def setUp(self):
+        self.project = Project.objects.create(code="CAS", name="Cascade")
+        self.task = Task.objects.create(
+            code="T-CAS", name="t", project=self.project, duration=60, priority=1.0, script={}
+        )
+
+    def _observation(self, state):
+        now = timezone.now()
+        return Observation.objects.create(
+            task=self.task, start=now, end=now + timedelta(hours=1), state=state
+        )
+
+    def test_deactivating_task_cancels_pending_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+
+        self.task.active = False
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.CANCELED)
+
+    def test_deactivating_task_leaves_in_progress_observations_running(self):
+        # In-progress observations are left running -- matching what pyobs-core's mastermind
+        # self-heal (pyobs-core#852) already assumes: canceling a running observation out from
+        # under the mastermind was judged worse than leaving it to the operator.
+        in_progress = self._observation(ObservationState.IN_PROGRESS)
+
+        self.task.active = False
+        self.task.save()
+
+        in_progress.refresh_from_db()
+        self.assertEqual(in_progress.state, ObservationState.IN_PROGRESS)
+
+    def test_saving_still_active_task_does_not_touch_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+
+        self.task.name = "renamed"
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.PENDING)
+
+    def test_reactivating_task_does_not_uncancel_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+        self.task.active = False
+        self.task.save()
+
+        self.task.active = True
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.CANCELED)
+
+    def test_deleting_task_cancels_pending_observations_first(self):
+        # The cascading FK delete removes the Observation rows outright, so the canceled state
+        # itself isn't observable afterwards -- assert the cancellation ran, not its DB residue.
+        self._observation(ObservationState.PENDING)
+
+        with patch(
+            "pyobs_portal.api.signals.cancel_pending_observations", wraps=cancel_pending_observations
+        ) as mock_cancel:
+            self.task.delete()
+
+        # Django nulls out self.task.pk on the instance once delete() completes, so identity
+        # (not a post-hoc pk read) is what proves the signal ran for this task.
+        mock_cancel.assert_called_once_with(self.task)
+        self.assertFalse(Observation.objects.filter(task__pk="T-CAS").exists())
 
 
 @override_settings(ARCHIVE_URL="https://archive.example.org")
