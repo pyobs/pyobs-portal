@@ -79,6 +79,9 @@ class FilterWheelCapability(models.Model):
         CameraCapability, on_delete=models.CASCADE, related_name="filter_wheels"
     )
     name = models.CharField(max_length=255, blank=True)  # for cameras with >1 wheel
+    module_name = models.CharField(
+        max_length=255, null=True, blank=True, unique=True
+    )  # None for a wheel with no addressable module of its own (e.g. integrated into the camera)
     filter_change_time_s = models.FloatField(
         null=True, blank=True
     )  # one-position-step estimate

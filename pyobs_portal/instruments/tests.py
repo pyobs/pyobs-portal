@@ -39,6 +39,15 @@ class ModelTests(TestCase):
                 instrument=other_instrument, module_name="camera2", code="ef01"
             )
 
+    def test_filter_wheel_module_name_optional_and_globally_unique(self):
+        # None is fine (integrated wheel, no module of its own) ...
+        FilterWheelCapability.objects.create(camera=self.camera)
+        FilterWheelCapability.objects.create(camera=self.camera)
+        # ... but a given module_name can't be claimed twice.
+        FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
+        with self.assertRaises(IntegrityError), transaction.atomic():
+            FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
+
     def test_deleting_instrument_cascades_to_capability_rows(self):
         BinningOption.objects.create(camera=self.camera, x=1, y=1)
         TelescopeCapability.objects.create(instrument=self.instrument)
@@ -122,7 +131,7 @@ class InstrumentApiTests(TestCase):
             pixel_size_um=5.4,
         )
         self.wheel = FilterWheelCapability.objects.create(
-            camera=self.camera, filter_change_time_s=3.5
+            camera=self.camera, module_name="wheel1", filter_change_time_s=3.5
         )
         Filter.objects.create(filter_wheel=self.wheel, name="R", position=1)
 
@@ -159,6 +168,7 @@ class InstrumentApiTests(TestCase):
         camera_data = instrument_data["cameras"][0]
         self.assertEqual(camera_data["module_name"], "camera1")
         self.assertEqual(camera_data["code"], "ef01")
+        self.assertEqual(camera_data["filter_wheels"][0]["module_name"], "wheel1")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
 
     def test_instrument_detail_route_removed(self):

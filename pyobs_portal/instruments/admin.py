@@ -49,7 +49,7 @@ class BinningOptionInline(admin.TabularInline):
 class FilterWheelCapabilityInline(admin.TabularInline):
     model = FilterWheelCapability
     extra = 0
-    fields = ["name", "filter_change_time_s"]
+    fields = ["name", "module_name", "filter_change_time_s"]
     show_change_link = True
 
 
@@ -67,5 +67,6 @@ class FilterInline(admin.TabularInline):
 
 @admin.register(FilterWheelCapability)
 class FilterWheelCapabilityAdmin(admin.ModelAdmin):
-    list_display = ["name", "camera", "filter_change_time_s", "updated_at"]
+    list_display = ["name", "module_name", "camera", "filter_change_time_s", "updated_at"]
+    search_fields = ["name", "module_name"]
     inlines = [FilterInline]

@@ -28,7 +28,7 @@ class FilterWheelCapabilitySerializer(serializers.ModelSerializer):
 
     class Meta:
         model = FilterWheelCapability
-        fields = ["name", "filter_change_time_s", "updated_at", "filters"]
+        fields = ["name", "module_name", "filter_change_time_s", "updated_at", "filters"]
 
 
 class CameraCapabilitySerializer(serializers.ModelSerializer):
