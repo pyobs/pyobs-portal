@@ -478,6 +478,13 @@ function buildStringControl(resolved, value) {
  * (schema._collect_module_ref_errors) then flags it invalid via the normal {loc, msg}
  * mechanism, which marks this <select> with .is-invalid the same way any other field error does
  * (see ScriptBuilder._applyFieldErrors).
+ *
+ * issue #132: with exactly one candidate module and no stored value, that module is preselected
+ * instead of leaving the blank option active -- but only when `marker.required` (from
+ * schema._annotate_module_refs) is true. A field with a default (almost always `None`, e.g.
+ * ImagingScript.telescope/filters/autoguider/acquisition) is frequently *meant* to stay unset --
+ * their docstrings read "Required if ..." -- so auto-filling it would silently turn "not
+ * applicable to this exposure" into an explicit module reference the user never chose.
  */
 function buildModuleRefControl(marker, value, moduleRefs) {
   const interfaces = marker.interfaces || [];
@@ -519,6 +526,7 @@ function buildModuleRefControl(marker, value, moduleRefs) {
   }
 
   if (hasValue) select.value = value;
+  else if (marker.required && names.length === 1) select.value = names[0];
 
   return { control: select, getValue: () => select.value };
 }
@@ -971,7 +979,13 @@ function buildPolymorphicControl(marker, defs, value, ignored, polymorphic, modu
       current = { getValue: () => form.getData(), resolvePath: (loc) => form.resolveFieldPath(loc) };
     }
 
-    const initialMode = hasExisting ? value.class : isOptional ? "" : candidates[0].class;
+    // issue #132: an optional field with exactly one registered candidate is preselected too --
+    // otherwise it defaults to "(none)" even though there's nothing else to pick.
+    const initialMode = hasExisting
+      ? value.class
+      : isOptional && candidates.length !== 1
+        ? ""
+        : candidates[0].class;
     select.value = initialMode;
     renderNested(initialMode, hasExisting ? value : undefined);
     select.addEventListener("change", () => renderNested(select.value, undefined));

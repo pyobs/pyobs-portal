@@ -324,7 +324,15 @@ def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
             m.__name__ for m in field_info.metadata if inspect.isclass(m) and issubclass(m, Interface)
         ]
         if interfaces:
-            properties[field_name]["x-pyobs-module-ref"] = {"interfaces": interfaces}
+            # `required` (pyobs-portal#132): whether the frontend may auto-select this field's
+            # sole candidate module when there's exactly one. A field with a default (almost
+            # always `None`, e.g. ImagingScript.telescope/filters/autoguider/acquisition) is
+            # frequently *meant* to stay unset -- their docstrings read "Required if ..." -- so
+            # only a field with no default (is_required()) is safe to auto-fill.
+            properties[field_name]["x-pyobs-module-ref"] = {
+                "interfaces": interfaces,
+                "required": field_info.is_required(),
+            }
     return schema
 
 
