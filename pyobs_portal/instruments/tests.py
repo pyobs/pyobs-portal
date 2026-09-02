@@ -16,9 +16,9 @@ from .models import (
 
 class ModelTests(TestCase):
     def setUp(self):
-        self.instrument = Instrument.objects.create(module_name="camera1")
+        self.instrument = Instrument.objects.create()
         self.camera = CameraCapability.objects.create(
-            instrument=self.instrument, code="ef01"
+            instrument=self.instrument, module_name="camera1", code="ef01"
         )
 
     def test_binning_option_unique_together(self):
@@ -33,9 +33,11 @@ class ModelTests(TestCase):
             Filter.objects.create(filter_wheel=wheel, name="R")
 
     def test_camera_code_globally_unique(self):
-        other_instrument = Instrument.objects.create(module_name="camera2")
+        other_instrument = Instrument.objects.create()
         with self.assertRaises(IntegrityError), transaction.atomic():
-            CameraCapability.objects.create(instrument=other_instrument, code="ef01")
+            CameraCapability.objects.create(
+                instrument=other_instrument, module_name="camera2", code="ef01"
+            )
 
     def test_deleting_instrument_cascades_to_capability_rows(self):
         BinningOption.objects.create(camera=self.camera, x=1, y=1)
@@ -50,7 +52,7 @@ class ModelTests(TestCase):
     def test_deleting_camera_only_removes_its_own_children(self):
         BinningOption.objects.create(camera=self.camera, x=1, y=1)
         other_camera = CameraCapability.objects.create(
-            instrument=self.instrument, code="ef02"
+            instrument=self.instrument, module_name="camera2", code="ef02"
         )
         BinningOption.objects.create(camera=other_camera, x=2, y=2)
 
@@ -112,11 +114,12 @@ class InstrumentApiTests(TestCase):
     def setUp(self):
         self.client = APIClient()
         self.user = User.objects.create_user(username="scriptbuilder", password="pw")
-        self.instrument = Instrument.objects.create(
-            module_name="camera1", display_name="Main Camera"
-        )
+        self.instrument = Instrument.objects.create(display_name="Main Camera")
         self.camera = CameraCapability.objects.create(
-            instrument=self.instrument, code="ef01", pixel_size_um=5.4
+            instrument=self.instrument,
+            module_name="camera1",
+            code="ef01",
+            pixel_size_um=5.4,
         )
         self.wheel = FilterWheelCapability.objects.create(
             camera=self.camera, filter_change_time_s=3.5
@@ -129,9 +132,9 @@ class InstrumentApiTests(TestCase):
 
     def test_list_does_not_n_plus_one(self):
         # a second, fully-populated instrument, so a per-row query would actually show up
-        other_instrument = Instrument.objects.create(module_name="camera2")
+        other_instrument = Instrument.objects.create()
         other_camera = CameraCapability.objects.create(
-            instrument=other_instrument, code="ef02"
+            instrument=other_instrument, module_name="camera2", code="ef02"
         )
         BinningOption.objects.create(camera=other_camera, x=2, y=2)
         other_wheel = FilterWheelCapability.objects.create(camera=other_camera)
@@ -154,29 +157,32 @@ class InstrumentApiTests(TestCase):
         self.assertIsNone(instrument_data["telescope"])
         self.assertIsNone(instrument_data["dome"])
         camera_data = instrument_data["cameras"][0]
+        self.assertEqual(camera_data["module_name"], "camera1")
         self.assertEqual(camera_data["code"], "ef01")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
 
-    def test_detail_by_module_name(self):
+    def test_instrument_detail_route_removed(self):
+        # InstrumentDetail (GET /api/instruments/<module_name>/) was dropped in #139/#140 --
+        # Instrument no longer has a module_name to look up by. Regression guard against
+        # accidentally resurrecting the route.
         self.client.force_authenticate(self.user)
         response = self.client.get("/api/instruments/camera1/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.json()["module_name"], "camera1")
+        self.assertEqual(response.status_code, 404)
 
-    def test_camera_lookup_by_code_includes_instrument(self):
+    def test_camera_lookup_by_code(self):
         self.client.force_authenticate(self.user)
         response = self.client.get("/api/instruments/cameras/ef01/")
         self.assertEqual(response.status_code, 200)
         data = response.json()
         self.assertEqual(data["code"], "ef01")
-        self.assertEqual(data["instrument_module_name"], "camera1")
+        self.assertEqual(data["module_name"], "camera1")
 
 
 class InstrumentConfigAdminPermissionTests(TestCase):
     def setUp(self):
-        self.instrument = Instrument.objects.create(module_name="camera1")
+        self.instrument = Instrument.objects.create()
         self.camera = CameraCapability.objects.create(
-            instrument=self.instrument, code="ef01"
+            instrument=self.instrument, module_name="camera1", code="ef01"
         )
         self.user = User.objects.create_user(
             username="hwadmin", password="pw", is_staff=True

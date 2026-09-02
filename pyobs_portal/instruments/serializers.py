@@ -38,6 +38,7 @@ class CameraCapabilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = CameraCapability
         fields = [
+            "module_name",
             "code",
             "pixel_size_um",
             "sensor_width_px",
@@ -58,6 +59,7 @@ class TelescopeCapabilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = TelescopeCapability
         fields = [
+            "module_name",
             "aperture_mm",
             "focal_length_mm",
             "mount_type",
@@ -69,7 +71,7 @@ class TelescopeCapabilitySerializer(serializers.ModelSerializer):
 class DomeCapabilitySerializer(serializers.ModelSerializer):
     class Meta:
         model = DomeCapability
-        fields = ["rotate_rate_deg_per_s", "updated_at"]
+        fields = ["module_name", "rotate_rate_deg_per_s", "updated_at"]
 
 
 class InstrumentSerializer(serializers.ModelSerializer):
@@ -80,7 +82,6 @@ class InstrumentSerializer(serializers.ModelSerializer):
     class Meta:
         model = Instrument
         fields = [
-            "module_name",
             "display_name",
             "notes",
             "updated_at",
@@ -88,14 +89,3 @@ class InstrumentSerializer(serializers.ModelSerializer):
             "telescope",
             "dome",
         ]
-
-
-class CameraCapabilityWithInstrumentSerializer(CameraCapabilitySerializer):
-    """CameraCapability plus its owning instrument's module_name — for the fleet-wide camera-code lookup."""
-
-    instrument_module_name = serializers.CharField(
-        source="instrument.module_name", read_only=True
-    )
-
-    class Meta(CameraCapabilitySerializer.Meta):
-        fields = CameraCapabilitySerializer.Meta.fields + ["instrument_module_name"]

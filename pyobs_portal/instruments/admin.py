@@ -14,7 +14,13 @@ from .models import (
 class CameraCapabilityInline(admin.TabularInline):
     model = CameraCapability
     extra = 0
-    fields = ["code", "pixel_size_um", "sensor_width_px", "sensor_height_px"]
+    fields = [
+        "module_name",
+        "code",
+        "pixel_size_um",
+        "sensor_width_px",
+        "sensor_height_px",
+    ]
     show_change_link = True
 
 
@@ -30,8 +36,8 @@ class DomeCapabilityInline(admin.StackedInline):
 
 @admin.register(Instrument)
 class InstrumentAdmin(admin.ModelAdmin):
-    list_display = ["module_name", "display_name", "updated_at"]
-    search_fields = ["module_name", "display_name"]
+    list_display = ["__str__", "updated_at"]
+    search_fields = ["display_name", "notes"]
     inlines = [CameraCapabilityInline, TelescopeCapabilityInline, DomeCapabilityInline]
 
 
@@ -49,8 +55,8 @@ class FilterWheelCapabilityInline(admin.TabularInline):
 
 @admin.register(CameraCapability)
 class CameraCapabilityAdmin(admin.ModelAdmin):
-    list_display = ["code", "instrument", "pixel_size_um", "updated_at"]
-    search_fields = ["code", "instrument__module_name"]
+    list_display = ["module_name", "code", "instrument", "pixel_size_um", "updated_at"]
+    search_fields = ["module_name", "code"]
     inlines = [BinningOptionInline, FilterWheelCapabilityInline]
 
 

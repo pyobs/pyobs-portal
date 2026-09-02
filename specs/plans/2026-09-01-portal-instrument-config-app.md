@@ -2,6 +2,16 @@
 
 Status: proposed (pyobs/pyobs-portal#116)
 
+**Amended by #140** (pyobs/pyobs-portal#139): `module_name` no longer lives on `Instrument` (§2
+below) — it moves to `TelescopeCapability`, `DomeCapability`, and `CameraCapability` each, since
+`Instrument.module_name` conflated the grouping's identity with the telescope's, and
+`CameraCapability` had no module-name field at all (only its fleet-wide physical `code`). As a
+result `InstrumentDetail` (`GET /api/instruments/<module_name>/`, §5) is dropped — nothing
+consumed it — and `CameraCapabilityWithInstrumentSerializer`/`instrument_module_name` (§5) is
+dropped too, now redundant with the camera's own `module_name`. The rest of this doc (models,
+admin permissions, N+1 protection, `InstrumentList`, `GET /api/instruments/cameras/<code>/`)
+still reflects the current implementation as designed.
+
 No pyobs-core changes — this models *declared* capability data in the portal's own DB; it does not
 touch `ICamera`/`IBinning`/etc. or any live RPC path. Conceptually adjacent to pyobs-core's
 `specs/plans/2026-08-24-script-field-interface-annotations.md`

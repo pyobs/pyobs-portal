@@ -3,7 +3,7 @@ from rest_framework.decorators import permission_classes
 from rest_framework.permissions import IsAuthenticated
 
 from .models import Instrument, CameraCapability
-from .serializers import InstrumentSerializer, CameraCapabilityWithInstrumentSerializer
+from .serializers import InstrumentSerializer, CameraCapabilitySerializer
 
 # Matches the nested shape InstrumentSerializer walks (cameras -> binnings/filter_wheels ->
 # filters, plus telescope/dome) - without this, list/detail responses issue a query per row
@@ -20,14 +20,7 @@ class InstrumentList(generics.ListAPIView):
 
 
 @permission_classes([IsAuthenticated])
-class InstrumentDetail(generics.RetrieveAPIView):
-    queryset = INSTRUMENT_QUERYSET
-    serializer_class = InstrumentSerializer
-    lookup_field = "module_name"
-
-
-@permission_classes([IsAuthenticated])
 class CameraCapabilityDetail(generics.RetrieveAPIView):
     queryset = CameraCapability.objects.all()
-    serializer_class = CameraCapabilityWithInstrumentSerializer
+    serializer_class = CameraCapabilitySerializer
     lookup_field = "code"
