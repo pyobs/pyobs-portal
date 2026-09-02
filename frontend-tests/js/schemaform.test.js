@@ -182,6 +182,36 @@ describe("buildControl: polymorphic (optional)", () => {
   });
 });
 
+describe("buildControl: polymorphic (optional, exactly one registered candidate) (issue #132)", () => {
+  // pkg.exptime.ExposureTimeProvider has exactly one candidate in TREE/POLYMORPHIC
+  // (StellarExposureTimeProvider) -- unlike pkg.script.Script's three.
+  const resolved = {
+    $ref: "#/$defs/ExposureTimeProvider",
+    "x-pyobs-polymorphic": { base: "pkg.exptime.ExposureTimeProvider", container: "optional" },
+  };
+  const defs = { ExposureTimeProvider: { type: "object", properties: {} } };
+
+  it("preselects the sole candidate instead of defaulting to (none)", () => {
+    const { control, getValue } = buildControl(resolved, defs, undefined, new Set(), POLYMORPHIC);
+
+    const select = control.querySelector("select");
+    expect(select.value).toBe("pkg.exptime.StellarExposureTimeProvider");
+    expect(getValue().class).toBe("pkg.exptime.StellarExposureTimeProvider");
+  });
+
+  it("still offers (none) so the user can unset it again", () => {
+    const { control, getValue } = buildControl(resolved, defs, undefined, new Set(), POLYMORPHIC);
+    const select = control.querySelector("select");
+
+    expect([...select.options].map((o) => o.value)).toContain("");
+
+    select.value = "";
+    select.dispatchEvent(new Event("change"));
+
+    expect(getValue()).toBeNull();
+  });
+});
+
 describe("buildControl: polymorphic field with a scalar alternative (issue: exposure_time)", () => {
   // Mirrors InstrumentConfig.exposure_time: float | ExposureTimeProvider -- a union mixing a
   // plain scalar with the polymorphic base. schema.py keeps the original anyOf branches
@@ -336,6 +366,48 @@ describe("buildControl: x-pyobs-module-ref (issue #98)", () => {
     const { control } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
 
     expect(control.tagName).toBe("SELECT");
+  });
+});
+
+describe("buildControl: x-pyobs-module-ref preselects a sole candidate (issue #132)", () => {
+  it("preselects the only candidate when the field is required", () => {
+    // Mirrors ImagingScript.camera: Annotated[str, ICamera] with no default.
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"], required: true } };
+    const moduleRefs = { available: true, options: { ICamera: ["cam1"] } };
+    const { control: select, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    expect(select.value).toBe("cam1");
+    expect(getValue()).toBe("cam1");
+  });
+
+  it("leaves an optional field blank even with only one candidate", () => {
+    // Mirrors ImagingScript.telescope: Annotated[str | None, ITelescope] = None, documented
+    // "Required for OBJECT exposures" -- None is a real, load-bearing default here, not just
+    // "not chosen yet". Auto-filling it would silently turn that into an explicit module
+    // reference the user never picked.
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ITelescope"], required: false } };
+    const moduleRefs = { available: true, options: { ITelescope: ["tel1"] } };
+    const { control: select, getValue } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    expect(select.value).toBe("");
+    expect(getValue()).toBe("");
+  });
+
+  it("does not preselect when there's more than one candidate, even if required", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"], required: true } };
+    const moduleRefs = { available: true, options: { ICamera: ["cam1", "cam2"] } };
+    const { control: select } = buildControl(resolved, {}, undefined, new Set(), {}, moduleRefs);
+
+    expect(select.value).toBe("");
+  });
+
+  it("does not override a stored value even when required with one candidate", () => {
+    const resolved = { type: "string", "x-pyobs-module-ref": { interfaces: ["ICamera"], required: true } };
+    const moduleRefs = { available: true, options: { ICamera: ["cam1"] } };
+    const { control: select, getValue } = buildControl(resolved, {}, "cam1", new Set(), {}, moduleRefs);
+
+    expect(select.value).toBe("cam1");
+    expect(getValue()).toBe("cam1");
   });
 });
 

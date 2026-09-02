@@ -1119,9 +1119,13 @@ class AnnotateModuleRefsTests(SimpleTestCase):
         s = schema_module._schema_for(Fixture)
         schema_module._annotate_module_refs(s, Fixture)
 
-        self.assertEqual(s["properties"]["camera"]["x-pyobs-module-ref"], {"interfaces": ["ICamera"]})
         self.assertEqual(
-            s["properties"]["multi"]["x-pyobs-module-ref"], {"interfaces": ["IData", "IBinning"]}
+            s["properties"]["camera"]["x-pyobs-module-ref"],
+            {"interfaces": ["ICamera"], "required": True},
+        )
+        self.assertEqual(
+            s["properties"]["multi"]["x-pyobs-module-ref"],
+            {"interfaces": ["IData", "IBinning"], "required": True},
         )
         self.assertNotIn("x-pyobs-module-ref", s["properties"]["plain"])
 
@@ -1138,7 +1142,9 @@ class AnnotateModuleRefsTests(SimpleTestCase):
         schema_module._annotate_module_refs(s, Fixture)
 
         prop = s["properties"]["telescope"]
-        self.assertEqual(prop["x-pyobs-module-ref"], {"interfaces": ["ITelescope"]})
+        self.assertEqual(
+            prop["x-pyobs-module-ref"], {"interfaces": ["ITelescope"], "required": False}
+        )
         self.assertIn("anyOf", prop)
 
     def test_two_classes_same_field_name_different_interfaces_dont_collide(self):
