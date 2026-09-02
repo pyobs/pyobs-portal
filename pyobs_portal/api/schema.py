@@ -409,6 +409,11 @@ def _scan_concrete_subclasses(
     def _scan(pkg: ModuleType) -> None:
         aliases.update(_reexport_aliases(pkg, base))
         for _, name, ispkg in pkgutil.iter_modules(pkg.__path__):
+            if name.startswith("_"):
+                # Private implementation module/subpackage (pyobs-portal#131) -- pkgutil only
+                # skips __init__, so this excludes it (and doesn't recurse into a _internal/
+                # subpackage) rather than surfacing its classes as public provider candidates.
+                continue
             full_name = f"{pkg.__name__}.{name}"
             try:
                 mod = importlib.import_module(full_name)
@@ -499,6 +504,11 @@ def script_tree() -> dict[str, Any]:
         aliases.update(_reexport_aliases(package, Script))
         results: dict[str, Any] = {}
         for _, name, ispkg in pkgutil.iter_modules(package.__path__):
+            if name.startswith("_"):
+                # Private implementation module/subpackage (pyobs-portal#131) -- pkgutil only
+                # skips __init__, so this excludes it (and doesn't recurse into a _internal/
+                # subpackage) rather than surfacing its Script subclasses in the picker tree.
+                continue
             full_name = f"{package.__name__}.{name}"
             try:
                 mod = importlib.import_module(full_name)

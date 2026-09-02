@@ -987,6 +987,84 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
         self.assertIn("calibration", tree)
 
 
+class SkipUnderscoreModulesTests(SimpleTestCase):
+    """A `_`-prefixed module/subpackage is a private implementation detail by Python
+    convention -- `script_tree()`'s and `_scan_concrete_subclasses()`'s scan loops must not
+    surface its `Script`/provider subclasses as public script types (pyobs-portal#131). Same
+    tmpdir/sys.path fixture as ExtensionPackageDiscoveryTests, kept separate rather than
+    subclassed so this class's own test_* methods aren't run twice under two class names. A
+    real synthetic module is used (not a mock) since the point is pkgutil.iter_modules()
+    actually returning the entry and the scan actively skipping it, not just a name-string
+    check somewhere."""
+
+    def setUp(self):
+        cache.clear()
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sys.path.insert(0, self.tmpdir)
+        self.addCleanup(sys.path.remove, self.tmpdir)
+        self.addCleanup(cache.clear)
+
+    def _write(self, relpath, content=""):
+        path = os.path.join(self.tmpdir, *relpath.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        self.addCleanup(sys.modules.pop, relpath.split("/")[0], None)
+
+    def test_underscore_prefixed_module_excluded_from_script_tree(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/scripts/__init__.py")
+        self._write(
+            "pyobs_fakeext/scripts/_helpers.py",
+            "from pyobs.robotic.scripts.script import Script\n\n\nclass PrivateScript(Script):\n    pass\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        self.assertNotIn("_helpers", tree.get("pyobs_fakeext", {}))
+        classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.scripts._helpers.PrivateScript", classes)
+
+    def test_underscore_prefixed_subpackage_not_recursed_into(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/scripts/__init__.py")
+        self._write("pyobs_fakeext/scripts/_internal/__init__.py")
+        self._write(
+            "pyobs_fakeext/scripts/_internal/sub.py",
+            "from pyobs.robotic.scripts.script import Script\n\n\nclass NestedPrivateScript(Script):\n    pass\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        self.assertNotIn("_internal", tree.get("pyobs_fakeext", {}))
+        classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.scripts._internal.sub.NestedPrivateScript", classes)
+
+    def test_underscore_prefixed_module_excluded_from_provider_scan(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/utils/__init__.py")
+        self._write("pyobs_fakeext/utils/exptime/__init__.py")
+        self._write(
+            "pyobs_fakeext/utils/exptime/_internal.py",
+            "from pyobs.robotic.utils.exptime import ExposureTimeProvider\n\n\n"
+            "class PrivateExptime(ExposureTimeProvider):\n    def __call__(self) -> float:\n        return 1.0\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        from pyobs.robotic.utils.exptime import ExposureTimeProvider
+
+        classes = {c["class"] for c in tree["$polymorphic"][schema_module._fqcn(ExposureTimeProvider)]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.utils.exptime._internal.PrivateExptime", classes)
+
+
 class GetModuleClassesTests(SimpleTestCase):
     """`webadmin.get_module_classes()` (issue #98) -- must never raise, must degrade to `None`
     whenever the result can't be trusted, exactly like archive.py's on-demand check."""
