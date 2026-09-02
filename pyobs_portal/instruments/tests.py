@@ -161,6 +161,14 @@ class InstrumentApiTests(TestCase):
         self.assertEqual(camera_data["code"], "ef01")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
 
+    def test_instrument_detail_route_removed(self):
+        # InstrumentDetail (GET /api/instruments/<module_name>/) was dropped in #139/#140 --
+        # Instrument no longer has a module_name to look up by. Regression guard against
+        # accidentally resurrecting the route.
+        self.client.force_authenticate(self.user)
+        response = self.client.get("/api/instruments/camera1/")
+        self.assertEqual(response.status_code, 404)
+
     def test_camera_lookup_by_code(self):
         self.client.force_authenticate(self.user)
         response = self.client.get("/api/instruments/cameras/ef01/")

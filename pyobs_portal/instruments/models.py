@@ -8,6 +8,12 @@ class Instrument(models.Model):
     device-capability model below carries its own ``module_name``, since scripts reference
     cameras and telescopes as independent modules (an instrument can carry more than one
     camera, e.g. science + guide).
+
+    ``module_name`` is unique per device *type* (a ``CameraCapability`` and a
+    ``TelescopeCapability`` could technically share a name), not enforced across all three --
+    Django can't express a cross-table unique constraint. In practice this shouldn't happen:
+    within one pyobs site, module names are unique across the whole XMPP roster, so a camera and
+    telescope sharing a name is an invalid site config, not a valid one this app needs to allow.
     """
 
     display_name = models.CharField(max_length=255, blank=True)
