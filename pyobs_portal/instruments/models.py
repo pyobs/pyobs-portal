@@ -2,22 +2,30 @@ from django.db import models
 
 
 class Instrument(models.Model):
-    module_name = models.CharField(max_length=255, unique=True)
+    """A grouping of one telescope + dome + one or more cameras that work together at a site.
+
+    Purely an admin-UI organizational concept -- it has no module identity of its own. Each
+    device-capability model below carries its own ``module_name``, since scripts reference
+    cameras and telescopes as independent modules (an instrument can carry more than one
+    camera, e.g. science + guide).
+    """
+
     display_name = models.CharField(max_length=255, blank=True)
     notes = models.TextField(blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
-        ordering = ["module_name"]
+        ordering = ["display_name"]
 
     def __str__(self) -> str:
-        return self.display_name or self.module_name
+        return self.display_name or f"instrument #{self.pk}"
 
 
 class CameraCapability(models.Model):
     instrument = models.ForeignKey(
         Instrument, on_delete=models.CASCADE, related_name="cameras"
     )
+    module_name = models.CharField(max_length=255, unique=True)
     code = models.CharField(
         max_length=4, unique=True
     )  # fleet-wide physical camera ID, e.g. "ef01"
@@ -97,6 +105,7 @@ class TelescopeCapability(models.Model):
     instrument = models.OneToOneField(
         Instrument, on_delete=models.CASCADE, related_name="telescope"
     )
+    module_name = models.CharField(max_length=255, unique=True)
     aperture_mm = models.FloatField(null=True, blank=True)
     focal_length_mm = models.FloatField(null=True, blank=True)
     mount_type = models.CharField(max_length=255, blank=True)
@@ -104,15 +113,16 @@ class TelescopeCapability(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
-        return f"telescope ({self.instrument.module_name})"
+        return f"telescope ({self.module_name})"
 
 
 class DomeCapability(models.Model):
     instrument = models.OneToOneField(
         Instrument, on_delete=models.CASCADE, related_name="dome"
     )
+    module_name = models.CharField(max_length=255, unique=True)
     rotate_rate_deg_per_s = models.FloatField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self) -> str:
-        return f"dome ({self.instrument.module_name})"
+        return f"dome ({self.module_name})"
