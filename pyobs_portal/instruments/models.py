@@ -5,15 +5,18 @@ class Instrument(models.Model):
     """A grouping of one telescope + dome + one or more cameras that work together at a site.
 
     Purely an admin-UI organizational concept -- it has no module identity of its own. Each
-    device-capability model below carries its own ``module_name``, since scripts reference
-    cameras and telescopes as independent modules (an instrument can carry more than one
-    camera, e.g. science + guide).
+    device-capability model below carries its own ``module_name`` (``CameraCapability``,
+    ``TelescopeCapability``, ``DomeCapability``, and ``FilterWheelCapability``), since scripts
+    reference cameras, telescopes, and filter wheels as independent modules (an instrument can
+    carry more than one camera, e.g. science + guide). ``FilterWheelCapability.module_name`` is
+    nullable -- not every filter wheel is its own addressable module (some cameras expose filter
+    selection through the camera module itself).
 
     ``module_name`` is unique per device *type* (a ``CameraCapability`` and a
-    ``TelescopeCapability`` could technically share a name), not enforced across all three --
+    ``TelescopeCapability`` could technically share a name), not enforced across all of them --
     Django can't express a cross-table unique constraint. In practice this shouldn't happen:
-    within one pyobs site, module names are unique across the whole XMPP roster, so a camera and
-    telescope sharing a name is an invalid site config, not a valid one this app needs to allow.
+    within one pyobs site, module names are unique across the whole XMPP roster, so two device
+    rows sharing a name is an invalid site config, not a valid one this app needs to allow.
     """
 
     display_name = models.CharField(max_length=255, blank=True)
@@ -79,6 +82,9 @@ class FilterWheelCapability(models.Model):
         CameraCapability, on_delete=models.CASCADE, related_name="filter_wheels"
     )
     name = models.CharField(max_length=255, blank=True)  # for cameras with >1 wheel
+    module_name = models.CharField(
+        max_length=255, null=True, blank=True, unique=True
+    )  # None for a wheel with no addressable module of its own (e.g. integrated into the camera)
     filter_change_time_s = models.FloatField(
         null=True, blank=True
     )  # one-position-step estimate
