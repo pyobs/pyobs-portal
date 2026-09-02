@@ -67,6 +67,12 @@ class FilterInline(admin.TabularInline):
 
 @admin.register(FilterWheelCapability)
 class FilterWheelCapabilityAdmin(admin.ModelAdmin):
-    list_display = ["name", "module_name", "camera", "filter_change_time_s", "updated_at"]
+    list_display = [
+        "name",
+        "module_name",
+        "camera",
+        "filter_change_time_s",
+        "updated_at",
+    ]
     search_fields = ["name", "module_name"]
     inlines = [FilterInline]

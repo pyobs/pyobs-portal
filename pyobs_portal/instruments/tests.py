@@ -46,7 +46,9 @@ class ModelTests(TestCase):
         # ... but a given module_name can't be claimed twice.
         FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
         with self.assertRaises(IntegrityError), transaction.atomic():
-            FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
+            FilterWheelCapability.objects.create(
+                camera=self.camera, module_name="wheel1"
+            )
 
     def test_deleting_instrument_cascades_to_capability_rows(self):
         BinningOption.objects.create(camera=self.camera, x=1, y=1)
