@@ -36,7 +36,7 @@ class DomeCapabilityInline(admin.StackedInline):
 
 @admin.register(Instrument)
 class InstrumentAdmin(admin.ModelAdmin):
-    list_display = ["display_name", "updated_at"]
+    list_display = ["__str__", "updated_at"]
     search_fields = ["display_name", "notes"]
     inlines = [CameraCapabilityInline, TelescopeCapabilityInline, DomeCapabilityInline]
 
