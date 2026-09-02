@@ -24,10 +24,13 @@
 - `../../pyobs-core/specs/plans/2026-09-01-instrument-capability-duration-estimates.md` —
   follow-up to `plans/2026-09-01-portal-instrument-config-app.md` above: feeds the `instruments`
   app's capability data into `Script.estimate_duration()` in pyobs-core (`ImagingScript` + 4
-  others), and into this repo's `estimate_duration/` endpoint (`schema.py`) via a new
-  ORM-backed, TTL-cached `get_instrument_capabilities()` helper plus a `last_instrument_update/`
-  endpoint mirroring `last_task_update/`. **proposed** (no issue yet; Repos: pyobs-core,
-  pyobs-portal)
+  others). **proposed** (no issue yet; Repos: pyobs-core, pyobs-portal)
+- [plans/2026-09-02-instrument-capability-estimate-duration-endpoint.md](plans/2026-09-02-instrument-capability-estimate-duration-endpoint.md)
+  — this repo's half of the plan above: a TTL-cached `get_instrument_capabilities()` helper
+  (reusing `instruments/views.py`'s `INSTRUMENT_QUERYSET`) feeding `schema.py`'s
+  `estimate_duration/`, plus a `last_instrument_update/` marker (`Max(updated_at)` across all
+  seven capability models) for pyobs-core's `PortalTaskArchive` to poll. **proposed** (no issue
+  yet; Repos: pyobs-portal, pyobs-core)
 - [plans/2026-09-01-last-task-update-marker-includes-projects.md](plans/2026-09-01-last-task-update-marker-includes-projects.md)
   — `/api/last_task_update/` only tracks `Max(Task.updated_at)`, so a `Project` edit (e.g.
   priority) never moves the marker and pyobs-core's `PortalTaskArchive` never re-polls; adds
