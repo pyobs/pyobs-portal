@@ -1,16 +1,18 @@
-from django.contrib.auth.models import User, Group
+from django.contrib.auth.models import Group, User
+from django.core.cache import cache
 from django.db import IntegrityError, transaction
 from django.test import TestCase
 from rest_framework.test import APIClient
 
+from .cache import get_instrument_capabilities
 from .models import (
-    Instrument,
-    CameraCapability,
     BinningOption,
-    FilterWheelCapability,
-    Filter,
-    TelescopeCapability,
+    CameraCapability,
     DomeCapability,
+    Filter,
+    FilterWheelCapability,
+    Instrument,
+    TelescopeCapability,
 )
 
 
@@ -188,6 +190,93 @@ class InstrumentApiTests(TestCase):
         data = response.json()
         self.assertEqual(data["code"], "ef01")
         self.assertEqual(data["module_name"], "camera1")
+
+
+class LastInstrumentUpdateTests(TestCase):
+    def setUp(self):
+        self.client = APIClient()
+        self.user = User.objects.create_user(username="scriptbuilder", password="pw")
+
+    def test_requires_auth(self):
+        response = self.client.get("/api/instruments/last_instrument_update/")
+        self.assertEqual(response.status_code, 401)
+
+    def test_epoch_fallback_with_zero_rows(self):
+        # Time-parseable, not None -- PortalTaskArchive.last_update_time() unconditionally does
+        # Time(res[...]) with no None-check, matching last_task_update/last_observation_update.
+        self.client.force_authenticate(self.user)
+        response = self.client.get("/api/instruments/last_instrument_update/")
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(
+            response.json()["last_instrument_update"], "1970-01-01T00:00:00.000"
+        )
+
+    def test_moves_on_instrument_edit(self):
+        self.client.force_authenticate(self.user)
+        instrument = Instrument.objects.create(display_name="A")
+        first = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        instrument.display_name = "B"
+        instrument.save()
+        second = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        self.assertGreater(second, first)
+
+    def test_moves_on_deeply_nested_filter_edit(self):
+        # regression guard: a Filter three levels down (Instrument -> CameraCapability ->
+        # FilterWheelCapability -> Filter) doesn't bubble up to Instrument.updated_at at all --
+        # the marker has to Max() over all seven models, not just Instrument, or this edit would
+        # never move it.
+        self.client.force_authenticate(self.user)
+        instrument = Instrument.objects.create()
+        camera = CameraCapability.objects.create(
+            instrument=instrument, module_name="cam1", code="ef01"
+        )
+        wheel = FilterWheelCapability.objects.create(camera=camera)
+        filter_row = Filter.objects.create(filter_wheel=wheel, name="R")
+        first = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        filter_row.name = "V"
+        filter_row.save()
+        second = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        self.assertGreater(second, first)
+
+
+class InstrumentCapabilitiesCacheTests(TestCase):
+    def setUp(self):
+        cache.clear()
+
+    def test_reflects_current_db_state_not_first_ever_call(self):
+        # regression guard for the INSTRUMENT_QUERYSET-is-a-shared-module-level-object bug: the
+        # first-ever call must not permanently freeze every later call at that first result
+        empty = get_instrument_capabilities()
+        self.assertEqual(empty, [])
+
+        Instrument.objects.create(display_name="A")
+        cache.clear()  # bypass this function's own TTL to see the fresh DB state immediately
+        populated = get_instrument_capabilities()
+        self.assertEqual(len(populated), 1)
+
+    def test_result_is_cached_within_ttl(self):
+        Instrument.objects.create(display_name="A")
+        first = get_instrument_capabilities()
+
+        Instrument.objects.create(display_name="B")
+        second = (
+            get_instrument_capabilities()
+        )  # within TTL, no cache.clear() -- stays cached
+
+        self.assertEqual(first, second)
+        self.assertEqual(len(second), 1)
 
 
 class InstrumentConfigAdminPermissionTests(TestCase):
