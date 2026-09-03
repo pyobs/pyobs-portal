@@ -777,7 +777,12 @@ def estimate_duration(data: Any) -> dict[str, Any]:
         # If the caller passed the full task dict, validate the whole task
         # and create the script from it so estimate_duration gets TaskData.
         if "script" in data and isinstance(data["script"], dict):
+            from pyobs.robotic.instruments import InstrumentCapabilities
             from pyobs.robotic.task import Task, TaskData
+
+            from pyobs_portal.instruments.cache import (
+                get_instrument_capabilities as get_cached_instruments,
+            )
 
             # target ra/dec may arrive as hms/dms strings; strip them so
             # Task.model_validate doesn't choke (the scheduler converts them
@@ -785,7 +790,11 @@ def estimate_duration(data: Any) -> dict[str, Any]:
             task_dict = {k: v for k, v in data.items() if k != "target"}
             task = Task.model_validate(task_dict)
             script = task.create_script()
-            return {"duration": script.estimate_duration(data=TaskData(task=task), time=None)}
+            capabilities = InstrumentCapabilities.from_api_response(
+                get_cached_instruments()
+            )
+            task_data = TaskData(task=task, instrument_capabilities=capabilities)
+            return {"duration": script.estimate_duration(data=task_data, time=None)}
         else:
             # Legacy: called with just the script dict.
             script = Script.model_validate(data)

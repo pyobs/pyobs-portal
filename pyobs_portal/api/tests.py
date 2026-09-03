@@ -1628,3 +1628,42 @@ class EstimateDurationCleanErrorTests(SimpleTestCase):
         self.assertEqual(result, {"error": "5 field(s) need attention"})
         self.assertNotIn("errors.pydantic.dev", result["error"])
         self.assertNotIn("For further information", result["error"])
+
+
+class EstimateDurationInstrumentCapabilitiesTests(TestCase):
+    """`estimate_duration/`'s task-dict branch must thread live `instruments` data
+    into `TaskData`, not just accept and ignore it -- pyobs-core#864-867's
+    InstrumentCapabilities/leaf-script consumption is useless here if this side
+    never actually populates the field.
+    """
+
+    def _payload(self):
+        return {
+            "id": 1,
+            "name": "t1",
+            "script": {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "telescope": "tel1",
+                "configuration": {
+                    "instrument_configs": [{"exposure_time": 30.0, "count": 1}],
+                    "acquisition_config": {"enabled": False},
+                },
+            },
+        }
+
+    def test_duration_changes_with_a_matching_capability_row(self):
+        from pyobs_portal.instruments.models import Instrument, TelescopeCapability
+
+        cache.clear()
+        without = schema_module.estimate_duration(self._payload())
+
+        instrument = Instrument.objects.create(display_name="Test")
+        TelescopeCapability.objects.create(
+            instrument=instrument, module_name="tel1", slew_rate_deg_per_s=100.0
+        )
+        cache.clear()  # the instruments/cache.py accessor, not schema.py's own cache
+
+        with_capabilities = schema_module.estimate_duration(self._payload())
+
+        self.assertNotEqual(without["duration"], with_capabilities["duration"])
