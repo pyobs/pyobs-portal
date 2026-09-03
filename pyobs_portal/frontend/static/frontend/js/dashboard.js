@@ -203,6 +203,9 @@ function renderTimeline(projects, tasks, siteInfo, observations) {
           height: `${height}px`,
           margin: { item: { horizontal: 0, vertical: 2 } },
           tooltip: { followMouse: true, overflowMethod: "cap" },
+          // Render axis labels in UTC regardless of the viewer's browser timezone,
+          // matching the tooltip's toUTCString() above.
+          moment: (date) => vis.moment(date).utcOffset(0),
         }
       );
       timelineWindow = { start: windowStart, end: windowEnd };

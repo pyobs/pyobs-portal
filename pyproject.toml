@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-portal"
-version = "2.2.0"
+version = "2.3.0"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 requires-python = ">=3.12"
@@ -20,6 +20,7 @@ dependencies = [
     "pyobs-core>=2.2.0,<3",
     "requests>=2.32.0",
     "unicorn>=2.1.4",
+    "whitenoise>=6.8",
 ]
 
 [dependency-groups]
