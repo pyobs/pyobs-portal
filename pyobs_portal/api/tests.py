@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
+import unittest
 from datetime import timedelta
 from typing import Annotated
 from unittest.mock import Mock, patch
@@ -28,6 +29,19 @@ from .models import Observation, Project, Target, Task
 from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
 from .signals import cancel_pending_observations
 from .tasks import mark_window_expired
+
+try:
+    # pyobs-core#864 (InstrumentCapabilities) + #867 (TelescopeCapability.estimate_slew_time_s,
+    # the leaf-script consumption estimate_duration()'s output actually depends on) -- both
+    # needed for EstimateDurationInstrumentCapabilitiesTests below to observe a real difference,
+    # not just avoid an ImportError. A pyobs-core release could in principle land #864 without
+    # #867 (separate PRs), so this checks the concrete symptom the test needs, not just the
+    # module's existence.
+    from pyobs.robotic.instruments import TelescopeCapability
+
+    HAS_INSTRUMENT_CAPABILITIES = hasattr(TelescopeCapability, "estimate_slew_time_s")
+except ImportError:
+    HAS_INSTRUMENT_CAPABILITIES = False
 
 
 def _results(data):
@@ -1630,6 +1644,12 @@ class EstimateDurationCleanErrorTests(SimpleTestCase):
         self.assertNotIn("For further information", result["error"])
 
 
+@unittest.skipUnless(
+    HAS_INSTRUMENT_CAPABILITIES,
+    "needs a pyobs-core release with #864 (InstrumentCapabilities) and #867 "
+    "(TelescopeCapability.estimate_slew_time_s) -- schema.py degrades to today's "
+    "behavior without it, tested separately below",
+)
 class EstimateDurationInstrumentCapabilitiesTests(TestCase):
     """`estimate_duration/`'s task-dict branch must thread live `instruments` data
     into `TaskData`, not just accept and ignore it -- pyobs-core#864-867's
@@ -1667,3 +1687,29 @@ class EstimateDurationInstrumentCapabilitiesTests(TestCase):
         with_capabilities = schema_module.estimate_duration(self._payload())
 
         self.assertNotEqual(without["duration"], with_capabilities["duration"])
+
+
+class EstimateDurationDegradesGracefullyTests(TestCase):
+    """Always runs, regardless of HAS_INSTRUMENT_CAPABILITIES: the task-dict branch must return
+    a real `duration`, never an `{"error": ...}`, whether or not this pyobs-core release has
+    `InstrumentCapabilities` at all. Guards the exact regression #144's review caught -- an
+    unguarded `from pyobs.robotic.instruments import ...` would turn every task-dict
+    `estimate_duration/` call into a silent `ModuleNotFoundError` on a pyobs-core release that
+    predates pyobs-core#864.
+    """
+
+    def test_task_dict_branch_returns_a_duration(self):
+        payload = {
+            "id": 1,
+            "name": "t1",
+            "script": {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "configuration": {
+                    "instrument_configs": [{"exposure_time": 30.0, "count": 1}],
+                    "acquisition_config": {"enabled": False},
+                },
+            },
+        }
+        result = schema_module.estimate_duration(payload)
+        self.assertIn("duration", result, result)
