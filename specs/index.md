@@ -15,6 +15,28 @@
   `GET /api/modules/classes/`, filtered per-field by required `pyobs.interfaces` tagged in
   pyobs-core via `Annotated[str, ICamera]`-style metadata (pyobs-core#808, shipped in
   2.0.0.dev94).
+- [plans/2026-09-01-portal-instrument-config-app.md](plans/2026-09-01-portal-instrument-config-app.md)
+  — new `instruments` Django app: per-type capability models (camera/telescope/dome/filter
+  wheels), admin-editable via a scoped `instrument-config` group, read-only nested API for the
+  script builder, incl. task-duration-estimate fields (readout, filter-change, slew, dome-rotate
+  times). **implemented** (#133, closed #116)
+
+- `../../pyobs-core/specs/plans/2026-09-01-instrument-capability-duration-estimates.md` —
+  follow-up to `plans/2026-09-01-portal-instrument-config-app.md` above: feeds the `instruments`
+  app's capability data into `Script.estimate_duration()` in pyobs-core (`ImagingScript` + 4
+  others). **proposed** (no issue yet; Repos: pyobs-core, pyobs-portal)
+- [plans/2026-09-02-instrument-capability-estimate-duration-endpoint.md](plans/2026-09-02-instrument-capability-estimate-duration-endpoint.md)
+  — this repo's half of the plan above: a TTL-cached `get_instrument_capabilities()` helper
+  (reusing `instruments/views.py`'s `INSTRUMENT_QUERYSET`) feeding `schema.py`'s
+  `estimate_duration/`, plus a `last_instrument_update/` marker (`Max(updated_at)` across all
+  seven capability models) for pyobs-core's `PortalTaskArchive` to poll. **proposed** (no issue
+  yet; Repos: pyobs-portal, pyobs-core)
+- [plans/2026-09-01-last-task-update-marker-includes-projects.md](plans/2026-09-01-last-task-update-marker-includes-projects.md)
+  — `/api/last_task_update/` only tracks `Max(Task.updated_at)`, so a `Project` edit (e.g.
+  priority) never moves the marker and pyobs-core's `PortalTaskArchive` never re-polls; adds
+  `Project.updated_at` (new field + migration) and folds it into the marker query.
+  **implemented** (pyobs-core#848; PR #134; Repos: pyobs-portal; pyobs-core-side consumer fix
+  pyobs-core#854)
 
 Most design docs, plans, and ADRs that concern (or are partly implemented in) this repo live in
 `pyobs-core`'s `specs/` — see

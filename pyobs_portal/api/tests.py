@@ -4,6 +4,7 @@ import os
 import shutil
 import sys
 import tempfile
+import unittest
 from datetime import timedelta
 from typing import Annotated
 from unittest.mock import Mock, patch
@@ -26,7 +27,21 @@ from . import schema as schema_module
 from . import webadmin
 from .models import Observation, Project, Target, Task
 from .serializers import ObservationSerializer, ProjectSerializer, TargetSerializer
+from .signals import cancel_pending_observations
 from .tasks import mark_window_expired
+
+try:
+    # pyobs-core#864 (InstrumentCapabilities) + #867 (TelescopeCapability.estimate_slew_time_s,
+    # the leaf-script consumption estimate_duration()'s output actually depends on) -- both
+    # needed for EstimateDurationInstrumentCapabilitiesTests below to observe a real difference,
+    # not just avoid an ImportError. A pyobs-core release could in principle land #864 without
+    # #867 (separate PRs), so this checks the concrete symptom the test needs, not just the
+    # module's existence.
+    from pyobs.robotic.instruments import TelescopeCapability
+
+    HAS_INSTRUMENT_CAPABILITIES = hasattr(TelescopeCapability, "estimate_slew_time_s")
+except ImportError:
+    HAS_INSTRUMENT_CAPABILITIES = False
 
 
 def _results(data):
@@ -386,6 +401,44 @@ class UpdateMarkerApiTests(TestCase):
             observation_marker,
         )
 
+    def test_project_marker_tracks_save(self):
+        # A project-only edit (e.g. priority) must move last_task_update -- previously it didn't,
+        # since the marker was Max(Task.updated_at) only (pyobs-core#848).
+        project, _ = self._project_and_task()
+        project.priority = 5.0
+        project.save()
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"],
+            Time(project.updated_at).isot,
+        )
+
+    def test_project_marker_excludes_inaccessible_projects(self):
+        _, task = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+
+        hidden_project, _ = self._project_and_task(code="OTH", member=False)
+        hidden_project.priority = 5.0
+        hidden_project.save()
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+
+    def test_project_membership_change_does_not_move_marker(self):
+        # Known, deliberate gap (see Project.updated_at's docstring note and the linked plan):
+        # `users` is a ManyToManyField, so adding/removing a member writes the through table, not
+        # the Project row -- auto_now does not fire. Documented here rather than left silently
+        # uncovered; a membership-only change is not reflected in this marker.
+        project, _ = self._project_and_task()
+        task_marker = self._marker("/api/last_task_update/")["last_task_update"]
+
+        other = User.objects.create_user("marker-2", "marker-2@example.com", "pw")
+        project.users.add(other)
+
+        self.assertEqual(
+            self._marker("/api/last_task_update/")["last_task_update"], task_marker
+        )
+
     def test_markers_include_public_projects(self):
         # Public projects are visible to every authenticated user without
         # membership, so their activity must move the markers.
@@ -402,6 +455,79 @@ class UpdateMarkerApiTests(TestCase):
             self._marker("/api/last_task_update/")["last_task_update"],
             Time(public_task.updated_at).isot,
         )
+
+
+class CascadeTaskDeactivationTests(TestCase):
+    """Deactivating/deleting a task cancels its pending observations (pyobs-portal#135) --
+    otherwise they sit stale, referencing a task the API no longer serves."""
+
+    def setUp(self):
+        self.project = Project.objects.create(code="CAS", name="Cascade")
+        self.task = Task.objects.create(
+            code="T-CAS", name="t", project=self.project, duration=60, priority=1.0, script={}
+        )
+
+    def _observation(self, state):
+        now = timezone.now()
+        return Observation.objects.create(
+            task=self.task, start=now, end=now + timedelta(hours=1), state=state
+        )
+
+    def test_deactivating_task_cancels_pending_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+
+        self.task.active = False
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.CANCELED)
+
+    def test_deactivating_task_leaves_in_progress_observations_running(self):
+        # In-progress observations are left running -- matching what pyobs-core's mastermind
+        # self-heal (pyobs-core#852) already assumes: canceling a running observation out from
+        # under the mastermind was judged worse than leaving it to the operator.
+        in_progress = self._observation(ObservationState.IN_PROGRESS)
+
+        self.task.active = False
+        self.task.save()
+
+        in_progress.refresh_from_db()
+        self.assertEqual(in_progress.state, ObservationState.IN_PROGRESS)
+
+    def test_saving_still_active_task_does_not_touch_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+
+        self.task.name = "renamed"
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.PENDING)
+
+    def test_reactivating_task_does_not_uncancel_observations(self):
+        pending = self._observation(ObservationState.PENDING)
+        self.task.active = False
+        self.task.save()
+
+        self.task.active = True
+        self.task.save()
+
+        pending.refresh_from_db()
+        self.assertEqual(pending.state, ObservationState.CANCELED)
+
+    def test_deleting_task_cancels_pending_observations_first(self):
+        # The cascading FK delete removes the Observation rows outright, so the canceled state
+        # itself isn't observable afterwards -- assert the cancellation ran, not its DB residue.
+        self._observation(ObservationState.PENDING)
+
+        with patch(
+            "pyobs_portal.api.signals.cancel_pending_observations", wraps=cancel_pending_observations
+        ) as mock_cancel:
+            self.task.delete()
+
+        # Django nulls out self.task.pk on the instance once delete() completes, so identity
+        # (not a post-hoc pk read) is what proves the signal ran for this task.
+        mock_cancel.assert_called_once_with(self.task)
+        self.assertFalse(Observation.objects.filter(task__pk="T-CAS").exists())
 
 
 @override_settings(ARCHIVE_URL="https://archive.example.org")
@@ -875,6 +1001,84 @@ class ExtensionPackageDiscoveryTests(SimpleTestCase):
         self.assertIn("calibration", tree)
 
 
+class SkipUnderscoreModulesTests(SimpleTestCase):
+    """A `_`-prefixed module/subpackage is a private implementation detail by Python
+    convention -- `script_tree()`'s and `_scan_concrete_subclasses()`'s scan loops must not
+    surface its `Script`/provider subclasses as public script types (pyobs-portal#131). Same
+    tmpdir/sys.path fixture as ExtensionPackageDiscoveryTests, kept separate rather than
+    subclassed so this class's own test_* methods aren't run twice under two class names. A
+    real synthetic module is used (not a mock) since the point is pkgutil.iter_modules()
+    actually returning the entry and the scan actively skipping it, not just a name-string
+    check somewhere."""
+
+    def setUp(self):
+        cache.clear()
+        self.tmpdir = tempfile.mkdtemp()
+        self.addCleanup(shutil.rmtree, self.tmpdir, ignore_errors=True)
+        sys.path.insert(0, self.tmpdir)
+        self.addCleanup(sys.path.remove, self.tmpdir)
+        self.addCleanup(cache.clear)
+
+    def _write(self, relpath, content=""):
+        path = os.path.join(self.tmpdir, *relpath.split("/"))
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w") as f:
+            f.write(content)
+        self.addCleanup(sys.modules.pop, relpath.split("/")[0], None)
+
+    def test_underscore_prefixed_module_excluded_from_script_tree(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/scripts/__init__.py")
+        self._write(
+            "pyobs_fakeext/scripts/_helpers.py",
+            "from pyobs.robotic.scripts.script import Script\n\n\nclass PrivateScript(Script):\n    pass\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        self.assertNotIn("_helpers", tree.get("pyobs_fakeext", {}))
+        classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.scripts._helpers.PrivateScript", classes)
+
+    def test_underscore_prefixed_subpackage_not_recursed_into(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/scripts/__init__.py")
+        self._write("pyobs_fakeext/scripts/_internal/__init__.py")
+        self._write(
+            "pyobs_fakeext/scripts/_internal/sub.py",
+            "from pyobs.robotic.scripts.script import Script\n\n\nclass NestedPrivateScript(Script):\n    pass\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        self.assertNotIn("_internal", tree.get("pyobs_fakeext", {}))
+        classes = {c["class"] for c in tree["$polymorphic"]["pyobs.robotic.scripts.script.Script"]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.scripts._internal.sub.NestedPrivateScript", classes)
+
+    def test_underscore_prefixed_module_excluded_from_provider_scan(self):
+        self._write("pyobs_fakeext/__init__.py")
+        self._write("pyobs_fakeext/utils/__init__.py")
+        self._write("pyobs_fakeext/utils/exptime/__init__.py")
+        self._write(
+            "pyobs_fakeext/utils/exptime/_internal.py",
+            "from pyobs.robotic.utils.exptime import ExposureTimeProvider\n\n\n"
+            "class PrivateExptime(ExposureTimeProvider):\n    def __call__(self) -> float:\n        return 1.0\n",
+        )
+        importlib.invalidate_caches()
+
+        with patch.object(schema_module, "_installed_extension_packages", return_value=["pyobs_fakeext"]):
+            tree = schema_module.script_tree()
+
+        from pyobs.robotic.utils.exptime import ExposureTimeProvider
+
+        classes = {c["class"] for c in tree["$polymorphic"][schema_module._fqcn(ExposureTimeProvider)]["candidates"]}
+        self.assertNotIn("pyobs_fakeext.utils.exptime._internal.PrivateExptime", classes)
+
+
 class GetModuleClassesTests(SimpleTestCase):
     """`webadmin.get_module_classes()` (issue #98) -- must never raise, must degrade to `None`
     whenever the result can't be trusted, exactly like archive.py's on-demand check."""
@@ -1007,9 +1211,13 @@ class AnnotateModuleRefsTests(SimpleTestCase):
         s = schema_module._schema_for(Fixture)
         schema_module._annotate_module_refs(s, Fixture)
 
-        self.assertEqual(s["properties"]["camera"]["x-pyobs-module-ref"], {"interfaces": ["ICamera"]})
         self.assertEqual(
-            s["properties"]["multi"]["x-pyobs-module-ref"], {"interfaces": ["IData", "IBinning"]}
+            s["properties"]["camera"]["x-pyobs-module-ref"],
+            {"interfaces": ["ICamera"], "required": True},
+        )
+        self.assertEqual(
+            s["properties"]["multi"]["x-pyobs-module-ref"],
+            {"interfaces": ["IData", "IBinning"], "required": True},
         )
         self.assertNotIn("x-pyobs-module-ref", s["properties"]["plain"])
 
@@ -1026,7 +1234,9 @@ class AnnotateModuleRefsTests(SimpleTestCase):
         schema_module._annotate_module_refs(s, Fixture)
 
         prop = s["properties"]["telescope"]
-        self.assertEqual(prop["x-pyobs-module-ref"], {"interfaces": ["ITelescope"]})
+        self.assertEqual(
+            prop["x-pyobs-module-ref"], {"interfaces": ["ITelescope"], "required": False}
+        )
         self.assertIn("anyOf", prop)
 
     def test_two_classes_same_field_name_different_interfaces_dont_collide(self):
@@ -1432,3 +1642,74 @@ class EstimateDurationCleanErrorTests(SimpleTestCase):
         self.assertEqual(result, {"error": "5 field(s) need attention"})
         self.assertNotIn("errors.pydantic.dev", result["error"])
         self.assertNotIn("For further information", result["error"])
+
+
+@unittest.skipUnless(
+    HAS_INSTRUMENT_CAPABILITIES,
+    "needs a pyobs-core release with #864 (InstrumentCapabilities) and #867 "
+    "(TelescopeCapability.estimate_slew_time_s) -- schema.py degrades to today's "
+    "behavior without it, tested separately below",
+)
+class EstimateDurationInstrumentCapabilitiesTests(TestCase):
+    """`estimate_duration/`'s task-dict branch must thread live `instruments` data
+    into `TaskData`, not just accept and ignore it -- pyobs-core#864-867's
+    InstrumentCapabilities/leaf-script consumption is useless here if this side
+    never actually populates the field.
+    """
+
+    def _payload(self):
+        return {
+            "id": 1,
+            "name": "t1",
+            "script": {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "telescope": "tel1",
+                "configuration": {
+                    "instrument_configs": [{"exposure_time": 30.0, "count": 1}],
+                    "acquisition_config": {"enabled": False},
+                },
+            },
+        }
+
+    def test_duration_changes_with_a_matching_capability_row(self):
+        from pyobs_portal.instruments.models import Instrument, TelescopeCapability
+
+        cache.clear()
+        without = schema_module.estimate_duration(self._payload())
+
+        instrument = Instrument.objects.create(display_name="Test")
+        TelescopeCapability.objects.create(
+            instrument=instrument, module_name="tel1", slew_rate_deg_per_s=100.0
+        )
+        cache.clear()  # the instruments/cache.py accessor, not schema.py's own cache
+
+        with_capabilities = schema_module.estimate_duration(self._payload())
+
+        self.assertNotEqual(without["duration"], with_capabilities["duration"])
+
+
+class EstimateDurationDegradesGracefullyTests(TestCase):
+    """Always runs, regardless of HAS_INSTRUMENT_CAPABILITIES: the task-dict branch must return
+    a real `duration`, never an `{"error": ...}`, whether or not this pyobs-core release has
+    `InstrumentCapabilities` at all. Guards the exact regression #144's review caught -- an
+    unguarded `from pyobs.robotic.instruments import ...` would turn every task-dict
+    `estimate_duration/` call into a silent `ModuleNotFoundError` on a pyobs-core release that
+    predates pyobs-core#864.
+    """
+
+    def test_task_dict_branch_returns_a_duration(self):
+        payload = {
+            "id": 1,
+            "name": "t1",
+            "script": {
+                "class": "pyobs.robotic.scripts.imaging.imaging.ImagingScript",
+                "camera": "cam1",
+                "configuration": {
+                    "instrument_configs": [{"exposure_time": 30.0, "count": 1}],
+                    "acquisition_config": {"enabled": False},
+                },
+            },
+        }
+        result = schema_module.estimate_duration(payload)
+        self.assertIn("duration", result, result)

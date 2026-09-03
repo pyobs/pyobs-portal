@@ -38,6 +38,14 @@ try:
 except ImportError:
     picker_module = None
 
+try:
+    # pyobs-core#864: added in a release this repo's pyobs-core dependency may still predate.
+    # None (not raise) on an older pyobs-core, same shape as picker_module above --
+    # estimate_duration() below degrades to today's behavior instead of erroring on every call.
+    from pyobs.robotic.instruments import InstrumentCapabilities
+except ImportError:
+    InstrumentCapabilities = None
+
 IGNORED_FIELDS = {"cost", "target_dependent", "exptime_done"}
 
 # Polymorphic script-tree bases and the package each is scanned in for concrete
@@ -324,7 +332,15 @@ def _annotate_module_refs(schema: dict[str, Any], cls: type[BaseModel]) -> dict[
             m.__name__ for m in field_info.metadata if inspect.isclass(m) and issubclass(m, Interface)
         ]
         if interfaces:
-            properties[field_name]["x-pyobs-module-ref"] = {"interfaces": interfaces}
+            # `required` (pyobs-portal#132): whether the frontend may auto-select this field's
+            # sole candidate module when there's exactly one. A field with a default (almost
+            # always `None`, e.g. ImagingScript.telescope/filters/autoguider/acquisition) is
+            # frequently *meant* to stay unset -- their docstrings read "Required if ..." -- so
+            # only a field with no default (is_required()) is safe to auto-fill.
+            properties[field_name]["x-pyobs-module-ref"] = {
+                "interfaces": interfaces,
+                "required": field_info.is_required(),
+            }
     return schema
 
 
@@ -401,6 +417,11 @@ def _scan_concrete_subclasses(
     def _scan(pkg: ModuleType) -> None:
         aliases.update(_reexport_aliases(pkg, base))
         for _, name, ispkg in pkgutil.iter_modules(pkg.__path__):
+            if name.startswith("_"):
+                # Private implementation module/subpackage (pyobs-portal#131) -- pkgutil only
+                # skips __init__, so this excludes it (and doesn't recurse into a _internal/
+                # subpackage) rather than surfacing its classes as public provider candidates.
+                continue
             full_name = f"{pkg.__name__}.{name}"
             try:
                 mod = importlib.import_module(full_name)
@@ -491,6 +512,11 @@ def script_tree() -> dict[str, Any]:
         aliases.update(_reexport_aliases(package, Script))
         results: dict[str, Any] = {}
         for _, name, ispkg in pkgutil.iter_modules(package.__path__):
+            if name.startswith("_"):
+                # Private implementation module/subpackage (pyobs-portal#131) -- pkgutil only
+                # skips __init__, so this excludes it (and doesn't recurse into a _internal/
+                # subpackage) rather than surfacing its Script subclasses in the picker tree.
+                continue
             full_name = f"{package.__name__}.{name}"
             try:
                 mod = importlib.import_module(full_name)
@@ -767,7 +793,16 @@ def estimate_duration(data: Any) -> dict[str, Any]:
             task_dict = {k: v for k, v in data.items() if k != "target"}
             task = Task.model_validate(task_dict)
             script = task.create_script()
-            return {"duration": script.estimate_duration(data=TaskData(task=task), time=None)}
+            if InstrumentCapabilities is not None:
+                from pyobs_portal.instruments.cache import get_instrument_capabilities
+
+                capabilities = InstrumentCapabilities.from_api_response(
+                    get_instrument_capabilities()
+                )
+                task_data = TaskData(task=task, instrument_capabilities=capabilities)
+            else:
+                task_data = TaskData(task=task)
+            return {"duration": script.estimate_duration(data=task_data, time=None)}
         else:
             # Legacy: called with just the script dict.
             script = Script.model_validate(data)
