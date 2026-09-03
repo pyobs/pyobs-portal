@@ -935,14 +935,11 @@ wheels = [
 
 [[package]]
 name = "gunicorn"
-version = "26.0.0"
+version = "26.2.0"
 source = { registry = "https://pypi.org/simple" }
-dependencies = [
-    { name = "packaging" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/6d/b7/a4a3f632f823e432ce6bc65f62961b7980c898c77f075a2f7118cb3846fe/gunicorn-26.0.0.tar.gz", hash = "sha256:ca9346f85e3a4aeeb64d491045c16b9a35647abd37ea15efe53080eb8b090baf", size = 727286, upload-time = "2026-05-05T06:38:25.529Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/d9/8a/e4ef6ee11701b6cd64702848415ffb69eeff85cb388a3c6c7fe86f22f3f8/gunicorn-26.2.0.tar.gz", hash = "sha256:62b864895d9ebff0b2f9867ba04fe811c93121596540830c9c916d0769668447", size = 787921, upload-time = "2026-08-24T15:05:59.3Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e6/40/9c2384fc2be4ad25dd4a49decd5ad9ea5a3639814c11bd40ab77cb9f0a14/gunicorn-26.0.0-py3-none-any.whl", hash = "sha256:40233d26a5f0d1872916188c276e21641155111c2853f0c2cd55260aec0d24fc", size = 212009, upload-time = "2026-05-05T06:38:23.007Z" },
+    { url = "https://files.pythonhosted.org/packages/fe/85/7522a52e5e2f42faf1a129113ab63e548c42e103e9af395b7bfe65e403e2/gunicorn-26.2.0-py3-none-any.whl", hash = "sha256:bd249d0b3f7972f7432f0a6b6ff3b3ee2d129f70cd1ff6c09a9dd9e29a2b88e3", size = 228389, upload-time = "2026-08-24T15:05:57.67Z" },
 ]
 
 [[package]]
@@ -1963,7 +1960,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.4.0"
+version = "2.3.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -1993,9 +1990,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/6d/bd/c812fb29000f581cba4e70ee387e64c1ae66d24cb5b8f812a54c3a08ad51/pyobs_core-2.4.0.tar.gz", hash = "sha256:06bd1bd3797cf437945aa241c7575770ce12f4d993968eb5220868aef82a6e12", size = 405825, upload-time = "2026-09-03T06:08:40.289Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/61/057221ed37f4cdb1bba06bb575f0e266d7b692ba7df891a558b42e74abf7/pyobs_core-2.3.0.tar.gz", hash = "sha256:bd03f818a4159294c9e8df4959784c7684a49bc1e5f755a3284a64f5557e63f9", size = 399874, upload-time = "2026-09-02T12:40:14.47Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2d/34/492a7bc15f4354d8a9078c083c7c9d42b7a4b3c4b8308306a6295a46525d/pyobs_core-2.4.0-py3-none-any.whl", hash = "sha256:f0e1e51d028600f385f53a62ef9ab6434efcc55993e74730fee205eddd7a43c2", size = 634845, upload-time = "2026-09-03T06:08:38.602Z" },
+    { url = "https://files.pythonhosted.org/packages/e1/87/905c3cc44aa7c940b68707bec9d594181de324f31406edb466e01e0db9ed/pyobs_core-2.3.0-py3-none-any.whl", hash = "sha256:fcf6b8fbf62779e4bae5080165dc916beb0a81f77f12c4a706c809e6fde209b9", size = 628329, upload-time = "2026-09-02T12:40:12.661Z" },
 ]
 
 [[package]]
@@ -2267,8 +2264,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "jeepney", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "cryptography" },
+    { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
