@@ -20,6 +20,7 @@ dependencies = [
     "pyobs-core>=2.2.0,<3",
     "requests>=2.32.0",
     "unicorn>=2.1.4",
+    "whitenoise>=6.8",
 ]
 
 [dependency-groups]

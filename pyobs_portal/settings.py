@@ -83,6 +83,7 @@ FRONTEND_ENABLED = os.environ.get("ENABLE_FRONTEND", "0") == "1"
 
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
+    "whitenoise.middleware.WhiteNoiseMiddleware",
     "corsheaders.middleware.CorsMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -249,6 +250,12 @@ USE_TZ = True
 
 STATIC_URL = "static/"
 STATIC_ROOT = os.environ.get("STATIC_ROOT", os.path.join(BASE_DIR, "static"))
+
+STORAGES = {
+    "staticfiles": {
+        "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
+    },
+}
 
 SITE_LATITUDE = (
     float(os.environ["SITE_LATITUDE"]) if os.environ.get("SITE_LATITUDE") else None

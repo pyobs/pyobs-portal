@@ -3,25 +3,23 @@ Installation
 
 Docker Compose is the supported way to run *pyobs-portal* in production. The repository's
 `docker-compose.yml
-<https://github.com/pyobs/pyobs-portal/blob/develop/docker-compose.yml>`_ sets up six services:
+<https://github.com/pyobs/pyobs-portal/blob/develop/docker-compose.yml>`_ sets up five services:
 
 - **web** — the app itself (``ghcr.io/pyobs/pyobs-portal:latest``), migrating, collecting static
-  files, and serving via gunicorn.
+  files, and serving via gunicorn (static files via Whitenoise). Served on port **8097**.
 - **celery** — same image, background task processing.
 - **task_scheduler** — same image again, running ``manage.py runscript
   pyobs_portal.task_scheduler`` continuously.
 - **rabbitmq** — Celery's message broker.
 - **db** — PostgreSQL.
-- **nginx** — serves static files and proxies to **web**. Served on port **8097**.
 
 Setup::
 
     git clone https://github.com/pyobs/pyobs-portal.git
     cd pyobs-portal
     cp .env.example .env
-    cp nginx.conf.example nginx.conf
-    # edit both: at minimum SECRET_KEY, DJANGO_ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, the
-    # database credentials, and (if you want the frontend) ENABLE_FRONTEND=1
+    # edit: at minimum SECRET_KEY, DJANGO_ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, the database
+    # credentials, and (if you want the frontend) ENABLE_FRONTEND=1
     docker compose up -d
 
 Migrations and static file collection run automatically on startup. Create a superuser::
