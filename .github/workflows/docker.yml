@@ -35,20 +35,25 @@ jobs:
           build-args: |
             ENVIRONMENT=production
 
-      - name: Trigger downstream deployment rebuild
-        # Optional: only fires if a deployment has configured these secrets. Generic by
+      - name: Trigger downstream deployment rebuilds
+        # Optional: only fires if a deployment has configured this secret. Generic by
         # design - this repo doesn't know or care which deployment(s) consume it, or how
-        # they build/deploy their own image on top of this one. URL and token both live
-        # only in repo secrets, never in this file, so no deployment-specific infrastructure
-        # detail (which CI system, which project) is visible here.
+        # many, or how they build/deploy their own image on top of this one. DEPLOY_TRIGGERS
+        # is a JSON array of {"url": ..., "token": ...} objects, one per downstream
+        # deployment; no deployment-specific infrastructure detail (which CI system, which
+        # project, how many there are) is visible in this file.
         #
         # `secrets.X` can't be referenced directly in a step `if:` - GitHub Actions rejects
         # the whole workflow file at parse time ("likely failed because of a workflow file
         # issue", no line number given). Routing through `env:` first is the documented
         # workaround.
-        if: ${{ env.DEPLOY_TRIGGER_URL != '' }}
+        if: ${{ env.DEPLOY_TRIGGERS != '' }}
         env:
-          DEPLOY_TRIGGER_URL: ${{ secrets.DEPLOY_TRIGGER_URL }}
-          DEPLOY_TRIGGER_TOKEN: ${{ secrets.DEPLOY_TRIGGER_TOKEN }}
+          DEPLOY_TRIGGERS: ${{ secrets.DEPLOY_TRIGGERS }}
         run: |
-          curl -sf -X POST -F token="$DEPLOY_TRIGGER_TOKEN" -F ref=master "$DEPLOY_TRIGGER_URL"
+          while IFS= read -r target; do
+            curl -sf -X POST \
+              -F token="$(jq -r '.token' <<<"$target")" \
+              -F ref=master \
+              "$(jq -r '.url' <<<"$target")"
+          done < <(jq -c '.[]' <<<"$DEPLOY_TRIGGERS")
