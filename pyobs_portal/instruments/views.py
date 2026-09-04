@@ -12,15 +12,16 @@ from .models import (
     Filter,
     FilterWheelCapability,
     Instrument,
+    RoofCapability,
     TelescopeCapability,
 )
 from .serializers import CameraCapabilitySerializer, InstrumentSerializer
 
 # Matches the nested shape InstrumentSerializer walks (cameras -> binnings/filter_wheels ->
-# filters, plus telescope/dome) - without this, list/detail responses issue a query per row
+# filters, plus telescope/dome/roof) - without this, list/detail responses issue a query per row
 # per relation instead of a handful up front.
 INSTRUMENT_QUERYSET = Instrument.objects.select_related(
-    "telescope", "dome"
+    "telescope", "dome", "roof"
 ).prefetch_related("cameras__binnings", "cameras__filter_wheels__filters")
 
 
@@ -45,7 +46,7 @@ def last_instrument_update(request):
 
     Every capability model below has its own auto_now=True updated_at (see the Instrument
     docstring's caveat) because nested-inline admin edits don't bubble up to the parent
-    Instrument.updated_at -- this has to Max() over all seven models, not just Instrument, or a
+    Instrument.updated_at -- this has to Max() over all eight models, not just Instrument, or a
     deep edit (e.g. a Filter three levels down) would never move the marker.
 
     Not project-scoped (unlike last_task_update's _accessible_projects filtering): instruments
@@ -64,5 +65,6 @@ def last_instrument_update(request):
         _last_update(Filter.objects.all()),
         _last_update(TelescopeCapability.objects.all()),
         _last_update(DomeCapability.objects.all()),
+        _last_update(RoofCapability.objects.all()),
     )
     return Response({"last_instrument_update": marker.isot})

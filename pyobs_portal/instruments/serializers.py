@@ -8,6 +8,7 @@ from .models import (
     Filter,
     TelescopeCapability,
     DomeCapability,
+    RoofCapability,
 )
 
 
@@ -80,10 +81,17 @@ class DomeCapabilitySerializer(serializers.ModelSerializer):
         fields = ["module_name", "rotate_rate_deg_per_s", "updated_at"]
 
 
+class RoofCapabilitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = RoofCapability
+        fields = ["module_name", "open_close_time_s", "updated_at"]
+
+
 class InstrumentSerializer(serializers.ModelSerializer):
     cameras = CameraCapabilitySerializer(many=True, read_only=True)
     telescope = TelescopeCapabilitySerializer(read_only=True)
     dome = DomeCapabilitySerializer(read_only=True)
+    roof = RoofCapabilitySerializer(read_only=True)
 
     class Meta:
         model = Instrument
@@ -94,4 +102,5 @@ class InstrumentSerializer(serializers.ModelSerializer):
             "cameras",
             "telescope",
             "dome",
+            "roof",
         ]
