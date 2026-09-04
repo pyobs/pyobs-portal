@@ -12,7 +12,13 @@ class Instrument(models.Model):
     required, same as every other device here -- a wheel with filter selection exposed through
     the camera's own module (no independent XMPP identity) should be entered with the *camera's*
     module_name, not left blank; a blank value would make the row permanently unreachable by any
-    script/scheduler lookup (pyobs-core's ``InstrumentCapabilities`` indexes by module_name).
+    script/scheduler lookup (pyobs-core's ``InstrumentCapabilities`` indexes by module_name). This
+    only covers *one* integrated wheel per camera -- ``module_name`` is unique per row, so two
+    module-less wheels on the same camera can't both borrow it. In practice a camera exposes at
+    most one integrated wheel this way (the SBIG pattern this case models); a camera with more
+    than one wheel needing this treatment would need its own design, not just "use the camera's
+    name" (``FilterWheelCapability.name`` already exists for the *addressable*, >1-wheel-per-camera
+    case -- a different situation from this one).
 
     ``module_name`` is unique per device *type* (a ``CameraCapability`` and a
     ``TelescopeCapability`` could technically share a name), not enforced across all of them --

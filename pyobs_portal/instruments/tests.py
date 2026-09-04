@@ -86,6 +86,44 @@ class ModelTests(TestCase):
         self.assertTrue(CameraCapability.objects.filter(pk=other_camera.pk).exists())
 
 
+class Migration0008DataGuardTests(TestCase):
+    """Covers 0008's reject_blank_module_names data guard, run directly against the current app
+    registry (the migration itself only runs once, already applied by the time tests execute).
+    """
+
+    def test_raises_when_a_blank_module_name_row_exists(self):
+        instrument = Instrument.objects.create()
+        camera = CameraCapability.objects.create(
+            instrument=instrument, module_name="camera1", code="ef01"
+        )
+        # bypass full_clean() the same way the migration's own concern describes
+        FilterWheelCapability.objects.create(camera=camera, module_name="")
+
+        from django.apps import apps as django_apps
+
+        module = __import__(
+            "pyobs_portal.instruments.migrations.0008_cameracapability_model_cameracapability_sensor_type_and_more",
+            fromlist=["reject_blank_module_names"],
+        )
+        with self.assertRaises(RuntimeError):
+            module.reject_blank_module_names(django_apps, None)
+
+    def test_does_not_raise_when_no_blank_rows(self):
+        instrument = Instrument.objects.create()
+        camera = CameraCapability.objects.create(
+            instrument=instrument, module_name="camera1", code="ef01"
+        )
+        FilterWheelCapability.objects.create(camera=camera, module_name="wheel1")
+
+        from django.apps import apps as django_apps
+
+        module = __import__(
+            "pyobs_portal.instruments.migrations.0008_cameracapability_model_cameracapability_sensor_type_and_more",
+            fromlist=["reject_blank_module_names"],
+        )
+        module.reject_blank_module_names(django_apps, None)  # must not raise
+
+
 class InstrumentConfigGroupMigrationTests(TestCase):
     """Covers migrations 0002 and 0007 (run automatically before every test's transaction)."""
 

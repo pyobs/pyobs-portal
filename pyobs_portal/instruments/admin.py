@@ -70,6 +70,7 @@ class CameraCapabilityAdmin(admin.ModelAdmin):
         "module_name",
         "code",
         "model",
+        "sensor_type",
         "instrument",
         "pixel_size_um",
         "updated_at",
