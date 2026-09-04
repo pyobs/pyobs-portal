@@ -32,6 +32,7 @@ class FilterWheelCapabilitySerializer(serializers.ModelSerializer):
         fields = [
             "name",
             "module_name",
+            "model",
             "filter_change_time_s",
             "updated_at",
             "filters",
@@ -47,6 +48,8 @@ class CameraCapabilitySerializer(serializers.ModelSerializer):
         fields = [
             "module_name",
             "code",
+            "model",
+            "sensor_type",
             "pixel_size_um",
             "sensor_width_px",
             "sensor_height_px",

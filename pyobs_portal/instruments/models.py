@@ -9,8 +9,16 @@ class Instrument(models.Model):
     ``TelescopeCapability``, ``DomeCapability``, and ``FilterWheelCapability``), since scripts
     reference cameras, telescopes, and filter wheels as independent modules (an instrument can
     carry more than one camera, e.g. science + guide). ``FilterWheelCapability.module_name`` is
-    nullable -- not every filter wheel is its own addressable module (some cameras expose filter
-    selection through the camera module itself).
+    required, same as every other device here -- a wheel with filter selection exposed through
+    the camera's own module (no independent XMPP identity) should be entered with the *camera's*
+    module_name, not left blank; a blank value would make the row permanently unreachable by any
+    script/scheduler lookup (pyobs-core's ``InstrumentCapabilities`` indexes by module_name). This
+    only covers *one* integrated wheel per camera -- ``module_name`` is unique per row, so two
+    module-less wheels on the same camera can't both borrow it. In practice a camera exposes at
+    most one integrated wheel this way (the SBIG pattern this case models); a camera with more
+    than one wheel needing this treatment would need its own design, not just "use the camera's
+    name" (``FilterWheelCapability.name`` already exists for the *addressable*, >1-wheel-per-camera
+    case -- a different situation from this one).
 
     ``module_name`` is unique per device *type* (a ``CameraCapability`` and a
     ``TelescopeCapability`` could technically share a name), not enforced across all of them --
@@ -38,6 +46,10 @@ class CameraCapability(models.Model):
     code = models.CharField(
         max_length=4, unique=True
     )  # fleet-wide physical camera ID, e.g. "ef01"
+    model = models.CharField(max_length=255, blank=True)  # e.g. "FLI ProLine PL23042"
+    sensor_type = models.CharField(
+        max_length=255, blank=True
+    )  # e.g. "e2v CCD230-42, back-illuminated CCD"
     pixel_size_um = models.FloatField(null=True, blank=True)
     sensor_width_px = models.PositiveIntegerField(null=True, blank=True)
     sensor_height_px = models.PositiveIntegerField(null=True, blank=True)
@@ -82,9 +94,8 @@ class FilterWheelCapability(models.Model):
         CameraCapability, on_delete=models.CASCADE, related_name="filter_wheels"
     )
     name = models.CharField(max_length=255, blank=True)  # for cameras with >1 wheel
-    module_name = models.CharField(
-        max_length=255, null=True, blank=True, unique=True
-    )  # None for a wheel with no addressable module of its own (e.g. integrated into the camera)
+    module_name = models.CharField(max_length=255, unique=True)
+    model = models.CharField(max_length=255, blank=True)  # e.g. "FLI CFW-2-7"
     filter_change_time_s = models.FloatField(
         null=True, blank=True
     )  # one-position-step estimate

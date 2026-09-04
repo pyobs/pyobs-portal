@@ -30,7 +30,9 @@ class ModelTests(TestCase):
             BinningOption.objects.create(camera=self.camera, x=1, y=1)
 
     def test_filter_unique_together_per_wheel(self):
-        wheel = FilterWheelCapability.objects.create(camera=self.camera)
+        wheel = FilterWheelCapability.objects.create(
+            camera=self.camera, module_name="wheel1"
+        )
         Filter.objects.create(filter_wheel=wheel, name="R")
         with self.assertRaises(IntegrityError), transaction.atomic():
             Filter.objects.create(filter_wheel=wheel, name="R")
@@ -42,11 +44,11 @@ class ModelTests(TestCase):
                 instrument=other_instrument, module_name="camera2", code="ef01"
             )
 
-    def test_filter_wheel_module_name_optional_and_globally_unique(self):
-        # None is fine (integrated wheel, no module of its own) ...
-        FilterWheelCapability.objects.create(camera=self.camera)
-        FilterWheelCapability.objects.create(camera=self.camera)
-        # ... but a given module_name can't be claimed twice.
+    def test_filter_wheel_module_name_globally_unique(self):
+        # module_name is required (not nullable) -- a wheel with filter selection exposed
+        # through the camera's own module should be entered with the camera's module_name,
+        # never left blank: a blank value would make the row permanently unreachable by any
+        # script/scheduler lookup (pyobs-core's InstrumentCapabilities indexes by module_name).
         FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
         with self.assertRaises(IntegrityError), transaction.atomic():
             FilterWheelCapability.objects.create(
@@ -82,6 +84,44 @@ class ModelTests(TestCase):
         # sibling instrument row and camera survive
         self.assertTrue(Instrument.objects.filter(pk=self.instrument.pk).exists())
         self.assertTrue(CameraCapability.objects.filter(pk=other_camera.pk).exists())
+
+
+class Migration0008DataGuardTests(TestCase):
+    """Covers 0008's reject_blank_module_names data guard, run directly against the current app
+    registry (the migration itself only runs once, already applied by the time tests execute).
+    """
+
+    def test_raises_when_a_blank_module_name_row_exists(self):
+        instrument = Instrument.objects.create()
+        camera = CameraCapability.objects.create(
+            instrument=instrument, module_name="camera1", code="ef01"
+        )
+        # bypass full_clean() the same way the migration's own concern describes
+        FilterWheelCapability.objects.create(camera=camera, module_name="")
+
+        from django.apps import apps as django_apps
+
+        module = __import__(
+            "pyobs_portal.instruments.migrations.0008_cameracapability_model_cameracapability_sensor_type_and_more",
+            fromlist=["reject_blank_module_names"],
+        )
+        with self.assertRaises(RuntimeError):
+            module.reject_blank_module_names(django_apps, None)
+
+    def test_does_not_raise_when_no_blank_rows(self):
+        instrument = Instrument.objects.create()
+        camera = CameraCapability.objects.create(
+            instrument=instrument, module_name="camera1", code="ef01"
+        )
+        FilterWheelCapability.objects.create(camera=camera, module_name="wheel1")
+
+        from django.apps import apps as django_apps
+
+        module = __import__(
+            "pyobs_portal.instruments.migrations.0008_cameracapability_model_cameracapability_sensor_type_and_more",
+            fromlist=["reject_blank_module_names"],
+        )
+        module.reject_blank_module_names(django_apps, None)  # must not raise
 
 
 class InstrumentConfigGroupMigrationTests(TestCase):
@@ -157,10 +197,15 @@ class InstrumentApiTests(TestCase):
             instrument=self.instrument,
             module_name="camera1",
             code="ef01",
+            model="FLI ProLine PL23042",
+            sensor_type="e2v CCD230-42, back-illuminated CCD",
             pixel_size_um=5.4,
         )
         self.wheel = FilterWheelCapability.objects.create(
-            camera=self.camera, module_name="wheel1", filter_change_time_s=3.5
+            camera=self.camera,
+            module_name="wheel1",
+            model="FLI CFW-2-7",
+            filter_change_time_s=3.5,
         )
         Filter.objects.create(filter_wheel=self.wheel, name="R", position=1)
 
@@ -175,7 +220,9 @@ class InstrumentApiTests(TestCase):
             instrument=other_instrument, module_name="camera2", code="ef02"
         )
         BinningOption.objects.create(camera=other_camera, x=2, y=2)
-        other_wheel = FilterWheelCapability.objects.create(camera=other_camera)
+        other_wheel = FilterWheelCapability.objects.create(
+            camera=other_camera, module_name="wheel2"
+        )
         Filter.objects.create(filter_wheel=other_wheel, name="V")
         TelescopeCapability.objects.create(instrument=other_instrument)
         DomeCapability.objects.create(instrument=other_instrument)
@@ -199,7 +246,12 @@ class InstrumentApiTests(TestCase):
         camera_data = instrument_data["cameras"][0]
         self.assertEqual(camera_data["module_name"], "camera1")
         self.assertEqual(camera_data["code"], "ef01")
+        self.assertEqual(camera_data["model"], "FLI ProLine PL23042")
+        self.assertEqual(
+            camera_data["sensor_type"], "e2v CCD230-42, back-illuminated CCD"
+        )
         self.assertEqual(camera_data["filter_wheels"][0]["module_name"], "wheel1")
+        self.assertEqual(camera_data["filter_wheels"][0]["model"], "FLI CFW-2-7")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
 
     def test_list_includes_roof_when_present(self):
@@ -273,7 +325,9 @@ class LastInstrumentUpdateTests(TestCase):
         camera = CameraCapability.objects.create(
             instrument=instrument, module_name="cam1", code="ef01"
         )
-        wheel = FilterWheelCapability.objects.create(camera=camera)
+        wheel = FilterWheelCapability.objects.create(
+            camera=camera, module_name="wheel1"
+        )
         filter_row = Filter.objects.create(filter_wheel=wheel, name="R")
         first = self.client.get("/api/instruments/last_instrument_update/").json()[
             "last_instrument_update"
