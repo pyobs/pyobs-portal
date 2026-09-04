@@ -43,6 +43,12 @@ Most design docs, plans, and ADRs that concern (or are partly implemented in) th
 `../../pyobs-core/specs/design/obsnum_fits_header.md` (#738, `Observation.obsnum`: Django model +
 migration + serializer changes needed here).
 
+- `../../pyobs-core/specs/plans/2026-09-04-roof-open-close-capability.md` — new `RoofCapability`
+  model in this repo's `instruments` app (`module_name` + `open_close_time_s`, mirrors
+  `DomeCapability`'s shape) for a plain open/close roof, plus the pyobs-core-side mirror and
+  script wiring. **implemented, pending PR merge** (pyobs-core#877; Repos: pyobs-core,
+  pyobs-portal; this repo's PR #149)
+
 - `../../pyobs-core/specs/adrs/0013-renaming-pyobs-robotic-backend.md` — naming decision for this
   repo (accepted 2026-08-24, name is `pyobs-portal`), with the considered-and-rejected name
   alternatives and the full rename surface (repo, package, Docker image, Keycloak client,

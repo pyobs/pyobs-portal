@@ -138,3 +138,21 @@ class DomeCapability(models.Model):
 
     def __str__(self) -> str:
         return f"dome ({self.module_name})"
+
+
+class RoofCapability(models.Model):
+    """A plain open/close roof (IRoof, no IPointingAltAz) -- no rate/distance concept, just a
+    fixed open/close cycle time. Distinct from DomeCapability (a rotating dome): a site has one
+    or the other, never both, but that's a real-world constraint this app doesn't need to
+    enforce.
+    """
+
+    instrument = models.OneToOneField(
+        Instrument, on_delete=models.CASCADE, related_name="roof"
+    )
+    module_name = models.CharField(max_length=255, unique=True)
+    open_close_time_s = models.FloatField(null=True, blank=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self) -> str:
+        return f"roof ({self.module_name})"

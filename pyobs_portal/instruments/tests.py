@@ -12,6 +12,7 @@ from .models import (
     Filter,
     FilterWheelCapability,
     Instrument,
+    RoofCapability,
     TelescopeCapability,
 )
 
@@ -62,6 +63,11 @@ class ModelTests(TestCase):
         self.assertEqual(TelescopeCapability.objects.count(), 0)
         self.assertEqual(DomeCapability.objects.count(), 0)
 
+    def test_deleting_instrument_cascades_to_roof(self):
+        RoofCapability.objects.create(instrument=self.instrument)
+        self.instrument.delete()
+        self.assertEqual(RoofCapability.objects.count(), 0)
+
     def test_deleting_camera_only_removes_its_own_children(self):
         BinningOption.objects.create(camera=self.camera, x=1, y=1)
         other_camera = CameraCapability.objects.create(
@@ -79,7 +85,7 @@ class ModelTests(TestCase):
 
 
 class InstrumentConfigGroupMigrationTests(TestCase):
-    """Covers migration 0002 (run automatically before every test's transaction)."""
+    """Covers migrations 0002 and 0007 (run automatically before every test's transaction)."""
 
     def test_group_created_with_expected_permissions(self):
         group = Group.objects.get(name="instrument-config")
@@ -108,6 +114,9 @@ class InstrumentConfigGroupMigrationTests(TestCase):
                 "add_domecapability",
                 "change_domecapability",
                 "delete_domecapability",
+                "add_roofcapability",
+                "change_roofcapability",
+                "delete_roofcapability",
             },
         )
 
@@ -121,6 +130,22 @@ class InstrumentConfigGroupMigrationTests(TestCase):
         )
         module.create_group(django_apps, None)
         self.assertEqual(Group.objects.filter(name="instrument-config").count(), 1)
+
+    def test_roof_permissions_migration_does_not_duplicate(self):
+        # simulate a redeploy re-running the 0007 data migration function directly
+        from django.apps import apps as django_apps
+
+        module = __import__(
+            "pyobs_portal.instruments.migrations.0007_roofcapability_permissions",
+            fromlist=["add_roof_permissions"],
+        )
+        module.add_roof_permissions(django_apps, None)
+        group = Group.objects.get(name="instrument-config")
+        codenames = [
+            p.codename
+            for p in group.permissions.filter(content_type__model="roofcapability")
+        ]
+        self.assertEqual(sorted(codenames), sorted(set(codenames)))
 
 
 class InstrumentApiTests(TestCase):
@@ -154,6 +179,7 @@ class InstrumentApiTests(TestCase):
         Filter.objects.create(filter_wheel=other_wheel, name="V")
         TelescopeCapability.objects.create(instrument=other_instrument)
         DomeCapability.objects.create(instrument=other_instrument)
+        RoofCapability.objects.create(instrument=other_instrument, module_name="roof1")
 
         self.client.force_authenticate(self.user)
         with self.assertNumQueries(6):
@@ -169,11 +195,22 @@ class InstrumentApiTests(TestCase):
         instrument_data = data[0]
         self.assertIsNone(instrument_data["telescope"])
         self.assertIsNone(instrument_data["dome"])
+        self.assertIsNone(instrument_data["roof"])
         camera_data = instrument_data["cameras"][0]
         self.assertEqual(camera_data["module_name"], "camera1")
         self.assertEqual(camera_data["code"], "ef01")
         self.assertEqual(camera_data["filter_wheels"][0]["module_name"], "wheel1")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
+
+    def test_list_includes_roof_when_present(self):
+        RoofCapability.objects.create(
+            instrument=self.instrument, module_name="roof1", open_close_time_s=45.0
+        )
+        self.client.force_authenticate(self.user)
+        response = self.client.get("/api/instruments/")
+        data = response.json()["results"][0]
+        self.assertEqual(data["roof"]["module_name"], "roof1")
+        self.assertEqual(data["roof"]["open_close_time_s"], 45.0)
 
     def test_instrument_detail_route_removed(self):
         # InstrumentDetail (GET /api/instruments/<module_name>/) was dropped in #139/#140 --
@@ -229,7 +266,7 @@ class LastInstrumentUpdateTests(TestCase):
     def test_moves_on_deeply_nested_filter_edit(self):
         # regression guard: a Filter three levels down (Instrument -> CameraCapability ->
         # FilterWheelCapability -> Filter) doesn't bubble up to Instrument.updated_at at all --
-        # the marker has to Max() over all seven models, not just Instrument, or this edit would
+        # the marker has to Max() over all eight models, not just Instrument, or this edit would
         # never move it.
         self.client.force_authenticate(self.user)
         instrument = Instrument.objects.create()
@@ -244,6 +281,22 @@ class LastInstrumentUpdateTests(TestCase):
 
         filter_row.name = "V"
         filter_row.save()
+        second = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        self.assertGreater(second, first)
+
+    def test_moves_on_roof_edit(self):
+        self.client.force_authenticate(self.user)
+        instrument = Instrument.objects.create()
+        roof = RoofCapability.objects.create(instrument=instrument, module_name="roof1")
+        first = self.client.get("/api/instruments/last_instrument_update/").json()[
+            "last_instrument_update"
+        ]
+
+        roof.open_close_time_s = 45.0
+        roof.save()
         second = self.client.get("/api/instruments/last_instrument_update/").json()[
             "last_instrument_update"
         ]
