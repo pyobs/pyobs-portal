@@ -48,6 +48,11 @@ migration + serializer changes needed here).
   `DomeCapability`'s shape) for a plain open/close roof, plus the pyobs-core-side mirror and
   script wiring. **implemented, pending PR merge** (pyobs-core#877; Repos: pyobs-core,
   pyobs-portal; this repo's PR #149)
+- `../../pyobs-core/specs/plans/2026-09-04-camera-filterwheel-descriptive-fields.md` —
+  `CameraCapability.model`/`sensor_type`, `FilterWheelCapability.model`; makes
+  `FilterWheelCapability.module_name` required (was nullable, but a blank value made the row
+  permanently unreachable by pyobs-core's lookup — a real bug, not a supported case).
+  **implemented, pending PR merge** (no issue; Repos: pyobs-core, pyobs-portal)
 
 - `../../pyobs-core/specs/adrs/0013-renaming-pyobs-robotic-backend.md` — naming decision for this
   repo (accepted 2026-08-24, name is `pyobs-portal`), with the considered-and-rejected name
