@@ -30,7 +30,9 @@ class ModelTests(TestCase):
             BinningOption.objects.create(camera=self.camera, x=1, y=1)
 
     def test_filter_unique_together_per_wheel(self):
-        wheel = FilterWheelCapability.objects.create(camera=self.camera)
+        wheel = FilterWheelCapability.objects.create(
+            camera=self.camera, module_name="wheel1"
+        )
         Filter.objects.create(filter_wheel=wheel, name="R")
         with self.assertRaises(IntegrityError), transaction.atomic():
             Filter.objects.create(filter_wheel=wheel, name="R")
@@ -42,11 +44,11 @@ class ModelTests(TestCase):
                 instrument=other_instrument, module_name="camera2", code="ef01"
             )
 
-    def test_filter_wheel_module_name_optional_and_globally_unique(self):
-        # None is fine (integrated wheel, no module of its own) ...
-        FilterWheelCapability.objects.create(camera=self.camera)
-        FilterWheelCapability.objects.create(camera=self.camera)
-        # ... but a given module_name can't be claimed twice.
+    def test_filter_wheel_module_name_globally_unique(self):
+        # module_name is required (not nullable) -- a wheel with filter selection exposed
+        # through the camera's own module should be entered with the camera's module_name,
+        # never left blank: a blank value would make the row permanently unreachable by any
+        # script/scheduler lookup (pyobs-core's InstrumentCapabilities indexes by module_name).
         FilterWheelCapability.objects.create(camera=self.camera, module_name="wheel1")
         with self.assertRaises(IntegrityError), transaction.atomic():
             FilterWheelCapability.objects.create(
@@ -157,10 +159,15 @@ class InstrumentApiTests(TestCase):
             instrument=self.instrument,
             module_name="camera1",
             code="ef01",
+            model="FLI ProLine PL23042",
+            sensor_type="e2v CCD230-42, back-illuminated CCD",
             pixel_size_um=5.4,
         )
         self.wheel = FilterWheelCapability.objects.create(
-            camera=self.camera, module_name="wheel1", filter_change_time_s=3.5
+            camera=self.camera,
+            module_name="wheel1",
+            model="FLI CFW-2-7",
+            filter_change_time_s=3.5,
         )
         Filter.objects.create(filter_wheel=self.wheel, name="R", position=1)
 
@@ -175,7 +182,9 @@ class InstrumentApiTests(TestCase):
             instrument=other_instrument, module_name="camera2", code="ef02"
         )
         BinningOption.objects.create(camera=other_camera, x=2, y=2)
-        other_wheel = FilterWheelCapability.objects.create(camera=other_camera)
+        other_wheel = FilterWheelCapability.objects.create(
+            camera=other_camera, module_name="wheel2"
+        )
         Filter.objects.create(filter_wheel=other_wheel, name="V")
         TelescopeCapability.objects.create(instrument=other_instrument)
         DomeCapability.objects.create(instrument=other_instrument)
@@ -199,7 +208,12 @@ class InstrumentApiTests(TestCase):
         camera_data = instrument_data["cameras"][0]
         self.assertEqual(camera_data["module_name"], "camera1")
         self.assertEqual(camera_data["code"], "ef01")
+        self.assertEqual(camera_data["model"], "FLI ProLine PL23042")
+        self.assertEqual(
+            camera_data["sensor_type"], "e2v CCD230-42, back-illuminated CCD"
+        )
         self.assertEqual(camera_data["filter_wheels"][0]["module_name"], "wheel1")
+        self.assertEqual(camera_data["filter_wheels"][0]["model"], "FLI CFW-2-7")
         self.assertEqual(camera_data["filter_wheels"][0]["filters"][0]["name"], "R")
 
     def test_list_includes_roof_when_present(self):
@@ -273,7 +287,9 @@ class LastInstrumentUpdateTests(TestCase):
         camera = CameraCapability.objects.create(
             instrument=instrument, module_name="cam1", code="ef01"
         )
-        wheel = FilterWheelCapability.objects.create(camera=camera)
+        wheel = FilterWheelCapability.objects.create(
+            camera=camera, module_name="wheel1"
+        )
         filter_row = Filter.objects.create(filter_wheel=wheel, name="R")
         first = self.client.get("/api/instruments/last_instrument_update/").json()[
             "last_instrument_update"

@@ -66,8 +66,15 @@ class FilterWheelCapabilityInline(admin.TabularInline):
 
 @admin.register(CameraCapability)
 class CameraCapabilityAdmin(admin.ModelAdmin):
-    list_display = ["module_name", "code", "instrument", "pixel_size_um", "updated_at"]
-    search_fields = ["module_name", "code"]
+    list_display = [
+        "module_name",
+        "code",
+        "model",
+        "instrument",
+        "pixel_size_um",
+        "updated_at",
+    ]
+    search_fields = ["module_name", "code", "model", "sensor_type"]
     inlines = [BinningOptionInline, FilterWheelCapabilityInline]
 
 
@@ -81,9 +88,10 @@ class FilterWheelCapabilityAdmin(admin.ModelAdmin):
     list_display = [
         "name",
         "module_name",
+        "model",
         "camera",
         "filter_change_time_s",
         "updated_at",
     ]
-    search_fields = ["name", "module_name"]
+    search_fields = ["name", "module_name", "model"]
     inlines = [FilterInline]
