@@ -8,6 +8,7 @@ from .models import (
     Filter,
     TelescopeCapability,
     DomeCapability,
+    RoofCapability,
 )
 
 
@@ -34,11 +35,21 @@ class DomeCapabilityInline(admin.StackedInline):
     extra = 0
 
 
+class RoofCapabilityInline(admin.StackedInline):
+    model = RoofCapability
+    extra = 0
+
+
 @admin.register(Instrument)
 class InstrumentAdmin(admin.ModelAdmin):
     list_display = ["__str__", "updated_at"]
     search_fields = ["display_name", "notes"]
-    inlines = [CameraCapabilityInline, TelescopeCapabilityInline, DomeCapabilityInline]
+    inlines = [
+        CameraCapabilityInline,
+        TelescopeCapabilityInline,
+        DomeCapabilityInline,
+        RoofCapabilityInline,
+    ]
 
 
 class BinningOptionInline(admin.TabularInline):
