@@ -18,6 +18,7 @@ Including another URLconf
 from django.conf import settings
 from django.contrib import admin
 from django.urls import path, include
+from django.views.generic.base import RedirectView
 from rest_framework.authtoken import views
 
 urlpatterns = [
@@ -29,6 +30,10 @@ urlpatterns = [
 
 if settings.FRONTEND_ENABLED:
     urlpatterns += [
+        # Browsers request this at the site root regardless of STATIC_URL; redirect rather than
+        # duplicate static-serving machinery. Only present with the frontend app itself, since
+        # that's what collects this icon into STATIC_ROOT.
+        path("favicon.ico", RedirectView.as_view(url="/static/img/favicon.ico", permanent=True)),
         path("", include("pyobs_portal.frontend.urls")),
         path("accounts/keycloak/", include("pyobs_auth.urls")),
     ]
