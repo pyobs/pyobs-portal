@@ -1971,7 +1971,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.10.5"
+version = "2.10.7"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2001,9 +2001,9 @@ dependencies = [
     { name = "tenacity" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/8e/1e/f73e746b7fca9e5e7c5b4ecb56678c86d2a2256657f9ae7d09272a5fd683/pyobs_core-2.10.5.tar.gz", hash = "sha256:8b57c01448565cc761b32f8850fff9cd425834a79c6febf2012829799c1465dd", size = 422110, upload-time = "2026-09-19T11:29:28.52Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/7e/db/b197375974c8436095fdfa53db228e1e8b323f12183433ee960c99e96cef/pyobs_core-2.10.7.tar.gz", hash = "sha256:2bd17b1ea609692c6f8925f2d80afc515ac2209b807205ffaa9129730321116e", size = 424175, upload-time = "2026-09-23T18:20:53.969Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/61/c3/efa7d77ded386223962590dde178d5e86dae385a75f33f94e5a8dfafffde/pyobs_core-2.10.5-py3-none-any.whl", hash = "sha256:214acece8b72ff1ddfbbacc5b7153f2e4ec0bd88127f6ce923eb726b81bcf684", size = 654676, upload-time = "2026-09-19T11:29:26.961Z" },
+    { url = "https://files.pythonhosted.org/packages/52/4e/ebdb9836eae127a70ab9fd618eb7782394158592cb35b5a97ff133cfa757/pyobs_core-2.10.7-py3-none-any.whl", hash = "sha256:14cfea0a0633ba31593323ff0bff919d9510b987369e0cc3f758a948f9dd396e", size = 656647, upload-time = "2026-09-23T18:20:52.624Z" },
 ]
 
 [[package]]
@@ -2277,8 +2277,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
-    { name = "jeepney", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "cryptography" },
+    { name = "jeepney" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
