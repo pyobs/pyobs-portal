@@ -1,6 +1,6 @@
 # Plan: wire `instruments` capability data into `estimate_duration/`, add its change marker
 
-Status: proposed (no issue yet; Repos: pyobs-portal, pyobs-core)
+Status: implemented, closed 2026-09-03 (Repos: pyobs-portal, pyobs-core)
 
 This is the pyobs-portal half (§B) of
 `../../../pyobs-core/specs/plans/2026-09-01-instrument-capability-duration-estimates.md` — that
