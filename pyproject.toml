@@ -24,6 +24,12 @@ dependencies = [
     "whitenoise>=6.8",
 ]
 
+[project.urls]
+Homepage = "https://www.pyobs.org"
+Documentation = "https://docs.pyobs.org"
+Repository = "https://github.com/pyobs/pyobs-portal"
+Issues = "https://github.com/pyobs/pyobs-portal/issues"
+
 [dependency-groups]
 dev = [
     "black>=26.5.1",
