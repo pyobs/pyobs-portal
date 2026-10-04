@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-portal"
-version = "2.5.3"
+version = "2.5.4"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 license = "MIT"
