@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-portal"
-version = "2.5.3"
+version = "2.5.4"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 license = "MIT"
@@ -23,6 +23,12 @@ dependencies = [
     "unicorn>=2.1.4",
     "whitenoise>=6.8",
 ]
+
+[project.urls]
+Homepage = "https://www.pyobs.org"
+Documentation = "https://docs.pyobs.org"
+Repository = "https://github.com/pyobs/pyobs-portal"
+Issues = "https://github.com/pyobs/pyobs-portal/issues"
 
 [dependency-groups]
 dev = [
