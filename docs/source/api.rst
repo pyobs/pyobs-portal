@@ -24,7 +24,9 @@ Core resources
 
 ``GET``/``POST`` ``/api/observations/``, ``GET``/``PATCH`` ``/api/observations/<id>/``
     List (filtered to accessible projects; includes ``archive_url`` when ``ARCHIVE_URL`` is set) /
-    create / retrieve / update observations.
+    create / retrieve / update observations. ``priority`` is the scheduler's ranking value for the slot at
+    planning time (merit times task priority times project priority), or ``null`` if the scheduler did not set
+    one; pyobs-core writes it into the FITS header of the frames of the run.
 
 ``GET`` ``/api/observations/<id>/frames/``
     On-demand frame count / reduction status from pyobs-archive: ``{"archive_url", "count",
