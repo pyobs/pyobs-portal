@@ -62,3 +62,8 @@ migration + serializer changes needed here).
 - `../../pyobs-core/specs/design/shared-authz-keycloak.md` — proposed: centralized authorization
   via Keycloak groups/roles; replaces this repo's per-service `is_active` activation and syncs
   `is_superuser` from a `portal-admin` client role (issue #823).
+- `../../pyobs-core/specs/plans/2026-10-13-fits-header-scheduler-merit.md` — this repo's half: store
+  `Observation.priority` (the scheduler's plan-time ranking value, which every 2.x pyobs-core already
+  sends and this portal dropped) in a nullable column and expose it in the API, so the mastermind can
+  write it as `HIERARCH REQ MERIT` into the FITS header (pyobs-core#962, part 8). **implemented**
+  (Repos: pyobs-core, pyobs-portal)

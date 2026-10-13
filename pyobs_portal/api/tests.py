@@ -164,6 +164,72 @@ class ProjectPublicApiTests(TestCase):
         )
 
 
+class ObservationPriorityApiTests(TestCase):
+    """Observation.priority is the scheduler's ranking value, stored for pyobs-core (pyobs-core#962)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        project = Project.objects.create(code="PUB", name="Public", public=True)
+        self.task = Task.objects.create(
+            code="T1", name="t1", project=project, duration=60, priority=1.0, script={}
+        )
+        self.client = APIClient()
+        self.client.force_authenticate(user=self.admin)
+        now = timezone.now()
+        self.payload = {
+            "task": "T1",
+            "start": now.isoformat(),
+            "end": (now + timedelta(minutes=5)).isoformat(),
+            "state": "pending",
+        }
+
+    def test_post_list_with_priority_stores_and_returns_it(self):
+        res = self.client.post(
+            "/api/observations/",
+            [{**self.payload, "priority": 12.5}, {**self.payload, "priority": 3.0}],
+            format="json",
+        )
+        self.assertEqual(res.status_code, 201)
+        self.assertEqual(
+            sorted(Observation.objects.values_list("priority", flat=True)), [3.0, 12.5]
+        )
+
+        res = self.client.get("/api/observations/")
+        self.assertEqual(sorted(o["priority"] for o in _results(res.data)), [3.0, 12.5])
+
+    def test_post_without_priority_is_null(self):
+        res = self.client.post("/api/observations/", [self.payload], format="json")
+        self.assertEqual(res.status_code, 201)
+        self.assertIsNone(Observation.objects.get().priority)
+        self.assertIsNone(_results(self.client.get("/api/observations/").data)[0]["priority"])
+
+    def test_put_with_new_state_keeps_priority(self):
+        self.client.post(
+            "/api/observations/", [{**self.payload, "priority": 7.0}], format="json"
+        )
+        observation = Observation.objects.get()
+
+        # pyobs-core updates an observation by PUTting the whole model, priority included
+        res = self.client.put(
+            f"/api/observations/{observation.id}/",
+            {**self.payload, "state": "in_progress", "priority": 7.0},
+            format="json",
+        )
+
+        self.assertEqual(res.status_code, 200)
+        observation.refresh_from_db()
+        self.assertEqual(observation.state, "in_progress")
+        self.assertEqual(observation.priority, 7.0)
+
+    def test_existing_rows_have_no_priority(self):
+        now = timezone.now()
+        observation = Observation.objects.create(
+            task=self.task, start=now, end=now, state=ObservationState.PENDING
+        )
+        self.assertIsNone(observation.priority)
+        self.assertIsNone(ObservationSerializer(observation).data["priority"])
+
+
 class TargetSerializerRoundTripTests(SimpleTestCase):
     """Regression tests for the class<->type mapping in TargetSerializer.
 

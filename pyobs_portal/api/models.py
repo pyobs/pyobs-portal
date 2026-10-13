@@ -92,6 +92,9 @@ class Observation(models.Model):
     )
     target = models.JSONField(null=True, blank=True)
     obsnum = models.CharField(max_length=32, null=True, blank=True)
+    # The scheduler's ranking value for this slot at planning time (merit times task priority times project
+    # priority), as sent by pyobs-core's Observation.priority. NULL if the scheduler does not set one.
+    priority = models.FloatField(null=True, blank=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
