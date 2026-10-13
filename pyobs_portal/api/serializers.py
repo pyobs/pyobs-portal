@@ -94,6 +94,7 @@ class ObservationSerializer(serializers.ModelSerializer):
             "state",
             "target",
             "obsnum",
+            "priority",
             "archive_url",
         ]
 
