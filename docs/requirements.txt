@@ -11,6 +11,6 @@ djangorestframework>=3.17.1
 gunicorn>=26.0.0
 psycopg2-binary>=2.9.12
 pyobs-auth>=2.0.0.dev9
-pyobs-core[full]>=2.0.0.dev97
+pyobs-core[full]>=2.14.2
 requests>=2.32.0
 unicorn>=2.1.4
