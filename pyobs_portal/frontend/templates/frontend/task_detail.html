@@ -122,11 +122,11 @@
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Duration (s)</label>
-                <input type="number" step="any" class="form-control form-control-sm" id="field-duration" readonly>
+                <input type="number" step="any" min="0" max="9999" required class="form-control form-control-sm" id="field-duration" readonly>
               </div>
               <div class="col-4">
                 <label class="form-label small text-secondary mb-1">Priority</label>
-                <input type="number" step="any" class="form-control form-control-sm" id="field-priority" disabled>
+                <input type="number" step="any" min="0" max="9999" required class="form-control form-control-sm" id="field-priority" disabled>
               </div>
               <div class="col-4 d-flex align-items-end">
                 <div class="form-check">
@@ -229,10 +229,11 @@
               <th>End (UTC)</th>
               <th>State</th>
               <th>Target</th>
+              <th>Action</th>
             </tr>
           </thead>
           <tbody>
-            <tr><td colspan="4" class="text-muted ps-3">Loading…</td></tr>
+            <tr><td colspan="5" class="text-muted ps-3">Loading…</td></tr>
           </tbody>
         </table>
       </div>

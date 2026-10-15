@@ -3013,7 +3013,7 @@ full = [
 [[package]]
 name = "pyobs-portal"
 version = "2.7.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
     { name = "astroplan" },

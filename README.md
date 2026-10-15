@@ -15,9 +15,13 @@ Backend service for the [pyobs](https://www.pyobs.org) robotic telescope system.
 ## Requirements
 
 - Python ≥ 3.12
-- [pyobs-core](https://github.com/pyobs/pyobs-core) ≥ 1.46.0
+- [pyobs-core](https://github.com/pyobs/pyobs-core) ≥ 2.18.0 (with the `full` extra)
 - PostgreSQL (production) or SQLite (development)
-- A Celery-compatible message broker (e.g. RabbitMQ)
+- A Celery-compatible message broker (e.g. RabbitMQ), or eager mode for local development
+
+Docker, PostgreSQL and RabbitMQ are optional for local use. See the
+[plain-machine setup](docs/source/development.rst) for SQLite and eager Celery,
+including periodic cleanup.
 
 ## Documentation
 

@@ -25,8 +25,26 @@ jobs:
       - name: Run Django system checks
         run: uv run python manage.py check
 
+      - name: Check migrations
+        run: uv run python manage.py makemigrations --check --dry-run
+
       - name: Run tests
         run: uv run python manage.py test
+
+  packaging:
+    name: Build and install public distributions
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python: ["3.12", "3.14"]
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          python-version: ${{ matrix.python }}
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run python scripts/check_packaging.py
 
   frontend-test:
     name: Run frontend unit tests
@@ -46,3 +64,32 @@ jobs:
 
       - name: Run tests
         run: npm test
+
+  postgres-test:
+    name: PostgreSQL regression tests
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:18
+        env:
+          POSTGRES_PASSWORD: portal-test
+          POSTGRES_DB: portal
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready --health-interval 5s
+          --health-timeout 5s --health-retries 10
+    env:
+      SQL_ENGINE: django.db.backends.postgresql
+      SQL_HOST: localhost
+      SQL_PORT: 5432
+      POSTGRES_DB: portal
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: portal-test
+    steps:
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@v10.3.0
+        with:
+          enable-cache: true
+      - run: uv sync --locked
+      - run: uv run python manage.py test pyobs_portal.api.test_issue169

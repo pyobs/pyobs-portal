@@ -85,3 +85,16 @@ to ``pyobs_portal/local_settings.py`` for local overrides, or set the following 
     to back the script builder's module-name dropdowns (see :doc:`architecture`). Unset leaves
     those fields as plain text input.
 
+
+Local and PostgreSQL settings
+*****************************
+
+With ``SQL_ENGINE=django.db.backends.postgresql``, ``POSTGRES_DB``,
+``POSTGRES_USER`` and ``POSTGRES_PASSWORD`` are fallbacks for ``SQL_DATABASE``,
+``SQL_USER`` and ``SQL_PASSWORD`` respectively. Explicit SQL variables win, even
+when empty. SQLite ignores PostgreSQL aliases. ``SQL_HOST``/``SQL_PORT`` are unchanged.
+``DATABASE=postgres`` controls the Docker entrypoint readiness check, not Django's engine.
+
+``CELERY_TASK_ALWAYS_EAGER=1`` executes dispatched tasks inline;
+``CELERY_TASK_EAGER_PROPAGATES=1`` surfaces their exceptions. Both default to 0.
+A periodic scheduler is still required. See :doc:`development` for a complete recipe.
