@@ -1111,3 +1111,67 @@ describe("row layout: two-column for scalars, full-width for structural fields",
     });
   });
 });
+
+
+describe("typed enum choices and display metadata", () => {
+  it.each([16416, 1.5, true, false, "001", ""])("round-trips %j with its original type", value => {
+    const editor = buildControl({ enum: [value], default: value,
+      "x-pyobs-choices": [{ value, label: "Detector α" }] }, {}, undefined, new Set(), {});
+    expect(editor.control.options[0].textContent).toBe("Detector α");
+    expect(editor.getValue()).toBe(value);
+  });
+
+  it("keeps mixed types and duplicate labels distinct", () => {
+    const values = [1, "1", true, "true", "001"];
+    const editor = buildControl({ enum: values, "x-pyobs-choices": values.map(value => ({value, label: "same"})) }, {}, 1, new Set(), {});
+    values.forEach((value, index) => {
+      editor.control.selectedIndex = index;
+      expect(editor.getValue()).toBe(value);
+    });
+  });
+
+  it("falls back for missing, conflicting and malformed metadata without filtering the domain", () => {
+    const editor = buildControl({ enum: [1, 2, 3, 4], "x-pyobs-choices": [
+      {value: true, label: "wrong type"}, {value: 1, label: "A"},
+      {value: 2, label: "B"}, {value: 2, label: "C"},
+      {value: 3, label: 123}, null, {value: 999, label: "outside"}
+    ] }, {}, 4, new Set(), {});
+    expect([...editor.control.options].map(o => o.textContent)).toEqual(["A", "2", "3", "4"]);
+    expect(editor.getValue()).toBe(4);
+  });
+
+  it("escapes labels and retains invalid values", () => {
+    const schema = {enum: [1], "x-pyobs-choices": [{value: 1, label: "<b>Detector</b>"}]};
+    const editor = buildControl(schema, {}, 1, new Set(), {});
+    expect(editor.control.querySelector("b")).toBeNull();
+    expect(editor.control.options[0].textContent).toBe("<b>Detector</b>");
+    expect(buildControl(schema, {}, "1", new Set(), {}).getValue()).toBe("1");
+    expect(buildControl({enum: []}, {}, undefined, new Set(), {}).getValue()).toBeUndefined();
+    editor.control.selectedIndex = -1;
+    expect(editor.getValue()).toBe(1);
+  });
+
+  it("carries nullable/ref metadata and typed constants", () => {
+    const defs = { Code: {type: "integer", enum: [1, 2]} };
+    const schema = {anyOf: [{$ref: "#/$defs/Code"}, {type: "null"}],
+      "x-pyobs-choices": [{value: 1, label: "First"}]};
+    const editor = buildControl(schema, defs, 1, new Set(), {});
+    expect(editor.control.querySelector("option").textContent).toBe("First");
+    expect(editor.getValue()).toBe(1);
+    expect(buildControl(schema, defs, null, new Set(), {}).getValue()).toBeNull();
+    const constant = buildControl({const: 7, type: "integer"}, {}, undefined, new Set(), {});
+    expect(constant.getValue()).toBe(7);
+  });
+
+  it("preserves nested typed selections through serialization and reload", () => {
+    const schema = {type: "object", properties: {main: {$ref: "#/$defs/Main"}}};
+    const defs = {Main: {type: "object", properties: {detector: {type: "integer", enum: [16416, 16417],
+      "x-pyobs-choices": [{value: 16416, label: "Detector A"}, {value: 16417, label: "Detector B"}]}}}};
+    const form = new SchemaForm(schema, defs, {main: {detector: 16416}});
+    form.element.querySelector("select").selectedIndex = 1;
+    const persisted = window.jsyaml.load(window.jsyaml.dump(form.getData()));
+    const restored = new SchemaForm(schema, defs, persisted);
+    expect(restored.getData()).toEqual({main: {detector: 16417}});
+    expect(typeof restored.getData().main.detector).toBe("number");
+  });
+});

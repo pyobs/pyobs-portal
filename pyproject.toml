@@ -1,6 +1,6 @@
 [project]
 name = "pyobs-portal"
-version = "2.6.0"
+version = "2.7.0"
 description = "Backend for pyobs robotic software"
 readme = "README.md"
 license = "MIT"
@@ -18,7 +18,7 @@ dependencies = [
     "gunicorn>=26.0.0",
     "psycopg2-binary>=2.9.12",
     "pyobs-auth>=2.1.0",
-    "pyobs-core>=2.8.0,<3",
+    "pyobs-core[full]>=2.18.0,<3",
     "requests>=2.32.0",
     "unicorn>=2.1.4",
     "whitenoise>=6.8",

@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Entries for releases before this file existed were generated from commit subjects.
 
+## [2.7.0] - 2026-10-15
+
+### Fixed
+
+- Preserve numeric and boolean enum values in schema forms, including nullable and
+  single-value choices; display optional choice labels without changing values (#181).
+
+### Changed
+
+- Require pyobs-core 2.18.0 or newer with the `full` extra for the robotic
+  modules used by the portal, including documentation builds.
+
 ## [2.5.3] - 2026-10-04
 
 - Add MIT LICENSE
