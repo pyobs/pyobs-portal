@@ -345,7 +345,10 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
       return buildDateTimeControl(value);
     }
     if (nonNull.length === 1) {
-      const branch = resolveSchema(nonNull[0], defs);
+      const branch = { ...resolveSchema(nonNull[0], defs) };
+      if (branch["x-pyobs-choices"] === undefined && resolved["x-pyobs-choices"] !== undefined) {
+        branch["x-pyobs-choices"] = resolved["x-pyobs-choices"];
+      }
       // Any nullable field (e.g. InstrumentConfig.window: tuple[...] | None, optical_filter: str |
       // None, or a plain Optional[SomeConfig]) needs its own control: collapsing straight into
       // buildControl(branch) below would lose the null/unset state entirely -- e.g. a brand-new or
@@ -366,6 +369,9 @@ function buildControl(resolved, defs, value, ignored, polymorphic, moduleRefs) {
 
   if (resolved.enum) {
     return buildEnumControl(resolved, value);
+  }
+  if (Object.prototype.hasOwnProperty.call(resolved, "const")) {
+    return buildEnumControl({ ...resolved, enum: [resolved.const] }, value);
   }
 
   if (resolved.format === "date-time") {
@@ -532,25 +538,29 @@ function buildModuleRefControl(marker, value, moduleRefs) {
 }
 
 function buildEnumControl(resolved, value) {
-  // issue #101: a stored value outside the enum would otherwise leave no
-  // <option> selected, so the native <select> silently falls back to its
-  // first option with no indication the value changed. `value` is `null`
-  // for a legitimately unset Optional[...] field (buildControl's anyOf
-  // branch passes it through as-is) -- not a mismatch, so that's excluded.
-  if (value !== undefined && value !== null && !resolved.enum.includes(value)) {
-    return buildInvalidValueFallback(value, "Stored value isn't one of this field's allowed options.");
+  // The JSON Schema domain is authoritative. DOM values are opaque indices;
+  // never return select.value, which would stringify numeric and bool choices.
+  const options = resolved.enum;
+  const initial = value !== undefined ? value : resolved.default;
+  if (initial !== undefined && !options.includes(initial)) {
+    return buildInvalidValueFallback(initial, "Stored value isn't one of this field's allowed options.");
   }
   const select = document.createElement("select");
   select.className = "form-select form-select-sm";
-  for (const opt of resolved.enum) {
+  const metadata = Array.isArray(resolved["x-pyobs-choices"]) ? resolved["x-pyobs-choices"] : [];
+  options.forEach((opt, index) => {
+    const labels = new Set(metadata.filter(record => record && typeof record === "object" &&
+      record.value === opt && typeof record.label === "string").map(record => record.label));
     const o = document.createElement("option");
-    o.value = opt;
-    o.textContent = opt;
-    if (value === opt) o.selected = true;
+    o.value = String(index);
+    o.textContent = labels.size === 1 ? [...labels][0] : String(opt);
+    if (initial === opt) o.selected = true;
     select.appendChild(o);
-  }
-  if (value === undefined && resolved.default !== undefined) select.value = resolved.default;
-  return { control: select, getValue: () => select.value };
+  });
+  return {
+    control: select,
+    getValue: () => select.selectedIndex >= 0 ? options[select.selectedIndex] : initial,
+  };
 }
 
 function buildDateTimeControl(value) {
