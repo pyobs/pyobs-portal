@@ -24,6 +24,9 @@ async function loadProjects() {
       const priorityInput = document.createElement("input");
       priorityInput.type = "number";
       priorityInput.step = "any";
+      priorityInput.min = "0";
+      priorityInput.max = "9999";
+      priorityInput.required = true;
       priorityInput.className = "form-control form-control-sm";
       priorityInput.value = project.priority;
       priorityTd.appendChild(priorityInput);
@@ -53,6 +56,7 @@ async function loadProjects() {
       statusSpan.className = "small ms-2";
 
       saveBtn.addEventListener("click", async () => {
+        if (!priorityInput.reportValidity()) return;
         const payload = {
           code: project.code,
           name: nameInput.value,
@@ -88,10 +92,11 @@ async function loadProjects() {
 
 document.getElementById("btn-add-project").addEventListener("click", async () => {
   const status = document.getElementById("new-project-status");
+  if (!document.getElementById("new-priority").reportValidity()) return;
   const payload = {
     code: document.getElementById("new-code").value,
     name: document.getElementById("new-name").value,
-    priority: Number(document.getElementById("new-priority").value || 1),
+    priority: Number(document.getElementById("new-priority").value),
     public: document.getElementById("new-public").checked,
     users: document
       .getElementById("new-users")

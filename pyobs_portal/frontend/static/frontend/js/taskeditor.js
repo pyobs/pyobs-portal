@@ -808,7 +808,7 @@ async function initTaskEditor(taskId) {
 
   if (taskId) {
     loadObservationTable(taskId, els.schedule, ["pending", "in_progress"], true, 1, { end_after: new Date().toISOString() });
-    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed"], false, 1, {}, siteConfig.archive_enabled);
+    loadObservationTable(taskId, els.observations, ["completed", "aborted", "failed", "canceled", "window_expired"], false, 1, {}, siteConfig.archive_enabled);
   } else {
     document.getElementById("tab-schedule-nav").classList.add("d-none");
     document.getElementById("tab-observations-nav").classList.add("d-none");
@@ -867,6 +867,7 @@ async function initTaskEditor(taskId) {
   });
 
   els.saveBtn.addEventListener("click", async () => {
+    if (!els.priority.reportValidity()) return;
     const payload = buildPayload();
 
     els.saveStatus.textContent = "Saving…";
@@ -906,7 +907,8 @@ const OBS_STATE_BADGE = {
 };
 
 async function loadObservationTable(taskId, tableEl, states, ascending, page = 1, extraParams = {}, showData = false) {
-  const colspan = showData ? 5 : 4;
+  const showCancel = states.includes("pending");
+  const colspan = 4 + Number(showData) + Number(showCancel);
   const tbody = tableEl.querySelector("tbody");
   tbody.innerHTML = `<tr><td colspan="${colspan}" class="text-muted ps-3">Loading…</td></tr>`;
 
@@ -933,8 +935,23 @@ async function loadObservationTable(taskId, tableEl, states, ascending, page = 1
           <td><span class="badge ${badge}">${obs.state}</span></td>
           <td>${obs.target ? (obs.target.name || "") : ""}</td>
           ${showData ? `<td>${renderDataCell(obs)}</td>` : ""}
+          ${showCancel ? `<td>${obs.state === "pending" ? '<button type="button" class="btn btn-sm btn-outline-danger cancel-observation">Cancel</button>' : ""}</td>` : ""}
         `;
         tbody.appendChild(tr);
+        tr.querySelector(".cancel-observation")?.addEventListener("click", async (event) => {
+          if (!window.confirm(`Cancel observation starting ${formatUTCDateTime(obs.start)}? The task may be scheduled again while active.`)) return;
+          const button = event.currentTarget;
+          button.disabled = true;
+          try {
+            await apiRequest(`observations/${obs.id}/cancel/`, { method: "POST" });
+          } catch (error) {
+            window.alert(error.message);
+          } finally {
+            await loadObservationTable(taskId, tableEl, states, ascending, 1, extraParams, showData);
+            const history = document.getElementById("observations-table");
+            if (history) await loadObservationTable(taskId, history, ["completed", "aborted", "failed", "canceled", "window_expired"], false, 1, {}, !document.getElementById("observations-data-th").classList.contains("d-none"));
+          }
+        });
         if (showData && obs.archive_url) {
           tr.querySelector(".data-status-btn")?.addEventListener("click", (e) =>
             checkDataStatus(obs.id, e.target)

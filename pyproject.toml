@@ -38,3 +38,17 @@ dev = [
     "Sphinx",
     "sphinx-rtd-theme",
 ]
+
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pyobs_portal*"]
+namespaces = false
+
+[tool.setuptools.package-data]
+"*" = ["templates/**/*", "static/**/*"]
+
+[tool.setuptools.exclude-package-data]
+"*" = ["local_settings.py", "*.sqlite3", "__pycache__/*"]

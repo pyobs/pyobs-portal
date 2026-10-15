@@ -61,3 +61,12 @@ The same task as live-validated YAML:
 
 All data is fetched client-side from the same ``/api/`` endpoints (see :doc:`api`) that
 `pyobs-task-editor <https://github.com/pyobs/pyobs-task-editor>`_ uses.
+
+Cancel pending observations
+***************************
+
+The task Schedule tab offers a confirmed Cancel action on pending slots. This
+records canceled history; it does not stop an exposure or deactivate the task. An
+active task may be scheduled again. Deactivate the task to stop future scheduling.
+Canceled and window-expired slots appear in Observations until normal retention
+cleanup. Task/project priority inputs accept finite values in [0, 9999], including zero.
