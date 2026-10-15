@@ -246,7 +246,7 @@ class ObservationDataStatus(APIView):
 class CancelObservation(APIView):
     permission_classes = [IsAuthenticated]
 
-    def post(self, request, pk):
+    def post(self, request, pk, format=None):
         queryset = Observation.objects.all()
         if not request.user.is_superuser:
             queryset = queryset.filter(

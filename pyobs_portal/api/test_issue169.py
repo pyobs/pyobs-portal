@@ -206,6 +206,10 @@ class CancelObservationTests(TestCase):
     def test_cancel_idempotency_and_marker(self):
         previous = self.obs.updated_at
         self.assertEqual(self.client.get(self.url).status_code, 405)
+        self.assertEqual(self.client.head(self.url).status_code, 405)
+        self.assertEqual(
+            self.client.post(self.url.rstrip("/") + ".json").status_code, 200
+        )
         self.assertEqual(self.client.post(self.url).status_code, 200)
         self.obs.refresh_from_db()
         self.assertEqual(self.obs.state, "canceled")

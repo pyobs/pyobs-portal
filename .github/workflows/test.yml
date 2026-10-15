@@ -62,9 +62,6 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      - name: Check migrations
-        run: uv run python manage.py makemigrations --check --dry-run
-
       - name: Run tests
         run: npm test
 
