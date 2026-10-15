@@ -1779,3 +1779,33 @@ class EstimateDurationDegradesGracefullyTests(TestCase):
         }
         result = schema_module.estimate_duration(payload)
         self.assertIn("duration", result, result)
+
+
+class TypedChoiceSchemaTests(SimpleTestCase):
+    def test_nested_choice_metadata_and_validation(self):
+        from typing import Literal
+        from pydantic import Field, ValidationError
+
+        class Configuration(BaseModel):
+            detector: Literal[16416, 16417] = Field(
+                default=16416,
+                json_schema_extra={
+                    "x-pyobs-choices": [{"value": 16416, "label": "Detector α"}]
+                },
+            )
+
+        class ObservationScript(BaseModel):
+            configuration: Configuration
+
+        schema = schema_module._schema_for(ObservationScript)
+        field = schema["$defs"]["Configuration"]["properties"]["detector"]
+        self.assertEqual(field["enum"], [16416, 16417])
+        self.assertEqual(
+            field["x-pyobs-choices"], [{"value": 16416, "label": "Detector α"}]
+        )
+        restored = ObservationScript.model_validate_json(
+            '{"configuration":{"detector":16417}}'
+        )
+        self.assertIs(type(restored.configuration.detector), int)
+        with self.assertRaises(ValidationError):
+            ObservationScript.model_validate({"configuration": {"detector": "16417"}})

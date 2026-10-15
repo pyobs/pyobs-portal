@@ -67,3 +67,6 @@ migration + serializer changes needed here).
   sends and this portal dropped) in a nullable column and expose it in the API, so the mastermind can
   write it as `HIERARCH REQ MERIT` into the FITS header (pyobs-core#962, part 8). **implemented**
   (Repos: pyobs-core, pyobs-portal)
+
+- [plans/2026-10-14-typed-config-choices.md](plans/2026-10-14-typed-config-choices.md) — **implemented; release pending** (related pyobs-gui#211).
+  Preserve JSON Schema enum types through DOM forms and show shared choice labels.
