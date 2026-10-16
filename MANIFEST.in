@@ -1,0 +1,5 @@
+include README.md LICENSE manage.py
+recursive-include pyobs_portal *.html *.js *.css *.svg *.png *.jpg *.ico *.woff *.woff2
+exclude pyobs_portal/local_settings.py
+global-exclude *.py[cod] *.sqlite3
+global-exclude __pycache__

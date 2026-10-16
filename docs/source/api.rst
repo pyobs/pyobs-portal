@@ -74,3 +74,17 @@ Introspection and helpers
 
 ``GET`` ``/api/merit_plot/``
     Merit-function plot data for the task editor's duration/merit visualization.
+
+Cancel one observation
+**********************
+
+``POST /api/observations/<id>/cancel/`` cancels an accessible pending observation
+and returns its serialized representation. Authentication and the existing project
+access rules apply; missing/inaccessible IDs return 404. Session requests require
+CSRF. An already-canceled observation returns 200 without changing its timestamp;
+other states return 409 with the current state. GET is not supported. The legacy
+bulk cancellation endpoint remains compatible with existing schedulers.
+
+Task/project priorities accept finite numbers from 0 through 9999, inclusive.
+Invalid values return field-specific 400 errors. Computed observation priorities
+are not limited to this range.

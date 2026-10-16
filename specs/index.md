@@ -70,3 +70,5 @@ migration + serializer changes needed here).
 
 - [plans/2026-10-14-typed-config-choices.md](plans/2026-10-14-typed-config-choices.md) — **implemented; release pending** (related pyobs-gui#211).
   Preserve JSON Schema enum types through DOM forms and show shared choice labels.
+
+- [plans/2026-10-15-portal-issue-169.md](plans/2026-10-15-portal-issue-169.md) — implementation of #169: local setup, packaging, bounded priorities and pending-observation cancellation.

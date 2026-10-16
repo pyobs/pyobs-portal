@@ -1,8 +1,13 @@
-from django.contrib.auth.models import User
-from django.db import models
 import logging
 
+from django.contrib.auth.models import User
+from django.db import models
+from django.core.validators import MinValueValidator, MaxValueValidator
+from .validators import validate_finite
+
 from pyobs.robotic.observation import ObservationState
+
+PRIORITY_VALIDATORS = [validate_finite, MinValueValidator(0), MaxValueValidator(9999)]
 
 log = logging.getLogger(__name__)
 
@@ -10,7 +15,7 @@ log = logging.getLogger(__name__)
 class Project(models.Model):
     code = models.CharField(max_length=10, primary_key=True)
     name = models.CharField(max_length=30)
-    priority = models.FloatField(default=1.0)
+    priority = models.FloatField(default=1.0, validators=PRIORITY_VALIDATORS)
     users = models.ManyToManyField(User, related_name="projects", blank=True)
     public = models.BooleanField(
         default=False,
@@ -25,6 +30,12 @@ class Project(models.Model):
 
     class Meta:
         ordering = ["code"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(priority__gte=0, priority__lte=9999),
+                name="project_priority_range",
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.code})"
@@ -35,13 +46,19 @@ class Task(models.Model):
     name = models.CharField(max_length=30)
     project = models.ForeignKey(Project, related_name="tasks", on_delete=models.CASCADE)
     duration = models.FloatField()
-    priority = models.FloatField()
+    priority = models.FloatField(validators=PRIORITY_VALIDATORS)
     script = models.JSONField()
     active = models.BooleanField(default=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["code"]
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(priority__gte=0, priority__lte=9999),
+                name="task_priority_range",
+            )
+        ]
 
     def __str__(self):
         return f"{self.name} ({self.code})"

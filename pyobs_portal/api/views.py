@@ -243,6 +243,34 @@ class ObservationDataStatus(APIView):
         return response
 
 
+class CancelObservation(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, pk, format=None):
+        queryset = Observation.objects.all()
+        if not request.user.is_superuser:
+            queryset = queryset.filter(
+                task__project__in=Project.objects.filter(
+                    accessible_projects_q(request.user)
+                )
+            )
+        # Authorization stays in the UPDATE; a worker starting the slot wins safely.
+        get_object_or_404(queryset, pk=pk)
+        queryset.filter(pk=pk, state=ObservationState.PENDING).update(
+            state=ObservationState.CANCELED, updated_at=timezone.now()
+        )
+        observation = get_object_or_404(queryset, pk=pk)
+        if observation.state != ObservationState.CANCELED:
+            return Response(
+                {
+                    "detail": "Only pending observations can be canceled.",
+                    "state": observation.state,
+                },
+                status=409,
+            )
+        return Response(ObservationSerializer(observation).data)
+
+
 @permission_classes([IsAuthenticated])
 class CancelObservations(APIView):
     def get(self, request, format=None):
@@ -407,7 +435,9 @@ def observability(request):
 
     if lat is None or lon is None:
         return Response(
-            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            {
+                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
+            },
             status=400,
         )
 
@@ -415,7 +445,9 @@ def observability(request):
         ra = float(request.query_params["ra"])
         dec = float(request.query_params["dec"])
     except (KeyError, ValueError):
-        return Response({"error": "ra and dec query parameters are required (degrees)."}, status=400)
+        return Response(
+            {"error": "ra and dec query parameters are required (degrees)."}, status=400
+        )
 
     try:
         night = night_data(ra, dec, lat, lon, elev)
@@ -446,7 +478,9 @@ def merit_plot(request):
 
     if lat is None or lon is None:
         return Response(
-            {"error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."},
+            {
+                "error": "Observatory site coordinates not configured (SITE_LATITUDE / SITE_LONGITUDE)."
+            },
             status=400,
         )
 

@@ -71,3 +71,5 @@ extension package's scripts/providers get picked up automatically once installed
 
 See :doc:`configuration` for every setting ``.env`` can carry, and :doc:`development` for running
 it locally without Docker.
+
+For a local setup without Docker, PostgreSQL or RabbitMQ, see :doc:`development`.

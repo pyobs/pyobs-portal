@@ -128,12 +128,22 @@ WSGI_APPLICATION = "pyobs_portal.wsgi.application"
 # Database
 # https://docs.djangoproject.com/en/6.0/ref/settings/#databases
 
+_database_engine = os.environ.get("SQL_ENGINE", "django.db.backends.sqlite3")
+_postgres = _database_engine == "django.db.backends.postgresql"
+
+
+def _database_value(sql_name, postgres_name, default):
+    return os.environ.get(
+        sql_name, os.environ.get(postgres_name, default) if _postgres else default
+    )
+
+
 DATABASES = {
     "default": {
-        "ENGINE": os.environ.get("SQL_ENGINE", "django.db.backends.sqlite3"),
-        "NAME": os.environ.get("SQL_DATABASE", BASE_DIR / "db.sqlite3"),
-        "USER": os.environ.get("SQL_USER", "user"),
-        "PASSWORD": os.environ.get("SQL_PASSWORD", "password"),
+        "ENGINE": _database_engine,
+        "NAME": _database_value("SQL_DATABASE", "POSTGRES_DB", BASE_DIR / "db.sqlite3"),
+        "USER": _database_value("SQL_USER", "POSTGRES_USER", "user"),
+        "PASSWORD": _database_value("SQL_PASSWORD", "POSTGRES_PASSWORD", "password"),
         "HOST": os.environ.get("SQL_HOST", "localhost"),
         "PORT": os.environ.get("SQL_PORT", "5432"),
     }
@@ -220,6 +230,10 @@ CACHES = {
 CELERY_BROKER_URL = os.environ.get("CELERY_BROKER_URL", "amqp://")
 CELERY_RESULT_BACKEND = os.environ.get("CELERY_RESULT_BACKEND", "rpc://")
 CELERY_TIMEZONE = "UTC"
+CELERY_TASK_ALWAYS_EAGER = os.environ.get("CELERY_TASK_ALWAYS_EAGER", "0") == "1"
+CELERY_TASK_EAGER_PROPAGATES = (
+    os.environ.get("CELERY_TASK_EAGER_PROPAGATES", "0") == "1"
+)
 CELERY_TASK_QUEUES = {
     "celery": {
         "exchange": "celery",
