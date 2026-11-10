@@ -50,10 +50,12 @@ jobs:
         if: ${{ env.DEPLOY_TRIGGERS != '' }}
         env:
           DEPLOY_TRIGGERS: ${{ secrets.DEPLOY_TRIGGERS }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.ref_name }}
         run: |
           while IFS= read -r target; do
             curl -sf -X POST \
               -F token="$(jq -r '.token' <<<"$target")" \
               -F ref=master \
+              -F "variables[PORTAL_VERSION]=${RELEASE_TAG}" \
               "$(jq -r '.url' <<<"$target")"
           done < <(jq -c '.[]' <<<"$DEPLOY_TRIGGERS")
