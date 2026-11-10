@@ -1,0 +1,116 @@
+name: Bump pyobs-core
+
+# Fired by pyobs-core's pypi.yml after a tagged release is on PyPI.
+# Job 1 raises the floor, relocks, tests and pushes to develop.
+# Job 2 (needs approval in the "release" environment) cuts a patch release.
+on:
+  repository_dispatch:
+    types: [pyobs-core-release]
+  workflow_dispatch:
+    inputs:
+      version:
+        description: pyobs-core version (e.g. 2.24.0)
+        required: true
+
+concurrency:
+  group: core-release
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  bump:
+    name: Raise pyobs-core floor and relock
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.push.outputs.changed }}
+    env:
+      VERSION: ${{ github.event.client_payload.version || inputs.version }}
+    steps:
+      # RELEASE_TOKEN (admin PAT): pushes bypass develop's required checks and trigger Tests.
+      - uses: actions/checkout@v7
+        with:
+          ref: develop
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v10.3.3
+        with:
+          enable-cache: true
+
+      - name: Validate version
+        run: |
+          VERSION="${VERSION#v}"
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "bad version: $VERSION"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+
+      - name: Raise floor and relock
+        run: |
+          sed -i -E "s/\"pyobs-core\[full\]>=[0-9.]+,<3\"/\"pyobs-core[full]>=${VERSION},<3\"/" pyproject.toml
+          grep -q "pyobs-core\[full\]>=${VERSION},<3" pyproject.toml
+          uv lock --upgrade-package pyobs-core
+
+      - name: Run tests
+        run: |
+          uv sync --locked
+          uv run python manage.py check
+          uv run python manage.py makemigrations --check --dry-run
+          uv run python manage.py test
+
+      - name: Commit and push to develop
+        id: push
+        run: |
+          if git diff --quiet; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "chore(deps): require pyobs-core>=${VERSION}"
+          git push origin develop
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    name: Cut patch release
+    needs: bump
+    if: needs.bump.outputs.changed == 'true'
+    runs-on: ubuntu-latest
+    # Required reviewer on this environment = manual approval gate.
+    environment: release
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: develop
+          fetch-depth: 0
+          token: ${{ secrets.RELEASE_TOKEN }}
+
+      - uses: astral-sh/setup-uv@v10.3.3
+
+      - name: Bump version and push develop
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          uv version --bump patch
+          NEW="$(uv version --short)"
+          echo "NEW=$NEW" >> "$GITHUB_ENV"
+          git commit -am "v${NEW}"
+          git push origin develop
+
+      - name: Merge develop into main
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: |
+          PR="$(gh pr create --base main --head develop --title "v${NEW}" --body "Automated release of v${NEW}")"
+          gh pr merge "$PR" --merge
+
+      - name: Tag and release
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+        run: gh release create "v${NEW}" --target main --title "v${NEW}" --generate-notes
+
+      - name: Merge main back into develop
+        run: |
+          git fetch origin main develop
+          git checkout develop
+          git merge --no-edit origin/main
+          git push origin develop
