@@ -2,7 +2,7 @@ name: Bump pyobs-core
 
 # Fired by pyobs-core's pypi.yml after a tagged release is on PyPI.
 # Job 1 raises the floor, relocks, tests and pushes to develop.
-# Job 2 (needs approval in the "release" environment) cuts a patch release.
+# Job 2 waits for CI on the bump commit, then cuts a patch release.
 on:
   repository_dispatch:
     types: [pyobs-core-release]
@@ -25,6 +25,7 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.push.outputs.changed }}
+      sha: ${{ steps.push.outputs.sha }}
     env:
       VERSION: ${{ github.event.client_payload.version || inputs.version }}
     steps:
@@ -69,15 +70,33 @@ jobs:
           git commit -am "chore(deps): require pyobs-core>=${VERSION}"
           git push origin develop
           echo "changed=true" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
 
   release:
     name: Cut patch release
     needs: bump
     if: needs.bump.outputs.changed == 'true'
     runs-on: ubuntu-latest
-    # Required reviewer on this environment = manual approval gate.
-    environment: release
     steps:
+      - name: Wait for CI on the bump commit
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
+          SHA: ${{ needs.bump.outputs.sha }}
+        run: |
+          for i in $(seq 1 90); do
+            json="$(gh api "repos/${GITHUB_REPOSITORY}/commits/${SHA}/check-runs" --jq '[.check_runs[]|{name,status,conclusion}]')"
+            all_ok=true
+            for n in "Run Django test suite" "Run frontend unit tests"; do
+              state="$(jq -r --arg n "$n" '[.[]|select(.name==$n)] | if length==0 then "pending" elif any(.[]; .status!="completed") then "pending" elif all(.[]; .conclusion=="success") then "ok" else "fail" end' <<<"$json")"
+              echo "$n: $state"
+              [ "$state" = "fail" ] && { echo "CI failed, not releasing"; exit 1; }
+              [ "$state" = "ok" ] || all_ok=false
+            done
+            $all_ok && exit 0
+            sleep 20
+          done
+          echo "timed out waiting for CI"; exit 1
+
       - uses: actions/checkout@v7
         with:
           ref: develop
