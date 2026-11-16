@@ -2958,7 +2958,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.23.3"
+version = "2.26.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2977,9 +2977,9 @@ dependencies = [
     { name = "slixmpp" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/79/69/61310742af32f35764a9cbee390f56956935e696d20730d6cf59763c8d8b/pyobs_core-2.23.3.tar.gz", hash = "sha256:d0b5f83895088a71466bbb4e4b7337a865794d23333420d7243c5364bf306d03", size = 463703, upload-time = "2026-11-10T10:45:26.233Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/14/03/f09b0c3a7653206cd2993dd3efbb62ae0730c717740570362f6e2a4416e0/pyobs_core-2.26.0.tar.gz", hash = "sha256:73bee3e3e35fed1785f2ae58d6d5cec3913f022d3dd74f8af3b83c25e2aecc93", size = 469257, upload-time = "2026-11-16T09:43:38.778Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/0b/5a/b1aa6d22b8ae3dc0c3b8f65cf7420948d2513b1a33dce809ac7c7a848379/pyobs_core-2.23.3-py3-none-any.whl", hash = "sha256:1688b7409bfeee07ad538699fde7fff52a36e73221ae35322c9878cb5868f082", size = 704930, upload-time = "2026-11-10T10:45:24.39Z" },
+    { url = "https://files.pythonhosted.org/packages/23/2c/4cc5d301f4517eb6fd91cba5082318c5ba8e0095398f71b7a264c7f933c4/pyobs_core-2.26.0-py3-none-any.whl", hash = "sha256:c194df5ec65b768a4373b433aa3a23977505299a03fb9fc9972af2a5a33ea501", size = 712265, upload-time = "2026-11-16T09:43:36.908Z" },
 ]
 
 [package.optional-dependencies]
@@ -3056,7 +3056,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.1.0" },
-    { name = "pyobs-core", extras = ["full"], specifier = ">=2.23.3,<3" },
+    { name = "pyobs-core", extras = ["full"], specifier = ">=2.26.0,<3" },
     { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
     { name = "whitenoise", specifier = ">=6.8" },
