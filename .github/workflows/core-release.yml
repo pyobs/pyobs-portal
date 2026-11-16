@@ -49,7 +49,15 @@ jobs:
         run: |
           sed -i -E "s/\"pyobs-core\[full\]>=[0-9.]+,<3\"/\"pyobs-core[full]>=${VERSION},<3\"/" pyproject.toml
           grep -q "pyobs-core\[full\]>=${VERSION},<3" pyproject.toml
-          uv lock --upgrade-package pyobs-core
+          # The dispatch can arrive before PyPI/the index serves the new release, so retry.
+          for i in $(seq 1 30); do
+            if uv lock --refresh --upgrade-package pyobs-core; then
+              exit 0
+            fi
+            echo "pyobs-core ${VERSION} not resolvable yet (attempt $i/30), retrying in 20s"
+            sleep 20
+          done
+          echo "pyobs-core ${VERSION} never became available"; exit 1
 
       - name: Run tests
         run: |
