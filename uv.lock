@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.12"
 resolution-markers = [
     "python_full_version >= '3.15' and sys_platform == 'win32'",
@@ -2958,7 +2958,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.28.1"
+version = "2.28.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2977,9 +2977,9 @@ dependencies = [
     { name = "slixmpp" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a7/1d/67d01d3533ce1f86c90a7cc63d03c95e091760cf9bc9fbd1bf70b8f245e3/pyobs_core-2.28.1.tar.gz", hash = "sha256:99b6a10f89cf80ba71cb9d484f27e2a5585315db0f84f3e764d8dca5e7ffe639", size = 471411, upload-time = "2026-11-18T08:46:29.036Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/73/ae/afd963c2fb6b5027656e1e06b829d3dd69afe5c3f5c6c0f08b611d0025ef/pyobs_core-2.28.2.tar.gz", hash = "sha256:2a47d676f399ccd9942c2736ff8e76e4acc3fd744aec7dfa2b4db413dccd4fd8", size = 471506, upload-time = "2026-11-18T09:31:35.937Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/35/f5/878323eb3d257ccaca56eb39bb56204b249d1445a77aa25b0699876dfddb/pyobs_core-2.28.1-py3-none-any.whl", hash = "sha256:b986fb02505ce7d01b1b8c8e7662e7aa7faee421ece48f97011a25e017669936", size = 715257, upload-time = "2026-11-18T08:46:27.134Z" },
+    { url = "https://files.pythonhosted.org/packages/d7/33/041d9aff385dba79e34846fb0175033342a623d3cbf8b8146f65a824b7d1/pyobs_core-2.28.2-py3-none-any.whl", hash = "sha256:19b6d5017ae5de2ebfc634aa75356059ac14190255172590ba30bb2248ff70ab", size = 715403, upload-time = "2026-11-18T09:31:34.04Z" },
 ]
 
 [package.optional-dependencies]
@@ -3012,7 +3012,7 @@ full = [
 
 [[package]]
 name = "pyobs-portal"
-version = "2.7.9"
+version = "2.7.10"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -3056,7 +3056,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.1.0" },
-    { name = "pyobs-core", extras = ["full"], specifier = ">=2.28.1,<3" },
+    { name = "pyobs-core", extras = ["full"], specifier = ">=2.28.2,<3" },
     { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
     { name = "whitenoise", specifier = ">=6.8" },
@@ -3540,8 +3540,8 @@ name = "secretstorage"
 version = "3.5.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "cryptography" },
-    { name = "jeepney" },
+    { name = "cryptography", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
+    { name = "jeepney", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/1c/03/e834bcd866f2f8a49a85eaff47340affa3bfa391ee9912a952a1faa68c7b/secretstorage-3.5.0.tar.gz", hash = "sha256:f04b8e4689cbce351744d5537bf6b1329c6fc68f91fa666f60a380edddcd11be", size = 19884, upload-time = "2025-11-23T19:02:53.191Z" }
 wheels = [
@@ -3553,7 +3553,7 @@ name = "sep"
 version = "1.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "numpy" },
+    { name = "numpy", marker = "sys_platform != 'emscripten' and sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/a5/34/14537815638e3878209ad14aa51099a5ec73aca7ef517ad49b2b85072241/sep-1.4.1.tar.gz", hash = "sha256:a0c8324ab66ee716080472cb212e4303e6c3e33b0d43763075b20d4cab793b25", size = 569714, upload-time = "2025-02-18T15:01:17.517Z" }
 wheels = [
