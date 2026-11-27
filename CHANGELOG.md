@@ -9,6 +9,8 @@ Entries for releases before this file existed were generated from commit subject
 
 ## [Unreleased]
 
+## [2.8.0] - 2026-11-27
+
 ### Added
 
 - Restricted users (#198): with `RESTRICTIONS_ENABLED`, everyone except superusers and the
