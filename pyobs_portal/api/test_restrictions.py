@@ -2,6 +2,7 @@
 
 import importlib
 import logging
+import unittest
 
 import astropy.units as u
 from django.apps import apps as django_apps
@@ -401,3 +402,71 @@ class StripDirectionMigrationTests(TestCase):
         self.assertEqual(other.params, {"merit": 1.0})
         self.assertEqual(len(logs.records), 1)
         self.assertIn("rising", logs.output[0])
+
+
+class _OptionalLimits:
+    """Stand-in for a constraint with optional limits (None = no limit)."""
+
+    def __init__(self, min_value=None, max_value=None):
+        self.min_value = min_value
+        self.max_value = max_value
+
+    @staticmethod
+    def stricter_fields():
+        return {"min_value": "higher", "max_value": "lower"}
+
+
+class OptionalLimitTests(SimpleTestCase):
+    """None in a stricter field means "no limit" (optional SolarElevationConstraint sides)."""
+
+    def looser(self, submitted, glob):
+        return restrictions._looser("X", submitted, glob)
+
+    def test_submitted_none_is_looser_than_a_bound(self):
+        errors = self.looser(_OptionalLimits(max_value=None), _OptionalLimits(max_value=-18))
+        self.assertEqual(len(errors), 1)
+        self.assertIn("X.max_value=no limit is looser", errors[0])
+        self.assertEqual(len(self.looser(_OptionalLimits(min_value=None), _OptionalLimits(min_value=10))), 1)
+
+    def test_global_none_accepts_anything(self):
+        self.assertEqual(self.looser(_OptionalLimits(min_value=None), _OptionalLimits(min_value=None)), [])
+        self.assertEqual(self.looser(_OptionalLimits(min_value=-50), _OptionalLimits(min_value=None)), [])
+
+    def test_both_set_still_compared(self):
+        self.assertEqual(self.looser(_OptionalLimits(max_value=-20), _OptionalLimits(max_value=-18)), [])
+        self.assertEqual(len(self.looser(_OptionalLimits(max_value=-10), _OptionalLimits(max_value=-18))), 1)
+
+    def test_bounds_text_skips_unlimited(self):
+        self.assertEqual(restrictions._bounds_text(_OptionalLimits(max_value=-18)), "max_value <= -18")
+
+
+def _solar_limits_optional():
+    from pyobs.robotic.scheduler.constraints import SolarElevationConstraint
+
+    try:
+        return SolarElevationConstraint(max_elevation=None).max_elevation is None
+    except Exception:
+        return False
+
+
+@unittest.skipUnless(_solar_limits_optional(), "pyobs-core without optional SolarElevationConstraint limits")
+@override_settings(**RESTRICTED)
+class OptionalSolarLimitTests(SimpleTestCase):
+    """Real SolarElevationConstraint with None limits (pyobs-core#1129)."""
+
+    def test_global_min_minus_90_is_no_limit(self):
+        # GLOBALS has min_elevation=-90, normalised to None by core: any submitted min passes.
+        c = ok_constraints()
+        c[1] = {"class": C + "SolarElevationConstraint", "max_elevation": -18}
+        self.assertEqual(restrictions.check_constraints(c), [])
+
+    def test_submitted_without_max_is_rejected(self):
+        c = ok_constraints()
+        c[1] = {"class": C + "SolarElevationConstraint", "max_elevation": None}
+        errors = restrictions.check_constraints(c)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("max_elevation=no limit is looser", errors[0])
+
+    def test_missing_text_omits_unlimited_side(self):
+        errors = restrictions.check_constraints([dict(GLOBALS[0]), dict(GLOBALS[2])])
+        self.assertIn("Missing required constraint SolarElevationConstraint (max_elevation <= -18)", errors[0])

@@ -79,6 +79,8 @@ def global_constraints() -> list[tuple[str, Constraint]]:
 
 
 def _fmt(value: Any) -> str:
+    if value is None:
+        return "no limit"
     isot = getattr(value, "isot", None)
     if isot is not None:
         return str(isot)
@@ -89,6 +91,7 @@ def _bounds_text(model: Constraint) -> str:
     return ", ".join(
         f"{field} {'<=' if direction == 'lower' else '>='} {_fmt(getattr(model, field))}"
         for field, direction in model.stricter_fields().items()
+        if getattr(model, field) is not None
     )
 
 
@@ -96,7 +99,11 @@ def _looser(typ: str, submitted: Constraint, glob: Constraint) -> list[str]:
     errors = []
     for field, direction in glob.stricter_fields().items():
         value, bound = getattr(submitted, field), getattr(glob, field)
-        ok = value <= bound if direction == "lower" else value >= bound
+        # None means "no limit" (e.g. an optional SolarElevationConstraint side): a global without
+        # a limit on this field accepts anything, a submitted "no limit" is looser than any bound.
+        if bound is None:
+            continue
+        ok = value is not None and (value <= bound if direction == "lower" else value >= bound)
         if not ok:
             op = "<=" if direction == "lower" else ">="
             errors.append(
