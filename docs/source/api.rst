@@ -43,7 +43,7 @@ Introspection and helpers
 ****************************
 
 ``GET`` ``/api/me/``
-    Current user info.
+    Current user info, including ``restricted`` (see :doc:`configuration`).
 
 ``GET`` ``/api/last_task_update/``, ``GET`` ``/api/last_observation_update/``
     Timestamp of the last change, for the frontend's polling.
@@ -67,7 +67,9 @@ Introspection and helpers
     Estimate a script's duration in seconds.
 
 ``GET`` ``/api/site/``
-    Observatory location (``SITE_LATITUDE``/``SITE_LONGITUDE``/``SITE_ELEVATION``).
+    Observatory location (``SITE_LATITUDE``/``SITE_LONGITUDE``/``SITE_ELEVATION``), default
+    constraints/merits and ``restrictions``: ``null`` for unrestricted users, otherwise
+    ``{"global_constraints", "constraint_rules", "merit_rules", "max_priority"}``.
 
 ``GET`` ``/api/observability/``
     Target-observability check against site/constraints.
@@ -84,6 +86,15 @@ access rules apply; missing/inaccessible IDs return 404. Session requests requir
 CSRF. An already-canceled observation returns 200 without changing its timestamp;
 other states return 409 with the current state. GET is not supported. The legacy
 bulk cancellation endpoint remains compatible with existing schedulers.
+
+Errors for restricted users
+***************************
+
+For restricted users (see :doc:`configuration`), task writes that break the rules return 400 with
+messages per field, e.g.
+``{"constraints": ["AirmassConstraint.max_airmass=2.5 is looser than the global limit (must be <= 2)."],
+"target": ["A target is required for your account."]}``. ``/api/merit_plot/`` checks constraints
+and merits the same way, and the schema endpoints only list allowed types.
 
 Task/project priorities accept finite numbers from 0 through 9999, inclusive.
 Invalid values return field-specific 400 errors. Computed observation priorities

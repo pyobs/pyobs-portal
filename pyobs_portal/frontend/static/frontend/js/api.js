@@ -29,13 +29,17 @@ async function apiRequest(path, options = {}) {
 
   if (!resp.ok) {
     let detail = resp.statusText;
+    let data;
     try {
-      const data = await resp.json();
+      data = await resp.json();
       detail = JSON.stringify(data);
     } catch (_) {
       /* ignore */
     }
-    throw new Error(`${resp.status} ${detail}`);
+    const error = new Error(`${resp.status} ${detail}`);
+    error.status = resp.status;
+    error.data = data;
+    throw error;
   }
   if (resp.status === 204) return null;
   const text = await resp.text();
