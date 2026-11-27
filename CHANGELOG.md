@@ -9,6 +9,14 @@ Entries for releases before this file existed were generated from commit subject
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-11-27
+
+### Fixed
+
+- Restricted users: a constraint limit of `None` ("no limit", e.g. the optional sides of
+  `SolarElevationConstraint` from pyobs-core#1129) no longer causes a 500. A global without a limit
+  accepts any value; a submitted "no limit" is looser than any global bound.
+
 ## [2.8.0] - 2026-11-27
 
 ### Added
