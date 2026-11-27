@@ -9,6 +9,8 @@ Entries for releases before this file existed were generated from commit subject
 
 ## [Unreleased]
 
+## [2.8.1] - 2026-11-27
+
 ### Fixed
 
 - Restricted users: a constraint limit of `None` ("no limit", e.g. the optional sides of
