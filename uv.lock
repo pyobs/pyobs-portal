@@ -2958,7 +2958,7 @@ wheels = [
 
 [[package]]
 name = "pyobs-core"
-version = "2.30.0"
+version = "2.30.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "aiohttp" },
@@ -2977,9 +2977,9 @@ dependencies = [
     { name = "slixmpp" },
     { name = "typing-extensions" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/c6/df/7ca59608c43f0e91858298a03562ba843b58b320117e0ea500c2ed7e32f5/pyobs_core-2.30.0.tar.gz", hash = "sha256:0eabdbab9df473672a9e6d7ee9a78885b17481a90c83881e6646014745f7da56", size = 493112, upload-time = "2026-11-26T16:58:59.491Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/3c/be/1a6046758063e4636123db9151469a9dfd20f8551380bc617142ef948803/pyobs_core-2.30.2.tar.gz", hash = "sha256:d8cf30fff1f4b61e839f9d45f9ee49d3581b219aa42997ac21893bdb4e15c14e", size = 494109, upload-time = "2026-11-27T10:30:21.768Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/33/2b/03db98bba31e8f15adff36c4bad848ed1eaf38bb268931b7c9e7d8438226/pyobs_core-2.30.0-py3-none-any.whl", hash = "sha256:69edd6fb49537c7090a27394608bceb2b3a7eea5f9cbf975f6aadaa4f3154398", size = 740154, upload-time = "2026-11-26T16:58:58.387Z" },
+    { url = "https://files.pythonhosted.org/packages/e7/bd/3c30243403abcfbb7e51fba53f9a3a6927b78fc023812007e56937c08ccf/pyobs_core-2.30.2-py3-none-any.whl", hash = "sha256:c38b1c60f439c492eb989adfb80cb5ff6113582c852d802b3b04f162490c8b60", size = 741057, upload-time = "2026-11-27T10:30:19.663Z" },
 ]
 
 [package.optional-dependencies]
@@ -3012,7 +3012,7 @@ full = [
 
 [[package]]
 name = "pyobs-portal"
-version = "2.7.14"
+version = "2.7.15"
 source = { editable = "." }
 dependencies = [
     { name = "apscheduler" },
@@ -3056,7 +3056,7 @@ requires-dist = [
     { name = "gunicorn", specifier = ">=26.0.0" },
     { name = "psycopg2-binary", specifier = ">=2.9.12" },
     { name = "pyobs-auth", specifier = ">=2.1.0" },
-    { name = "pyobs-core", extras = ["full"], specifier = ">=2.30.0,<3" },
+    { name = "pyobs-core", extras = ["full"], specifier = ">=2.30.2,<3" },
     { name = "requests", specifier = ">=2.32.0" },
     { name = "unicorn", specifier = ">=2.1.4" },
     { name = "whitenoise", specifier = ">=6.8" },
