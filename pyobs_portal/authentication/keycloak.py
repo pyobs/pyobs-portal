@@ -28,7 +28,7 @@ from __future__ import annotations
 from typing import Any
 
 from django.conf import settings as django_settings
-from django.contrib.auth.models import User
+from django.contrib.auth.models import Group, User
 
 from pyobs_portal.authentication.models import KeycloakIdentity
 
@@ -82,4 +82,23 @@ def resolve_user(claims: dict[str, Any]) -> User | None:
         user.is_superuser = is_superuser
         user.save(update_fields=["is_superuser"])
 
+    _sync_unrestricted_group(user, claims)
     return user
+
+
+def _sync_unrestricted_group(user: User, claims: dict[str, Any]) -> None:
+    """Mirror KEYCLOAK_UNRESTRICTED_GROUP into the Django group "unrestricted" (issue #198).
+
+    Exact path match, like pyobs-auth's REQUIRED_GROUPS. Not configured -> membership is left
+    alone, so it can be managed in the Django admin instead.
+    """
+    from pyobs_portal.api.restrictions import UNRESTRICTED_GROUP
+
+    keycloak_group = getattr(django_settings, "KEYCLOAK_UNRESTRICTED_GROUP", "")
+    if not keycloak_group:
+        return
+    group, _ = Group.objects.get_or_create(name=UNRESTRICTED_GROUP)
+    if keycloak_group in (claims.get("groups") or []):
+        user.groups.add(group)
+    else:
+        user.groups.remove(group)

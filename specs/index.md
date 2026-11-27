@@ -78,5 +78,5 @@ migration + serializer changes needed here).
   group is restricted: global constraints (`RESTRICTED_CONSTRAINTS`, cannot be removed or
   loosened), bounded merits, target required, capped priority, enforced in
   `TaskSerializer.validate`, the schema endpoints and the task editor; removes
-  `SolarElevationConstraint.direction` in pyobs-core first. **proposed** (#198; Repos:
+  `SolarElevationConstraint.direction` in pyobs-core first. **implemented, unreleased** (#198; Repos:
   pyobs-core, pyobs-portal; related #197, pyobs-core#1126)

@@ -22,10 +22,18 @@ function classToType(klass, prefix) {
 
 /** A list of typed, schema-driven items (constraints or merits). */
 class TypedListEditor {
-  constructor(container, schemas, prefix, items) {
+  /**
+   * options (restricted users, issue #198): `bounds` {Type: {field: [kind, value]}} tightens the
+   * schema, `locked` Set(types) hides the remove button, `unknownMessage` replaces the warning
+   * for types the schema endpoint did not return (forbidden for this account).
+   */
+  constructor(container, schemas, prefix, items, options = {}) {
     this.schemas = schemas;
     this.prefix = prefix;
     this.entries = [];
+    this.bounds = options.bounds || {};
+    this.locked = options.locked || new Set();
+    this.unknownMessage = options.unknownMessage || null;
 
     this.listEl = document.createElement("div");
     this.listEl.className = "d-flex flex-column gap-2 mb-2";
@@ -38,7 +46,8 @@ class TypedListEditor {
   _addItem(data) {
     const klass = data.class;
     const type = classToType(klass, this.prefix);
-    const schema = this.schemas[type];
+    const schema = this.bounds[type] ? boundSchema(this.schemas[type], this.bounds[type]) : this.schemas[type];
+    const locked = this.locked.has(type);
 
     const card = document.createElement("div");
     card.className = "card bg-body-tertiary border-secondary-subtle mb-0";
@@ -56,7 +65,15 @@ class TypedListEditor {
     removeBtn.type = "button";
     removeBtn.className = "btn btn-sm btn-outline-danger";
     removeBtn.innerHTML = '<i class="bi bi-trash"></i>';
-    header.appendChild(removeBtn);
+    if (locked) {
+      const badge = document.createElement("span");
+      badge.className = "badge text-bg-secondary";
+      badge.textContent = "global limit";
+      badge.title = "Required for your account; can only be tightened.";
+      header.appendChild(badge);
+    } else {
+      header.appendChild(removeBtn);
+    }
     body.appendChild(header);
 
     let form = null;
@@ -68,7 +85,7 @@ class TypedListEditor {
     } else {
       const warn = document.createElement("p");
       warn.className = "text-warning small mb-0";
-      warn.textContent = `Unknown type: ${klass}`;
+      warn.textContent = this.unknownMessage ? `${type}: ${this.unknownMessage}` : `Unknown type: ${klass}`;
       body.appendChild(warn);
     }
     card.appendChild(body);
@@ -201,7 +218,7 @@ function prettyTargetType(name) {
 
 /** Single, optional, typed target (sidereal / dynamic / ...). */
 class TargetEditor {
-  constructor(container, schemas, pickerSchemas, data) {
+  constructor(container, schemas, pickerSchemas, data, options = {}) {
     this.schemas = schemas;
     this.pickerSchemas = pickerSchemas;
     this.type = data ? classToType(data.class, TARGET_PREFIX) : null;
@@ -210,8 +227,10 @@ class TargetEditor {
     this.select.className = "form-select form-select-sm w-auto mb-2";
     const noneOpt = document.createElement("option");
     noneOpt.value = "";
-    noneOpt.textContent = "(no target)";
+    noneOpt.textContent = options.required ? "(select a target)" : "(no target)";
     this.select.appendChild(noneOpt);
+    // Restricted users must set a target (issue #198); the empty option then fails validation.
+    this.select.required = !!options.required;
     Object.keys(schemas)
       .sort()
       .forEach((name) => {
@@ -697,6 +716,45 @@ async function initTaskEditor(taskId) {
     els.project.value = task.project;
   }
 
+  // Restricted users (issue #198): show the global limits and bounds up front.
+  const restr = siteConfig.restrictions;
+  const notices = [];
+  let constraintOptions = {};
+  let meritOptions = {};
+  if (restr) {
+    const merged = mergeGlobals(task.constraints, restr.global_constraints, CONSTRAINT_PREFIX);
+    task.constraints = merged.items;
+    if (merged.added.length) {
+      notices.push(`Added required constraints for your account: ${merged.added.join(", ")}.`);
+    }
+    constraintOptions = {
+      locked: merged.locked,
+      bounds: constraintBounds(restr.global_constraints, constraintSchemas, CONSTRAINT_PREFIX),
+      unknownMessage: "not allowed for your account; remove before saving",
+    };
+    meritOptions = {
+      bounds: meritBounds(meritSchemas, restr.max_merit),
+      unknownMessage: "not allowed for your account; remove before saving",
+    };
+    els.priority.max = restr.max_priority;
+    if ((task.priority ?? 1.0) > restr.max_priority) {
+      notices.push(`Priority is limited to ${restr.max_priority} for your account.`);
+    }
+  }
+  const noticeEl = document.getElementById("restrictions-notice");
+  const showNotice = (lines, kind = "info") => {
+    if (!noticeEl) return;
+    noticeEl.className = `alert alert-${kind} small py-2 mb-3`;
+    noticeEl.innerHTML = "";
+    lines.forEach((line) => {
+      const div = document.createElement("div");
+      div.textContent = line;
+      noticeEl.appendChild(div);
+    });
+    noticeEl.classList.toggle("d-none", lines.length === 0);
+  };
+  showNotice(notices);
+
   els.name.value = task.name || "";
   els.duration.value = task.duration ?? 0;
   els.priority.value = task.priority ?? 1.0;
@@ -722,9 +780,9 @@ async function initTaskEditor(taskId) {
     initVisibilityPlots(siteConfig);
   }
 
-  const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints);
-  const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits);
-  const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target);
+  const constraintsEditor = new TypedListEditor(els.constraints, constraintSchemas, CONSTRAINT_PREFIX, task.constraints, constraintOptions);
+  const meritsEditor = new TypedListEditor(els.merits, meritSchemas, MERIT_PREFIX, task.merits, meritOptions);
+  const targetEditor = new TargetEditor(els.target, targetSchemas, pickerSchemas, task.target, { required: !!restr });
 
   // Runs the same full-task-payload estimate_duration/ call (needed for e.g.
   // TransitImagingScript to find its TransitMerit and return the correct
@@ -868,6 +926,10 @@ async function initTaskEditor(taskId) {
 
   els.saveBtn.addEventListener("click", async () => {
     if (!els.priority.reportValidity()) return;
+    if (restr) {
+      const fields = [targetEditor.select, ...els.constraints.querySelectorAll("input, select"), ...els.merits.querySelectorAll("input, select")];
+      if (!fields.every((f) => f.reportValidity())) return;
+    }
     const payload = buildPayload();
 
     els.saveStatus.textContent = "Saving…";
@@ -885,7 +947,12 @@ async function initTaskEditor(taskId) {
         window.location.href = `/tasks/${encodeURIComponent(payload.id)}/`;
       }
     } catch (e) {
-      els.saveStatus.textContent = `✗ ${e.message}`;
+      if (e.status === 400 && e.data) {
+        showNotice(formatApiErrors(e.data), "danger");
+        els.saveStatus.textContent = "✗ Not saved, see above";
+      } else {
+        els.saveStatus.textContent = `✗ ${e.message}`;
+      }
       els.saveStatus.className = "small ms-2 text-danger";
     }
   });
@@ -1023,4 +1090,5 @@ function unavailableDataStatusEl() {
 // same pattern.
 if (typeof window !== "undefined") {
   window.ScriptEditor = ScriptEditor;
+  window.TypedListEditor = TypedListEditor;
 }

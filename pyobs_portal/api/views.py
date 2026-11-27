@@ -20,7 +20,7 @@ from rest_framework.views import APIView
 from django.db.models import Max
 from django_filters.rest_framework import DjangoFilterBackend
 
-from . import archive, schema
+from . import archive, restrictions, schema
 from .filters import ObservationFilter
 from .models import Task, Observation, ObservationState, Project
 from .serializers import (
@@ -309,6 +309,7 @@ def me(request):
             "username": request.user.username,
             "email": request.user.email,
             "is_superuser": request.user.is_superuser,
+            "restricted": restrictions.is_restricted(request.user),
         }
     )
 
@@ -363,7 +364,11 @@ def schema_constraints(request):
 @api_view(["GET"])
 @permission_classes([IsAuthenticated])
 def schema_merits(request):
-    return Response(schema.merit_schemas())
+    result = schema.merit_schemas()
+    if restrictions.is_restricted(request.user):
+        classes = restrictions._subclasses(restrictions.merits_module, restrictions.Merit)
+        result = {k: v for k, v in result.items() if k in classes and restrictions.merit_allowed_by_default(classes[k])}
+    return Response(result)
 
 
 @api_view(["GET"])
@@ -419,6 +424,7 @@ def site(request):
             "default_constraints": getattr(settings, "DEFAULT_CONSTRAINTS", []),
             "default_merits": getattr(settings, "DEFAULT_MERITS", []),
             "archive_enabled": bool(getattr(settings, "ARCHIVE_URL", "")),
+            "restrictions": restrictions.frontend_config(request.user),
         }
     )
 
@@ -492,6 +498,15 @@ def merit_plot(request):
 
     if not isinstance(request.data, dict):
         return Response({"error": "Request body must be a JSON object."}, status=400)
+
+    if restrictions.is_restricted(request.user):
+        errors = {
+            "constraints": restrictions.check_constraints(request.data.get("constraints") or []),
+            "merits": restrictions.check_merits(request.data.get("merits") or []),
+        }
+        errors = {k: v for k, v in errors.items() if v}
+        if errors:
+            return Response({"error": "Task violates the restrictions of your account.", **errors}, status=400)
 
     try:
         result = merit_plot_data(request.data, lat, lon, elev)

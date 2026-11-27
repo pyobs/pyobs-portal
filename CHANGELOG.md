@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 Entries for releases before this file existed were generated from commit subjects.
 
+## [Unreleased]
+
+### Added
+
+- Restricted users (#198): with `RESTRICTIONS_ENABLED`, everyone except superusers and the
+  `unrestricted` group (synced from `KEYCLOAK_UNRESTRICTED_GROUP`) may only tighten
+  `RESTRICTED_CONSTRAINTS` (direction from pyobs-core's field metadata), must set a target, may
+  only use merits with `max_value() <= 1`, and priorities up to `RESTRICTED_MAX_PRIORITY`. The task editor shows the
+  limits up front.
+
+### Changed
+
+- Data migration removes `direction` from stored `SolarElevationConstraint`s (removed in
+  pyobs-core); tasks with `rising` or `setting` are logged because they become less strict.
+- Constraint/merit entries without `"class"` return 400 instead of 500.
+
 ## [2.7.0] - 2026-10-15
 
 ### Fixed

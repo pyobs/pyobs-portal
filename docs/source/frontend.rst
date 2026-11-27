@@ -56,6 +56,9 @@ The same task as live-validated YAML:
 
 - **Default constraints/merits** — set ``DEFAULT_CONSTRAINTS``/``DEFAULT_MERITS`` to pre-fill new
   tasks with site-specific defaults.
+- **Restricted users** — with restrictions enabled (see :doc:`configuration`), the task editor
+  adds missing global constraints as locked cards ("global limit", no remove button), bounds
+  inputs to the allowed range, requires a target and lists rejected fields above the form.
 - **Admin panel** — superusers can manage users (including password changes) and projects at
   ``/admin-panel/``.
 
