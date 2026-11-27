@@ -305,6 +305,15 @@ import json as _json
 DEFAULT_CONSTRAINTS = _json.loads(os.environ.get("DEFAULT_CONSTRAINTS") or "[]")
 DEFAULT_MERITS = _json.loads(os.environ.get("DEFAULT_MERITS") or "[]")
 
+# Restricted users (issue #198, docs/source/configuration.rst). Off by default. When on, every
+# user except superusers and members of the Django group "unrestricted" (synced from
+# KEYCLOAK_UNRESTRICTED_GROUP on login) may only tighten RESTRICTED_CONSTRAINTS, must set a target,
+# is limited in merits (api/restrictions.py) and in task priority (RESTRICTED_MAX_PRIORITY).
+RESTRICTIONS_ENABLED = os.environ.get("RESTRICTIONS_ENABLED", "0") == "1"
+RESTRICTED_CONSTRAINTS = None  # resolved after local_settings; falls back to DEFAULT_CONSTRAINTS
+RESTRICTED_MAX_PRIORITY = float(os.environ.get("RESTRICTED_MAX_PRIORITY") or 1.0)
+KEYCLOAK_UNRESTRICTED_GROUP = os.environ.get("KEYCLOAK_UNRESTRICTED_GROUP", "")
+
 try:
     from .local_settings import *
 except ImportError:
@@ -315,6 +324,11 @@ if isinstance(DEFAULT_CONSTRAINTS, str):
     DEFAULT_CONSTRAINTS = _json.loads(DEFAULT_CONSTRAINTS)
 if isinstance(DEFAULT_MERITS, str):
     DEFAULT_MERITS = _json.loads(DEFAULT_MERITS)
+if RESTRICTED_CONSTRAINTS is None:
+    _restricted_env = os.environ.get("RESTRICTED_CONSTRAINTS")
+    RESTRICTED_CONSTRAINTS = _json.loads(_restricted_env) if _restricted_env else DEFAULT_CONSTRAINTS
+elif isinstance(RESTRICTED_CONSTRAINTS, str):
+    RESTRICTED_CONSTRAINTS = _json.loads(RESTRICTED_CONSTRAINTS)
 
 if FRONTEND_ENABLED:
     if "pyobs_portal.frontend" not in INSTALLED_APPS:

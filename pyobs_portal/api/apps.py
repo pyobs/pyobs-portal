@@ -5,4 +5,4 @@ class ApiConfig(AppConfig):
     name = "pyobs_portal.api"
 
     def ready(self):
-        from . import signals  # noqa: F401
+        from . import checks, signals  # noqa: F401

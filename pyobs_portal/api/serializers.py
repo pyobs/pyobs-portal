@@ -2,7 +2,7 @@ import inspect
 
 from django.contrib.auth.models import User
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import PermissionDenied, ValidationError
 from astropy.coordinates import Angle
 import astropy.units as u
 
@@ -10,6 +10,7 @@ import pyobs.robotic.scheduler.targets as _targets_module
 from pyobs.robotic.scheduler.targets.target import Target as _TargetModel
 
 from . import archive
+from .restrictions import check_task, is_restricted
 from .models import Task, Observation, Merit, Constraint, Project, Target
 
 
@@ -57,8 +58,11 @@ class ConstraintSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def to_internal_value(self, data):
-        typ = data.pop("class").split(".")[-1]
-        return {"type": typ, "params": data}
+        if not isinstance(data, dict) or "class" not in data:
+            raise ValidationError('Missing "class".')
+        params = dict(data)
+        typ = str(params.pop("class")).split(".")[-1]
+        return {"type": typ, "params": params}
 
     def to_representation(self, instance):
         repr = {"class": "pyobs.robotic.scheduler.constraints." + instance.type}
@@ -72,8 +76,11 @@ class MeritSerializer(serializers.ModelSerializer):
         fields = "__all__"
 
     def to_internal_value(self, data):
-        typ = data.pop("class").split(".")[-1]
-        return {"type": typ, "params": data}
+        if not isinstance(data, dict) or "class" not in data:
+            raise ValidationError('Missing "class".')
+        params = dict(data)
+        typ = str(params.pop("class")).split(".")[-1]
+        return {"type": typ, "params": params}
 
     def to_representation(self, instance):
         repr = {"class": "pyobs.robotic.scheduler.merits." + instance.type}
@@ -176,6 +183,54 @@ class TaskSerializer(serializers.ModelSerializer):
         data["id"] = data.pop("code")
         return data
 
+    def validate(self, attrs):
+        """Writes need superuser or membership in the project (public only grants read)."""
+        request = self.context.get("request")
+        if request is None:
+            return attrs
+        user = request.user
+        if user.is_superuser:
+            return attrs
+
+        new_project = attrs.get("project")
+        if new_project is not None:
+            # Hide private projects the user cannot even see, like an unknown slug.
+            if not (new_project.public or new_project.users.filter(pk=user.pk).exists()):
+                raise ValidationError(
+                    {"project": [f"Object with code={new_project.code} does not exist."]}
+                )
+        for project in (new_project, self.instance.project if self.instance else None):
+            if project is not None and not project.users.filter(pk=user.pk).exists():
+                raise PermissionDenied(
+                    f"You are not a member of project {project.code}; public projects are read-only."
+                )
+
+        if is_restricted(user):
+            self._check_restrictions(attrs)
+        return attrs
+
+    def _check_restrictions(self, attrs):
+        """Rules for restricted users (issue #198), on the task as it will be stored."""
+        # Deactivating is always allowed, even for a task that breaks the rules.
+        if self.partial and set(attrs) == {"active"} and attrs["active"] is False:
+            return
+        task = self.instance
+
+        def stored(rows):
+            return [{"type": row.type, "params": row.params} for row in rows.all()]
+
+        constraints = attrs["constraints"] if "constraints" in attrs else stored(task.constraints) if task else []
+        merits = attrs["merits"] if "merits" in attrs else stored(task.merits) if task else []
+        if "target" in attrs:
+            has_target = attrs["target"] is not None
+        else:
+            has_target = task is not None and Target.objects.filter(task=task).exists()
+        priority = attrs.get("priority", task.priority if task else None)
+
+        errors = check_task(constraints, merits, has_target, priority)
+        if errors:
+            raise ValidationError(errors)
+
     def create(self, validated_data):
         merits_data = validated_data.pop("merits")
         constraints_data = validated_data.pop("constraints")
@@ -190,6 +245,7 @@ class TaskSerializer(serializers.ModelSerializer):
     def update(self, task: Task, validated_data):
         merits_data = validated_data.pop("merits", None)
         constraints_data = validated_data.pop("constraints", None)
+        has_target = "target" in validated_data
         target_data = validated_data.pop("target", None)
         super().update(task, validated_data)
 
@@ -199,11 +255,13 @@ class TaskSerializer(serializers.ModelSerializer):
         if merits_data is not None:
             task.merits.all().delete()
             self._create_merits(task, merits_data)
-        try:
-            task.target.delete()
-        except Task.target.RelatedObjectDoesNotExist:
-            pass
-        self._create_target(task, target_data)
+        # A partial update without "target" (e.g. PATCH {"active": false}) must keep the target.
+        if has_target:
+            try:
+                task.target.delete()
+            except Task.target.RelatedObjectDoesNotExist:
+                pass
+            self._create_target(task, target_data)
 
         return task
 

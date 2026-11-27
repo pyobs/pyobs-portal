@@ -1809,3 +1809,103 @@ class TypedChoiceSchemaTests(SimpleTestCase):
         self.assertIs(type(restored.configuration.detector), int)
         with self.assertRaises(ValidationError):
             ObservationScript.model_validate({"configuration": {"detector": "16417"}})
+
+
+class TaskWritePermissionTests(TestCase):
+    """Task writes need superuser or project membership; public is read-only (issue #197)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser("admin", "admin@example.com", "pw")
+        self.alice = User.objects.create_user("alice", "alice@example.com", "pw")
+        self.bob = User.objects.create_user("bob", "bob@example.com", "pw")
+        self.pub = Project.objects.create(code="PUB", name="Public", public=True)
+        self.priv = Project.objects.create(code="PRIV", name="Private")
+        self.mine = Project.objects.create(code="MINE", name="Mine")
+        self.mine.users.add(self.alice)
+        self.pub.users.add(self.alice)
+        self.task_mine = Task.objects.create(
+            code="T-MINE", name="t", project=self.mine, duration=60, priority=1.0, script={}
+        )
+        self.task_pub = Task.objects.create(
+            code="T-PUB", name="t", project=self.pub, duration=60, priority=1.0, script={}
+        )
+        self.task_priv = Task.objects.create(
+            code="T-PRIV", name="t", project=self.priv, duration=60, priority=1.0, script={}
+        )
+        Target.objects.create(task=self.task_mine, name="X", coords={"ra": 1.0, "dec": 2.0}, type="sidereal")
+
+    def login(self, user):
+        client = APIClient()
+        client.force_authenticate(user=user)
+        return client
+
+    def body(self, project, code="NEW"):
+        return {
+            "id": code,
+            "name": "n",
+            "project": project,
+            "duration": 60,
+            "priority": 1.0,
+            "script": {},
+            "constraints": [],
+            "merits": [],
+            "target": None,
+        }
+
+    def test_member_can_create(self):
+        res = self.login(self.alice).post("/api/projects/MINE/tasks/", self.body("MINE"), format="json")
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_cannot_create_in_private_project_without_membership(self):
+        res = self.login(self.alice).post("/api/projects/PRIV/tasks/", self.body("PRIV"), format="json")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(Task.objects.filter(code="NEW").exists())
+
+    def test_non_member_cannot_create_in_public_project(self):
+        res = self.login(self.bob).post("/api/projects/PUB/tasks/", self.body("PUB"), format="json")
+        self.assertEqual(res.status_code, 403)
+        self.assertFalse(Task.objects.filter(code="NEW").exists())
+
+    def test_url_and_body_project_must_match(self):
+        res = self.login(self.alice).post("/api/projects/MINE/tasks/", self.body("PUB"), format="json")
+        self.assertEqual(res.status_code, 400)
+        self.assertFalse(Task.objects.filter(code="NEW").exists())
+
+    def test_superuser_can_create_anywhere(self):
+        res = self.login(self.admin).post("/api/projects/PRIV/tasks/", self.body("PRIV"), format="json")
+        self.assertEqual(res.status_code, 201, res.content)
+
+    def test_non_member_cannot_edit_public_task(self):
+        res = self.login(self.bob).patch("/api/tasks/T-PUB/", {"name": "x"}, format="json")
+        self.assertEqual(res.status_code, 403)
+        self.task_pub.refresh_from_db()
+        self.assertEqual(self.task_pub.name, "t")
+
+    def test_non_member_can_still_read_public_task(self):
+        res = self.login(self.bob).get("/api/tasks/T-PUB/")
+        self.assertEqual(res.status_code, 200)
+
+    def test_member_cannot_move_task_to_private_project(self):
+        res = self.login(self.alice).patch("/api/tasks/T-MINE/", {"project": "PRIV"}, format="json")
+        self.assertEqual(res.status_code, 400)
+        self.task_mine.refresh_from_db()
+        self.assertEqual(self.task_mine.project_id, "MINE")
+
+    def test_member_cannot_move_task_to_public_project_they_do_not_belong_to(self):
+        self.pub.users.remove(self.alice)
+        res = self.login(self.alice).patch("/api/tasks/T-MINE/", {"project": "PUB"}, format="json")
+        self.assertEqual(res.status_code, 403)
+
+    def test_member_can_move_task_between_own_projects(self):
+        res = self.login(self.alice).patch("/api/tasks/T-MINE/", {"project": "PUB"}, format="json")
+        self.assertEqual(res.status_code, 200, res.content)
+
+    def test_patch_without_target_keeps_target(self):
+        res = self.login(self.alice).patch("/api/tasks/T-MINE/", {"active": False}, format="json")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertTrue(Target.objects.filter(task=self.task_mine).exists())
+
+    def test_put_with_null_target_removes_target(self):
+        res = self.login(self.alice).put("/api/tasks/T-MINE/", self.body("MINE", "T-MINE"), format="json")
+        self.assertEqual(res.status_code, 200, res.content)
+        self.assertFalse(Target.objects.filter(task=self.task_mine).exists())
