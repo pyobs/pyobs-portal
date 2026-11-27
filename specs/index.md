@@ -74,7 +74,9 @@ migration + serializer changes needed here).
 - [plans/2026-10-15-portal-issue-169.md](plans/2026-10-15-portal-issue-169.md) — implementation of #169: local setup, packaging, bounded priorities and pending-observation cancellation.
 
 - [plans/2026-11-14-restricted-users-constraints-merits.md](plans/2026-11-14-restricted-users-constraints-merits.md) —
-  restricted Django groups get global constraints (`RESTRICTED_CONSTRAINTS`, cannot be removed or
-  loosened) and a merit whitelist, enforced in `TaskSerializer.validate`, the schema endpoints and
-  the task editor; adds `SolarElevationRisingConstraint`/`SolarElevationSettingConstraint` in
-  pyobs-core first. **proposed** (#198; Repos: pyobs-core, pyobs-portal; related #197)
+  with `RESTRICTIONS_ENABLED`, everyone except superusers and the Keycloak-synced `unrestricted`
+  group is restricted: global constraints (`RESTRICTED_CONSTRAINTS`, cannot be removed or
+  loosened), bounded merits, target required, capped priority, enforced in
+  `TaskSerializer.validate`, the schema endpoints and the task editor; removes
+  `SolarElevationConstraint.direction` in pyobs-core first. **proposed** (#198; Repos:
+  pyobs-core, pyobs-portal; related #197, pyobs-core#1126)
