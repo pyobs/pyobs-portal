@@ -12,6 +12,7 @@ from django.http import Http404
 from django.shortcuts import get_object_or_404
 from django.utils import timezone
 from rest_framework import generics
+from rest_framework.exceptions import ValidationError
 from rest_framework.decorators import permission_classes, api_view
 from rest_framework.permissions import IsAuthenticated, IsAdminUser
 from rest_framework.response import Response
@@ -85,6 +86,11 @@ class TaskListForProject(generics.ListCreateAPIView):
         ):
             raise Http404
         return project.tasks.all()
+
+    def perform_create(self, serializer):
+        if serializer.validated_data["project"].pk != self.kwargs["pk"]:
+            raise ValidationError({"project": ["Does not match the project in the URL."]})
+        super().perform_create(serializer)
 
 
 @permission_classes([IsAuthenticated])
